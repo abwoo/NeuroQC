@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest an improvement to the documentation, GUI or workflow in this repository
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature requests about the GUI / API / documentation are welcome — feedback is welcome.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Type of request
+      options:
+        - Documentation (new section, translation, FAQ)
+        - GUI / workflow idea
+        - Search / ranking algorithm idea
+        - QC integration
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem should this solve?
+      description: The workflow pain point, not just the feature name.
+      placeholder: e.g. "When comparing many recipes I cannot tell which QC metric drove the score."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like?
+      description: Your proposed solution or behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      placeholder: Workarounds you use today.

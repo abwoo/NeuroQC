@@ -1,0 +1,12 @@
+# OS
+.DS_Store
+
+# Never commit local research artifacts
+results/
+validation/
+neuroqc_recipes_*/
+
+# MATLAB
+*.asv
+*.m~
+slprj/

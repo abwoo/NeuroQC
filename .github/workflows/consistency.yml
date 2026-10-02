@@ -1,0 +1,36 @@
+name: consistency
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**.md"
+      - "**.html"
+      - "docs/assets/showcase-metrics.json"
+      - "docs/assets/**.gif"
+      - "docs/assets/**.png"
+      - "site/assets/**"
+      - "tools/inject.py"
+      - ".github/workflows/consistency.yml"
+  pull_request:
+    paths:
+      - "**.md"
+      - "**.html"
+      - "docs/assets/showcase-metrics.json"
+      - "docs/assets/**.gif"
+      - "docs/assets/**.png"
+      - "site/assets/**"
+      - "tools/inject.py"
+      - ".github/workflows/consistency.yml"
+  workflow_dispatch:
+
+jobs:
+  consistency:
+    name: Version / test count / numbers blocks / assets vs metrics.json
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify showcase consistency
+        run: python3 tools/inject.py --staging . --check

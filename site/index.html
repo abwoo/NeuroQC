@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>NeuroQC — Exhaustive search &amp; quality control for EEGLAB pipelines</title>
+<meta name="description" content="NeuroQC enumerates your discrete preprocessing search space exhaustively, ranks every candidate by Pareto front and your goal weights, and never recommends what it has not evaluated. 100% local MATLAB — no AI, no cloud."/>
+<meta property="og:title" content="NeuroQC — EEG Copilot for EEGLAB"/>
+<meta property="og:description" content="Exhaustive discrete search, Pareto + goal-weighted ranking, QC import, drift gate. 252 regression tests, 100% local."/>
+<meta property="og:image" content="assets/demo.gif"/>
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml"/>
+<style>
+  :root{
+    --navy:#172048; --navy2:#0e1533; --blue:#2f6fed; --ink:#1d2433; --muted:#5b6474;
+    --bg:#ffffff; --soft:#f4f6fa; --line:#e3e7ef; --ok:#238636;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+       color:var(--ink);background:var(--bg);line-height:1.6;-webkit-font-smoothing:antialiased}
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+  img{max-width:100%;display:block}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+
+  /* ---------- hero ---------- */
+  .hero{background:radial-gradient(1200px 500px at 50% -10%,#27346e 0%,var(--navy) 45%,var(--navy2) 100%);
+        color:#eef1fa;text-align:center;padding:72px 24px 64px}
+  .hero img.logo{width:min(360px,70%);margin:0 auto 18px}
+  .hero h1{font-size:2.4rem;letter-spacing:.5px;margin-bottom:10px}
+  .hero p.tag{font-size:1.15rem;color:#c6cde4;max-width:760px;margin:0 auto 26px}
+  .cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:22px}
+  .btn{display:inline-block;padding:12px 22px;border-radius:8px;font-weight:600;font-size:1rem}
+  .btn:hover{text-decoration:none;transform:translateY(-1px)}
+  .btn-primary{background:var(--blue);color:#fff;box-shadow:0 6px 20px rgba(47,111,237,.35)}
+  .btn-ghost{background:rgba(255,255,255,.08);color:#eef1fa;border:1px solid rgba(255,255,255,.25)}
+  .badges{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:14px}
+  .badges img{height:22px}
+  .ipnote{display:inline-block;margin-top:6px;font-size:.82rem;color:#9aa4c4;
+          border:1px dashed rgba(255,255,255,.25);border-radius:6px;padding:6px 12px}
+  .ipnote a{color:#a9c2ff}
+
+  /* ---------- stats ---------- */
+  .stats{background:var(--navy2);color:#eef1fa;padding:26px 24px}
+  .stats .wrap{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;text-align:center}
+  .stat b{display:block;font-size:2rem;font-weight:800;color:#fff}
+  .stat span{font-size:.85rem;color:#9aa4c4}
+
+  /* ---------- sections ---------- */
+  section{padding:64px 0}
+  section.alt{background:var(--soft)}
+  h2{font-size:1.7rem;margin-bottom:8px;color:var(--navy)}
+  .lead{color:var(--muted);max-width:780px;margin-bottom:34px}
+  .center{text-align:center}
+  .center .lead{margin-left:auto;margin-right:auto}
+
+  .grid{display:grid;gap:18px}
+  .grid.c3{grid-template-columns:repeat(3,1fr)}
+  .grid.c2{grid-template-columns:repeat(2,1fr)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:22px}
+  .card h3{font-size:1.02rem;margin-bottom:8px;color:var(--navy)}
+  .card p{font-size:.92rem;color:var(--muted)}
+
+  figure{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;padding:12px}
+  figure img{border-radius:8px}
+  figcaption{font-size:.85rem;color:var(--muted);padding:10px 6px 2px;text-align:center}
+  figcaption b{color:var(--navy)}
+
+  table{border-collapse:collapse;width:100%;background:#fff;font-size:.95rem}
+  th,td{border:1px solid var(--line);padding:10px 14px;text-align:left}
+  th{background:#eef2f9;color:var(--navy)}
+  td.c,th.c{text-align:center}
+  .tblbox{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+  .tblbox table{border:none}
+  .tblbox th,.tblbox td{border-left:none;border-top:none}
+  .tblbox tr>*:first-child{border-left:none}
+
+  /* ---------- steps ---------- */
+  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .step{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;position:relative}
+  .step em{font-style:normal;display:inline-block;background:var(--navy);color:#fff;
+           width:26px;height:26px;line-height:26px;border-radius:50%;text-align:center;
+           font-size:.85rem;font-weight:700;margin-bottom:10px}
+  .step h3{font-size:.98rem;color:var(--navy);margin-bottom:6px}
+  .step p{font-size:.86rem;color:var(--muted)}
+
+  /* ---------- code ---------- */
+  pre{background:var(--navy);color:#dfe6ff;border-radius:10px;padding:18px 20px;overflow-x:auto;
+      font-size:.9rem;line-height:1.5}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  p code, li code, td code{background:#eef1f7;border:1px solid var(--line);border-radius:4px;
+                           padding:1px 6px;font-size:.86em;color:var(--navy)}
+
+  ul.clean{list-style:none}
+  ul.clean li{padding:6px 0 6px 26px;position:relative;color:var(--muted);font-size:.95rem}
+  ul.clean li::before{content:"✓";position:absolute;left:0;color:var(--ok);font-weight:700}
+
+  /* ---------- footer ---------- */
+  footer{background:var(--navy2);color:#9aa4c4;padding:40px 24px 48px;font-size:.88rem}
+  footer .wrap{display:flex;flex-direction:column;gap:14px;align-items:center;text-align:center}
+  footer a{color:#a9c2ff}
+  details summary{cursor:pointer;color:var(--navy);font-weight:600}
+  details pre{margin-top:10px;text-align:left}
+
+  @media (max-width:860px){
+    .grid.c3,.grid.c2,.steps{grid-template-columns:1fr}
+    .stats .wrap{grid-template-columns:repeat(2,1fr)}
+    .hero h1{font-size:1.9rem}
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <img class="logo" src="assets/logo.svg" alt="NeuroQC logo"/>
+  <h1>NeuroQC</h1>
+  <p class="tag">Exhaustive search and quality control for EEGLAB preprocessing pipelines —
+     every legal combination enumerated, ranked by Pareto front and <b>your</b> goal weights,
+     recommended <b>only</b> among candidates that were actually evaluated.</p>
+  <div class="cta">
+    <a class="btn btn-primary" href="https://github.com/abwoo/NeuroQC">⭐ Star on GitHub</a>
+    <a class="btn btn-ghost" href="https://github.com/abwoo/NeuroQC/tree/main/examples">🧪 See examples</a>
+  </div>
+  <div class="badges" aria-hidden="true">
+    <img src="https://img.shields.io/badge/version-0.6.0-2f6fed?style=flat-square" alt="version"/>
+    <img src="https://img.shields.io/badge/MATLAB-R2026a-orange?style=flat-square" alt="MATLAB"/>
+    <img src="https://img.shields.io/badge/EEGLAB-2026.0.0-blueviolet?style=flat-square" alt="EEGLAB"/>
+    <img src="https://img.shields.io/github/stars/abwoo/NeuroQC?style=flat-square" alt="GitHub stars"/>
+  </div>
+  <div class="ipnote">✅ Plugin source included — MIT license.
+     <a href="https://github.com/abwoo/NeuroQC#whats-included">What's included</a></div>
+</header>
+
+<div class="stats">
+  <div class="wrap">
+    <div class="stat"><b data-count="252">0</b><span>regression tests</span></div>
+    <div class="stat"><b data-count="5">0</b><span>ranking objectives</span></div>
+    <div class="stat"><b data-count="4">0</b><span>tab guided workflow</span></div>
+    <div class="stat"><b>0</b><span>network calls, by design</span></div>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <h2>Why NeuroQC?</h2>
+    <p class="lead">EEG preprocessing is a discrete combination problem: filters, epoch windows,
+      artifact rules, ICA policies, re-referencing — each with a handful of defensible values,
+      multiplying fast. Most workflows fix one pipeline by hand. NeuroQC searches the space
+      <b>exhaustively</b>, ranks it by <b>your</b> goal, and keeps every result reproducible.</p>
+    <div class="grid c3">
+      <div class="card"><h3>🎯 Goal-driven ranking</h3><p>Pareto front plus a weighted GoalRanker.
+        Change the profile — <em>Balanced</em>, <em>Retain more trials</em>, <em>Lower filter distortion</em>,
+        <em>Stable topography</em> — and the ranking updates with no re-search.</p></div>
+      <div class="card"><h3>🔍 Exhaustive discrete search</h3><p>Full combination enumeration with
+        legality constraints, order search (fixed / free / slot-locked) and a budget guard that
+        refuses silently-truncated sampling.</p></div>
+      <div class="card"><h3>🩺 QC in the loop</h3><p>Import QC metrics (CSV/JSON) you already measure
+        in EEGLAB. GoalScore and labels only ever reflect <b>evaluated</b> candidates — nothing is invented.</p></div>
+      <div class="card"><h3>🛡️ Config-drift gate</h3><p>Edit any setting after generating recipes and
+        Results actions lock behind a red <code>Required: Settings changed…</code> hint. Stale recipes
+        can never meet new settings.</p></div>
+      <div class="card"><h3>📜 Reproducible recipes</h3><p>Every candidate becomes a standalone
+        <code>recipe_E000001.m</code> script with its exact parameters — rerun it or hand it to a collaborator.</p></div>
+      <div class="card"><h3>🧩 Contracts &amp; handoff</h3><p>Events, windows and components-of-interest
+        declared once and validated fail-closed; resume from checkpoints and lock step order absolutely.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap center">
+    <h2>See it in action</h2>
+    <p class="lead">A complete nine-step session on a synthetic 32-channel oddball dataset —
+      load → scope → params → space → preview → log → generate → evaluate → drift gate.
+      Every number shown was produced by the tool.</p>
+    <figure style="max-width:900px;margin:0 auto 34px">
+      <img src="assets/demo.gif" alt="Nine-step NeuroQC walkthrough: load dataset, choose steps and handoff, declare candidate values, search-space grid of 8, preview 8 legal, log enumeration, eight generated recipes, eight evaluated with Pareto front 6 of 8 and best E000003, then the config-drift gate" loading="lazy"/>
+      <figcaption><b>Full walkthrough</b> — from empty project to ranked, gated results</figcaption>
+    </figure>
+    <div class="grid c2">
+      <figure>
+        <img src="assets/demo-goal.gif" alt="Goal-switch demo: Balanced ranks E000008 first at GoalScore 0.5230; Lower filter distortion sets weights 2 0.5 0.5 3 0.5 and best flips to E000007 at 0.4190" loading="lazy"/>
+        <figcaption><b>Goal switch</b> — same QC data re-ranked, best flips E000008 → E000007</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/demo-drift.gif" alt="Drift-gate demo: red Required gate appears after one settings edit and Compare disables" loading="lazy"/>
+        <figcaption><b>Drift gate</b> — one edit locks Compare/Retry</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/demo-qc.gif" alt="QC-import demo: NEEDS_QC rows fill with metrics, Pareto front and bestEvaluated after import" loading="lazy"/>
+        <figcaption><b>QC import</b> — your measured metrics drive the ranking</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/manual-vs-auto.gif" alt="Manual trial and error reaches 3 of 8 pipelines while NeuroQC enumerates and evaluates all 8" loading="lazy"/>
+        <figcaption><b>Manual vs NeuroQC</b> — 3 of 8 versus all 8, honestly</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>One complete run, by the numbers</h2>
+    <p class="lead">Synthetic 32-channel oddball, 200 s, 60 target / 120 standard trials.
+      Nothing below is hand-typed.</p>
+    <!-- sync:numbers:site -->
+    <div class="tblbox">
+      <table>
+        <tr><th>Stage</th><th>What happened</th></tr>
+        <tr><td><b>Preview</b></td><td>4 highpass × 2 lowpass → <b>8 combinations; 8 legal; 0 rejected</b></td></tr>
+        <tr><td><b>Generate</b></td><td><b>8 standalone recipe scripts</b> written, zero signal processing</td></tr>
+        <tr><td><b>Compare all</b></td><td><b>8 / 8 evaluated (100%)</b>, 0 failures → status <code>REVIEW</code></td></tr>
+        <tr><td><b>Pareto front</b></td><td><b>6 of 8</b> survive the 5-objective front</td></tr>
+        <tr><td><b>Goal ranking</b></td><td>best <b>E000003</b> under app metrics; QC import ranks best <b>E000008</b> (0.5230)</td></tr>
+        <tr><td><b>Metrics</b></td><td>Rel 0.829–0.849 · Reten 1.00 · Dist 0.416–0.445 (hard gate ≤ 0.50)</td></tr>
+        <tr><td><b>Goal switch</b></td><td>Balanced → <b>E000008</b>; Lower filter distortion → best flips to <b>E000007</b> (0.4190) — same QC data</td></tr>
+        <tr><td><b>Drift gate</b></td><td>One edit after generation → red <code>Required: Settings changed…</code>, Compare/Retry disabled</td></tr>
+      </table>
+    </div>
+    <p class="lead" style="margin-top:26px"><b>Manual vs NeuroQC on this exact run:</b> by hand you would
+      settle on one filter pair, maybe try a second — 1–2 pipelines with no record of what was skipped.
+      NeuroQC enumerated <b>all 8</b>, executed <b>all 8 on copies</b>, kept the Pareto-optimal <b>6</b>,
+      and returned a ranked shortlist where every row is a reproducible script.</p>
+    <!-- /sync:numbers:site -->
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <h2>Comparison</h2>
+    <p class="lead">Where the time actually goes.</p>
+    <div class="tblbox">
+      <table>
+        <tr><th></th><th class="c">Manual trial-and-error</th><th class="c">Fixed pipeline script</th><th class="c"><b>NeuroQC</b></th></tr>
+        <tr><td>Explores the combination space</td><td class="c">a few variants</td><td class="c">1</td><td class="c"><b>exhaustive (budget-guarded)</b></td></tr>
+        <tr><td>Ranks by <i>your</i> goal</td><td class="c">gut feeling</td><td class="c">maybe one metric</td><td class="c"><b>Pareto + weighted GoalRanker</b></td></tr>
+        <tr><td>Uses your QC metrics</td><td class="c">lab book</td><td class="c">ad hoc</td><td class="c"><b>first-class QC import, evaluated-only</b></td></tr>
+        <tr><td>Catches config/result mismatch</td><td class="c">—</td><td class="c">—</td><td class="c"><b>drift gate + gated retry</b></td></tr>
+        <tr><td>Reproducibility</td><td class="c">remembered steps</td><td class="c">the script</td><td class="c"><b>per-candidate recipes</b></td></tr>
+        <tr><td>LLM or cloud dependency</td><td class="c">—</td><td class="c">—</td><td class="c"><b>none, by design</b></td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>How it works</h2>
+    <p class="lead">Four tabs, one contract, one search, one ranked shortlist.</p>
+    <div class="steps">
+      <div class="step"><em>1</em><h3>Data</h3><p>Load the EEG snapshot; set data unit, QC file path and trial rule.</p></div>
+      <div class="step"><em>2</em><h3>Scope</h3><p>Choose steps and their order, handoff stage, analysis contract and ranking profile.</p></div>
+      <div class="step"><em>3</em><h3>Params</h3><p>Declare discrete candidate values per step; preview the search-space grid before anything runs.</p></div>
+      <div class="step"><em>4</em><h3>Results</h3><p>Recipes, Pareto front, GoalScore, QC import, compare, gated retry — locked by the drift gate on any edit.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <h2>Getting started</h2>
+    <p class="lead">The repository ships the toolbox plugin source, documentation, reference
+      examples and the default search space.</p>
+    <pre><code>git clone https://github.com/abwoo/NeuroQC.git
+cd NeuroQC</code></pre>
+    <div class="grid c3" style="margin-top:26px">
+      <div class="card"><h3>🧪 Examples</h3><p>Reference API flow (synthetic data → contract → search → rank):
+        <a href="https://github.com/abwoo/NeuroQC/tree/main/examples">examples/</a></p></div>
+      <div class="card"><h3>⚙️ Requirements</h3><p>MATLAB R2026a · EEGLAB 2026.0.0 · core path needs
+        MATLAB base only (parallel optional).</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Questions, answered</h2>
+    <ul class="clean">
+      <li><b>Is this an AI / LLM tool?</b> No. Exhaustive enumeration, Pareto filtering, weighted ranking.
+        No model, no API key, no telemetry, no network access — “copilot” only means interactive goal refinement.</li>
+      <li><b>Where is my data sent?</b> Nowhere. Everything runs locally in MATLAB; recipes and reports land
+        in folders you choose.</li>
+      <li><b>Can I use it on my data today?</b> Yes — MIT licensed, no warranty. Copy the repo into
+        <code>eeglab/plugins/</code> and follow the Getting started section.</li>
+      <li><b>Do I need EEGLAB?</b> The wizard runs inside EEGLAB; the headless API path works in plain MATLAB
+        with EEGLAB on the path.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>NeuroQC — semi-automatic combination optimization &amp; quality control for EEGLAB preprocessing pipelines</div>
+    <div><a href="https://github.com/abwoo/NeuroQC">GitHub</a> ·
+         <a href="https://github.com/abwoo/NeuroQC/blob/main/README.md">README</a></div>
+    <div>✅ Plugin source included — MIT license.
+      Screenshots use <b>synthetic</b> data only.</div>
+    <details>
+      <summary>Cite this work</summary>
+      <pre><code>@software{neuroqc2026,
+  author  = {abwoo},
+  title   = {NeuroQC: semi-automatic combination optimization and quality control
+             for EEGLAB preprocessing pipelines},
+  year    = {2026},
+  version = {0.6.0},
+  url     = {https://github.com/abwoo/NeuroQC}
+}</code></pre>
+    </details>
+    <div>© 2026 abwoo · If this resonates, a ⭐ helps others find it.</div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var els = document.querySelectorAll('.stat b[data-count]');
+  if(!('IntersectionObserver' in window)){els.forEach(function(e){e.textContent=e.dataset.count});return;}
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(!en.isIntersecting) return;
+      var el = en.target, target = +el.dataset.count, t0 = null;
+      function tick(ts){
+        if(!t0) t0 = ts;
+        var p = Math.min((ts - t0) / 900, 1);
+        el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
+        if(p < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+      io.unobserve(el);
+    });
+  }, {threshold: 0.6});
+  els.forEach(function(e){io.observe(e)});
+})();
+</script>
+</body>
+</html>

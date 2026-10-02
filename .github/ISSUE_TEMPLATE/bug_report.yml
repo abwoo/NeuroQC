@@ -1,0 +1,49 @@
+name: Bug report
+description: Report an issue in this repository (docs, examples, plugin entry files)
+title: "[docs] "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue.
+        **Note:** this template covers the documentation, screenshots, configs, examples and the
+        plugin entry files (README, docs, eegplugin_neuroqc.m). The test suite and validation
+        artifacts are not part of this repository.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Where is the problem?
+      options:
+        - README (English)
+        - docs/ tutorial or guide
+        - screenshots / demo GIF
+        - configs (search space)
+        - examples (reference scripts)
+        - plugin entry / EEGLAB menu
+        - CI / link check
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What did you find?
+      description: A clear description of the problem (wrong step, broken wording, misleading screenshot, etc.)
+      placeholder: e.g. "Step 4 in the docs mentions a dialog that no longer exists in v0.6."
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where exactly?
+      description: File, section heading or screenshot. A link helps a lot.
+      placeholder: e.g. README.md → "Getting started" heading
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested fix (optional)
+      placeholder: How should it read instead?
