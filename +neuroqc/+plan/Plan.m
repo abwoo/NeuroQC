@@ -1,0 +1,407 @@
+classdef Plan
+    %PLAN The processing you want to run from the current dataset onward.
+    %
+    %   p = neuroqc.plan.Plan();
+    %   p = p.add('highpass');                        % cutoff unfixed -> searched
+    %   p = p.add('lowpass', 'cutoff', 30);           % fixed
+    %   p = p.add('badchannels', 'threshold', {3 5}); % searched over 3 and 5
+    %   p = p.add('reref', 'mode', 'average');        % must be fixed
+    %   p = p.add('ica');  p = p.add('icremove');
+    %   p = p.add('epoch'); p = p.add('baseline');
+    %   p = p.add('reject_threshold', 'uv', {75 100 150});
+    %   p = p.addNative('EEG = pop_eegfiltnew(EEG, ''locutoff'',48,''hicutoff'',52,''revfilt'',1);');
+    %   p = p.addChoice('reject', {'reject_threshold','uv',100}, {'reject_jointprob'}, 'none');
+    %
+    %   Rules
+    %   - The order you add steps is the order they run (OrderMode 'fixed').
+    %     With OrderMode 'search' every legal order is tried, except that
+    %     pinned steps keep their position and before(a,b) pairs are kept.
+    %   - A parameter given as a single value is fixed. A cell {a b c} is
+    %     searched. A parameter you do not mention is searched over the
+    %     catalog's suggestions when it has any, otherwise it takes the
+    %     catalog default. (For list-valued parameters such as 'classes' a
+    %     cell of cells is searched.)
+    %   - Parameters that define the measured quantity (re-reference)
+    %     must be fixed by you; epoch and baseline windows come from the
+    %     analysis contract.
+    %   - Everything already done to the dataset (EEG.history + data
+    %     state) is the starting point; the plan only covers what follows.
+
+    properties
+        Slots = struct('id', {}, 'alternatives', {}, 'pinned', {})
+        OrderMode = 'fixed'          % 'fixed' | 'search'
+        Precedence = cell(0, 2)      % {before, after} slot ids
+    end
+
+    methods
+        function obj = add(obj, type, varargin)
+            type = char(type);
+            neuroqc.plan.Catalog.get(type); % validates the type
+            params = nvStruct(varargin);
+            obj = obj.addSlot(type, {struct('type', type, 'params', params)});
+        end
+
+        function obj = addNative(obj, command, id)
+            if nargin < 3, id = 'native'; end
+            command = char(command);
+            e = neuroqc.live.History.classify(command);
+            assert(~isempty(e.fn) && startsWith(e.fn, 'pop_'), 'NeuroQC:Native', ...
+                'A native step must be one EEGLAB pop_* command, e.g. EEG = pop_reref(EEG, []);');
+            obj = obj.addSlot(id, {struct('type', 'native', 'params', struct('command', command))});
+        end
+
+        function obj = addChoice(obj, id, varargin)
+            % Alternatives for one position. Each alternative is a cell
+            % {type, name, value, ...} or the char 'none' (skip the step).
+            alts = {};
+            for k = 1:numel(varargin)
+                a = varargin{k};
+                if ischar(a) && strcmp(a, 'none')
+                    alts{end+1} = struct('type', 'none', 'params', struct()); %#ok<AGROW>
+                else
+                    assert(iscell(a) && ~isempty(a), 'NeuroQC:Plan', 'Each alternative is {type, name, value, ...} or ''none''');
+                    neuroqc.plan.Catalog.get(a{1});
+                    alts{end+1} = struct('type', char(a{1}), 'params', nvStruct(a(2:end))); %#ok<AGROW>
+                end
+            end
+            obj = obj.addSlot(id, alts);
+        end
+
+        function obj = pin(obj, id)
+            obj.Slots(obj.slotIndex(id)).pinned = true;
+        end
+
+        function obj = before(obj, a, b)
+            obj.slotIndex(a); obj.slotIndex(b);
+            obj.Precedence(end+1, :) = {a, b};
+        end
+
+        function obj = remove(obj, id)
+            k = obj.slotIndex(id);
+            obj.Slots(k) = [];
+            keep = ~any(strcmp(obj.Precedence, id), 2);
+            obj.Precedence = obj.Precedence(keep, :);
+        end
+
+        function obj = move(obj, id, delta)
+            k = obj.slotIndex(id); j = k + delta;
+            if j < 1 || j > numel(obj.Slots), return; end
+            obj.Slots([k j]) = obj.Slots([j k]);
+        end
+
+        function obj = setParams(obj, id, varargin)
+            % Replace the parameters of a single-alternative slot.
+            k = obj.slotIndex(id);
+            assert(numel(obj.Slots(k).alternatives) == 1, 'NeuroQC:Plan', 'setParams applies to single-step slots');
+            obj.Slots(k).alternatives{1}.params = nvStruct(varargin);
+        end
+
+        function k = slotIndex(obj, id)
+            k = find(strcmp({obj.Slots.id}, id), 1);
+            assert(~isempty(k), 'NeuroQC:Plan', 'No step "%s" in the plan', id);
+        end
+
+        function [leaves, tree, report] = enumerate(obj, state, contract, opts)
+            % Every legal pipeline the plan allows, as a prefix tree.
+            %   leaves  struct array: path (cell of instances), key, order
+            %   tree    node array for prefix-sharing execution
+            %   report  counts, rejected-order reasons, searched parameters
+            if nargin < 4, opts = struct(); end
+            opts = withDefaults(opts, struct('maxLeaves', 500, 'maxOrders', 5000));
+            assert(~isempty(obj.Slots), 'NeuroQC:Plan', 'The plan is empty: add at least one step.');
+            n = numel(obj.Slots);
+            inst = cell(1, n);
+            for k = 1:n
+                inst{k} = obj.expandSlot(k, contract);
+            end
+            orders = obj.orders(opts.maxOrders);
+            upper = numel(orders) * prod(cellfun(@numel, inst));
+            assert(upper <= 1e7, 'NeuroQC:SearchTooLarge', ...
+                ['The plan allows up to %g pipelines (%d orders x %s instances per step). ', ...
+                 'Fix more parameters or the order.'], upper, numel(orders), mat2str(cellfun(@numel, inst)));
+
+            st0 = rootState(state);
+            leaves = struct('path', {}, 'key', {}, 'order', {});
+            seen = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+            reasons = containers.Map('KeyType', 'char', 'ValueType', 'double');
+            for oi = 1:numel(orders)
+                walk(orders{oi}, 1, {}, st0);
+            end
+            assert(~isempty(leaves), 'NeuroQC:NoLegalPipeline', ...
+                'No legal pipeline: %s', describe(reasons));
+            assert(numel(leaves) <= opts.maxLeaves, 'NeuroQC:SearchTooLarge', ...
+                ['%d legal pipelines exceed maxLeaves = %d. Nothing was run or truncated. ', ...
+                 'Fix more parameters/order, or raise opts.maxLeaves deliberately.'], numel(leaves), opts.maxLeaves);
+            tree = buildTree(leaves);
+            report = struct();
+            report.nLeaves = numel(leaves);
+            report.nOrders = numel(orders);
+            report.nNodes = numel(tree) - 1;
+            report.nStepsUnshared = sum(arrayfun(@(l) numel(l.path), leaves));
+            report.rejected = mapToStruct(reasons);
+            report.searched = searchedParams(inst, obj.Slots);
+
+            function walk(order, pos, path, st)
+                if pos > numel(order)
+                    key = strjoin(cellfun(@(i) i.key, path, 'UniformOutput', false), ' > ');
+                    if isempty(key), key = '(no step)'; end
+                    if isKey(seen, key), return; end
+                    seen(key) = true;
+                    leaves(end+1) = struct('path', {path}, 'key', key, 'order', order); %#ok<AGROW>
+                    return;
+                end
+                cands = inst{order(pos)};
+                for c = 1:numel(cands)
+                    in = cands{c};
+                    if strcmp(in.type, 'none')
+                        walk(order, pos + 1, path, st);
+                        continue;
+                    end
+                    [why, st2] = neuroqc.plan.Catalog.apply(in.type, in.params, st);
+                    if ~isempty(why)
+                        r = sprintf('%s: %s', in.label, why);
+                        if isKey(reasons, r), reasons(r) = reasons(r) + 1; else, reasons(r) = 1; end
+                        continue;
+                    end
+                    walk(order, pos + 1, [path {in}], st2);
+                end
+            end
+        end
+
+        function list = expandSlot(obj, k, contract)
+            slot = obj.Slots(k);
+            list = {};
+            for a = 1:numel(slot.alternatives)
+                alt = slot.alternatives{a};
+                if strcmp(alt.type, 'none')
+                    list{end+1} = struct('slot', slot.id, 'type', 'none', 'params', struct(), ...
+                        'key', 'none', 'label', 'none', 'searched', {{}}); %#ok<AGROW>
+                    continue;
+                end
+                [grid, searched] = paramGrid(alt.type, alt.params, contract);
+                for g = 1:numel(grid)
+                    p = grid{g};
+                    list{end+1} = struct('slot', slot.id, 'type', alt.type, 'params', p, ...
+                        'key', instKey(alt.type, p), 'label', instLabel(alt.type, p), ...
+                        'searched', {searched}); %#ok<AGROW>
+                end
+            end
+        end
+
+        function orders = orders(obj, maxOrders)
+            n = numel(obj.Slots);
+            if strcmp(obj.OrderMode, 'fixed')
+                orders = {1:n};
+                return;
+            end
+            assert(strcmp(obj.OrderMode, 'search'), 'NeuroQC:Plan', 'OrderMode must be fixed or search');
+            ids = {obj.Slots.id};
+            pinned = [obj.Slots.pinned];
+            mustBefore = false(n);
+            for r = 1:size(obj.Precedence, 1)
+                mustBefore(strcmp(ids, obj.Precedence{r, 1}), strcmp(ids, obj.Precedence{r, 2})) = true;
+            end
+            orders = {};
+            rec([]);
+            function rec(prefix)
+                pos = numel(prefix) + 1;
+                if pos > n
+                    assert(numel(orders) < maxOrders, 'NeuroQC:SearchTooLarge', ...
+                        'More than %d step orders; pin steps or add before() constraints.', maxOrders);
+                    orders{end+1} = prefix; return;
+                end
+                if pinned(pos) && ~ismember(pos, prefix)
+                    if any(mustBefore(setdiff(1:n, [prefix pos]), pos)), return; end
+                    rec([prefix pos]); return;
+                end
+                for s = setdiff(1:n, prefix)
+                    if pinned(s), continue; end
+                    if any(mustBefore(setdiff(1:n, [prefix s]), s)), continue; end
+                    rec([prefix s]);
+                end
+            end
+        end
+
+        function print(obj)
+            neuroqc.utils.log('Plan (order %s):', obj.OrderMode);
+            for k = 1:numel(obj.Slots)
+                s = obj.Slots(k);
+                alts = cellfun(@(a) altText(a), s.alternatives, 'UniformOutput', false);
+                pin = ''; if s.pinned, pin = ' [pinned]'; end
+                fprintf('   %d. %-14s %s%s\n', k, s.id, strjoin(alts, ' | '), pin);
+            end
+            for r = 1:size(obj.Precedence, 1)
+                fprintf('      constraint: %s before %s\n', obj.Precedence{r, 1}, obj.Precedence{r, 2});
+            end
+        end
+    end
+
+    methods (Access = private)
+        function obj = addSlot(obj, id, alternatives)
+            base = id; k = 1;
+            while any(strcmp({obj.Slots.id}, id))
+                k = k + 1; id = sprintf('%s_%d', base, k);
+            end
+            obj.Slots(end+1) = struct('id', id, 'alternatives', {alternatives}, 'pinned', false);
+        end
+    end
+end
+
+% ---------------------------------------------------------------------
+function s = nvStruct(c)
+assert(mod(numel(c), 2) == 0, 'NeuroQC:Plan', 'Parameters must be name, value pairs');
+s = struct();
+for k = 1:2:numel(c)
+    s.(char(c{k})) = c{k+1};
+end
+end
+
+function o = withDefaults(o, d)
+for f = fieldnames(d)'
+    if ~isfield(o, f{1}), o.(f{1}) = d.(f{1}); end
+end
+end
+
+function [grid, searched] = paramGrid(type, given, contract)
+d = neuroqc.plan.Catalog.get(type);
+names = {d.params.name};
+unknown = setdiff(fieldnames(given), names);
+assert(isempty(unknown), 'NeuroQC:Plan', 'Step %s has no parameter(s): %s (known: %s)', ...
+    type, strjoin(unknown, ', '), strjoin(names, ', '));
+values = cell(1, numel(names));
+searched = {};
+for k = 1:numel(d.params)
+    p = d.params(k);
+    listValued = iscell(p.default);
+    if isfield(given, p.name)
+        v = given.(p.name);
+        if listValued
+            if iscell(v) && ~isempty(v) && all(cellfun(@iscell, v)), vals = v(:)'; else, vals = {v}; end
+        elseif iscell(v)
+            vals = v(:)';
+            assert(~isempty(vals), 'NeuroQC:Plan', '%s.%s: empty search list', type, p.name);
+        else
+            vals = {v};
+        end
+    elseif p.defines
+        assert(~(strcmp(type, 'reref') && strcmp(p.name, 'mode')) && ~strcmp(type, 'native'), ...
+            'NeuroQC:MustFix', '%s.%s defines the measured quantity; set it explicitly.', type, p.name);
+        vals = {p.default};
+    elseif ~isempty(p.suggest)
+        vals = p.suggest;
+    else
+        vals = {p.default};
+    end
+    if p.defines && numel(vals) > 1
+        error('NeuroQC:MustFix', ['%s.%s changes what is measured, so data-quality scores cannot ', ...
+            'compare its values. Fix it to one value.'], type, p.name);
+    end
+    if numel(vals) > 1, searched{end+1} = p.name; end %#ok<AGROW>
+    values{k} = vals;
+end
+if any(strcmp(type, {'epoch','baseline'}))
+    assert(~isempty(contract), 'NeuroQC:Contract', 'Step %s needs the analysis contract (epoch/baseline windows).', type);
+end
+% Cartesian product
+grid = {struct()};
+for k = 1:numel(names)
+    next = {};
+    for g = 1:numel(grid)
+        for v = 1:numel(values{k})
+            s = grid{g}; s.(names{k}) = values{k}{v};
+            next{end+1} = s; %#ok<AGROW>
+        end
+    end
+    grid = next;
+end
+if isempty(names), grid = {struct()}; end
+end
+
+function k = instKey(type, p)
+if isempty(fieldnames(p)), k = type; return; end
+f = sort(fieldnames(p));
+parts = cellfun(@(n) sprintf('%s=%s', n, valText(p.(n))), f, 'UniformOutput', false);
+k = sprintf('%s(%s)', type, strjoin(parts, ','));
+end
+
+function t = instLabel(type, p)
+if strcmp(type, 'native')
+    t = ['native: ' strtrim(p.command)];
+    if numel(t) > 70, t = [t(1:67) '...']; end
+    return;
+end
+t = instKey(type, p);
+end
+
+function t = valText(v)
+if ischar(v) || isstring(v), t = char(v);
+elseif isnumeric(v) || islogical(v), t = mat2str(v);
+elseif iscell(v), t = ['{' strjoin(cellfun(@valText, v, 'UniformOutput', false), ';') '}'];
+else, t = class(v);
+end
+end
+
+function t = altText(a)
+if strcmp(a.type, 'none'), t = 'none'; return; end
+f = fieldnames(a.params);
+if isempty(f), t = a.type; return; end
+parts = cellfun(@(n) sprintf('%s=%s', n, valText(a.params.(n))), f, 'UniformOutput', false);
+t = sprintf('%s(%s)', a.type, strjoin(parts, ', '));
+end
+
+function st = rootState(s)
+steps = {s.process.step};
+icaAt = find(strcmp(steps, 'ica'), 1, 'last');
+pruned = ~isempty(icaAt) && any(strcmp(steps(icaAt+1:end), 'icremove'));
+hp = 0; if ~isempty(s.filters.highpass), hp = max(s.filters.highpass); end
+st = struct('epoched', s.isEpoched, 'srate', s.srate, 'hasICA', s.ica.present, ...
+    'icRemoved', s.ica.present && pruned, 'removed', false, 'highpass', hp);
+end
+
+function nodes = buildTree(leaves)
+nodes = struct('parent', 0, 'inst', [], 'key', '', 'children', [], 'leaves', [], 'depth', 0);
+for li = 1:numel(leaves)
+    cur = 1;
+    path = leaves(li).path;
+    for d = 1:numel(path)
+        key = path{d}.key;
+        kids = nodes(cur).children;
+        hit = 0;
+        for c = kids
+            if strcmp(nodes(c).key, key), hit = c; break; end
+        end
+        if hit == 0
+            nodes(end+1) = struct('parent', cur, 'inst', path{d}, 'key', key, ...
+                'children', [], 'leaves', [], 'depth', d); %#ok<AGROW>
+            hit = numel(nodes);
+            nodes(cur).children(end+1) = hit;
+        end
+        cur = hit;
+    end
+    nodes(cur).leaves(end+1) = li;
+end
+end
+
+function t = describe(m)
+k = keys(m);
+if isempty(k), t = 'the plan produced no pipeline'; return; end
+parts = cellfun(@(x) sprintf('%s (x%d)', x, m(x)), k, 'UniformOutput', false);
+t = strjoin(parts, '; ');
+end
+
+function s = mapToStruct(m)
+k = keys(m);
+s = struct('reason', k, 'count', cellfun(@(x) m(x), k, 'UniformOutput', false));
+end
+
+function s = searchedParams(inst, slots)
+s = struct('slot', {}, 'param', {});
+for k = 1:numel(inst)
+    names = {};
+    for c = 1:numel(inst{k}), names = union(names, inst{k}{c}.searched); end
+    for n = 1:numel(names), s(end+1) = struct('slot', slots(k).id, 'param', names{n}); end %#ok<AGROW>
+    if numel(slots(k).alternatives) > 1
+        s(end+1) = struct('slot', slots(k).id, 'param', '(alternative)'); %#ok<AGROW>
+    end
+end
+end

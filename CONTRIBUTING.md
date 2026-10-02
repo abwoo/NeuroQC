@@ -17,7 +17,7 @@ The code is published under the **MIT License**, but code PRs are not accepted a
 ## Screenshots
 
 Screenshots must come from the **synthetic** demo dataset
-(`neuroqc.inspect.SyntheticEEG`) — never from real recordings.
+(`tests/nqc_synth.m`) — never from real recordings.
 
 ## Issues
 
