@@ -41,9 +41,14 @@ classdef Native
         end
 
         function applyNow(type)
-            call = neuroqc.run.Native.menuCall(type);
+            neuroqc.run.Native.applyCall(neuroqc.run.Native.menuCall(type), type);
+        end
+
+        function applyCall(call, type)
+            % Evaluate an EEGLAB call on the current dataset in the base
+            % workspace, wrapped exactly like an EEGLAB menu callback.
             [tryStr, catchStr] = neuroqc.run.Native.eeglabStrings(type);
-            neuroqc.utils.log('Opening the EEGLAB dialog on the current dataset: %s', call);
+            neuroqc.utils.log('EEGLAB on the current dataset: %s', call);
             evalin('base', [tryStr call catchStr]);
         end
 
@@ -60,7 +65,11 @@ classdef Native
                 end
                 neuroqc.utils.log('Dialog runs on a shortened copy (only its parameters are kept).');
             end
-            call = neuroqc.run.Native.menuCall(type);
+            com = neuroqc.run.Native.captureCall(EEG, neuroqc.run.Native.menuCall(type));
+        end
+
+        function com = captureCall(EEG, call)
+            % Run an EEGLAB call on a copy; return only the command it produced.
             LASTCOM = runCall(EEG, call);
             com = strtrim(char(LASTCOM));
             if isempty(com)

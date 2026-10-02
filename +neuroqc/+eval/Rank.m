@@ -18,9 +18,13 @@ classdef Rank
     %      candidate, B draws) gives a percentile interval for each
     %      candidate's SME difference from the best. Candidates whose
     %      interval reaches 0 are statistically indistinguishable from the
-    %      best ("tied"). Intervals are per comparison (not adjusted for
-    %      the number of candidates), so the tied set is if anything too
-    %      small rather than too large.
+    %      best ("tied"). Because the best is selected on the same data,
+    %      a two-sided (1 - alpha) interval acts as a one-sided test after
+    %      selection. Simulation with equal true noise (tests/test_neuroqc,
+    %      validation in REVIEW.md) gave false "worse" rates of 8% at
+    %      alpha = 0.05 for 20-40 trials per condition, hence the default
+    %      alpha = 0.02 (<= 5% for 20-100 trials). Intervals are per
+    %      comparison, not adjusted for the number of candidates.
     %   5. Among tied candidates the recommendation is the least
     %      aggressive: highest minimum trial retention, then smallest
     %      filter distortion, then lowest SME.
@@ -33,7 +37,7 @@ classdef Rank
         function o = defaults()
             o = struct('minTrials', 10, 'minRetention', 0.5, 'maxInterpolated', 0.2, ...
                 'maxAmplitudeError', 0.10, 'maxLatencyShiftMs', 10, 'maxArtifactPct', 0.05, ...
-                'nBoot', 2000, 'alpha', 0.05, 'seed', 1);
+                'nBoot', 2000, 'alpha', 0.02, 'seed', 1);
         end
 
         function R = run(cands, ref, opts)

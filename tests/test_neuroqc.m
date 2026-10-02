@@ -239,6 +239,175 @@ verifyTrue(tc, contains(r.cands(1).coms{1}, '''plotfreqz'',0'));
 verifyGreaterThan(tc, r.cands(1).probe.amplitudeError, 0); % filter recognised by the probe
 end
 
+% ------------------------------------------------- numerical validation
+function testSmeMatchesEmpiricalSdOfTheMean(tc)
+% SME must estimate the standard deviation of the averaged score across
+% replications of the experiment (its definition), not just "be a number".
+rs = RandStream('mt19937ar', 'Seed', 11);
+N = 40; sigma = 7; reps = 4000;
+m = zeros(reps, 1); sme = zeros(reps, 1);
+for r = 1:reps
+    x = 3 + sigma * randn(rs, N, 1);
+    m(r) = mean(x); sme(r) = neuroqc.eval.Measure.sme(x);
+end
+verifyEqual(tc, mean(sme), std(m), 'RelTol', 0.05);
+verifyEqual(tc, mean(sme), sigma / sqrt(N), 'RelTol', 0.05);
+end
+
+function testTieCriterionErrorRateAndPower(tc)
+% Paired bootstrap tie test: with equal true noise the better-looking
+% candidate must rarely be declared distinguishable (post-selection false
+% "worse" rate <= ~5% at the default alpha); with 1.4x noise it must usually be.
+rs = RandStream('mt19937ar', 'Seed', 5);
+N = 100; sims = 150; o = neuroqc.eval.Rank.defaults(); o.nBoot = 800;
+ref = struct('ids', {{1:N}}, 'n', N);
+fa = 0; hit = 0;
+for k = 1:sims
+    common = randn(rs, N, 1);                 % shared (paired) trial-to-trial variance
+    a = common + randn(rs, N, 1); b = common + randn(rs, N, 1);
+    c = common + 1.71 * randn(rs, N, 1);       % total SD 1.4x that of a
+    fa = fa + worse(a, b, ref, o);
+    hit = hit + worse(a, c, ref, o);
+end
+fprintf('tie test: false-worse rate %.3f, power %.3f\n', fa / sims, hit / sims);
+verifyLessThan(tc, fa / sims, 0.06);
+verifyGreaterThan(tc, hit / sims, 0.8);
+end
+
+function testRankingIndependentOfOtherCandidates(tc)
+% Adding a candidate must not change how two existing candidates compare
+% (0.6 GoalRanker failed this, see v06_reproductions R4).
+rng(2); N = 80; ref = struct('ids', {{1:N}}, 'n', N);
+base = randn(N, 1);
+A = cand(base * 1.0); B = cand(base * 1.2);
+o = neuroqc.eval.Rank.defaults(); o.nBoot = 500;
+r1 = neuroqc.eval.Rank.run([A B], ref, o);
+r2 = neuroqc.eval.Rank.run([A B cand(base * 3)], ref, o);
+r3 = neuroqc.eval.Rank.run([A B cand(base * 1.1 + 0.3 * randn(N, 1))], ref, o);
+verifyEqual(tc, r1.table.smeComposite(1:2), r2.table.smeComposite(1:2));
+verifyEqual(tc, r1.table.smeComposite(1:2), r3.table.smeComposite(1:2));
+verifyEqual(tc, r1.recommended, r2.recommended);
+end
+
+function testConstraintBoundaries(tc)
+N = 20; ref = struct('ids', {{1:N}}, 'n', N);
+x = randn(N, 1);
+atLimit = x; atLimit(11:end) = NaN;          % 10 of 20 trials = 50%
+below = x; below(10:end) = NaN;              % 9 of 20 = 45%
+o = neuroqc.eval.Rank.defaults(); o.nBoot = 100;
+R = neuroqc.eval.Rank.run([cand(atLimit) cand(below)], ref, o);
+verifyEqual(tc, R.table.status, {'feasible'; 'rejected'});
+verifyTrue(tc, contains(R.table.reason{2}, 'retention'));
+end
+
+function testScoresIgnoreChannelOffsets(tc)
+% 0.6 split-half metrics were driven by per-channel DC offsets
+% (v06_reproductions R2). Scores here are baseline-corrected per trial.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0));
+c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
+    'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz','P3','P4','POz'}});
+ref = neuroqc.eval.Measure.reference(EEG, c);
+off = EEG; off.data = off.data + single((1:off.nbchan)' * 50);
+a = neuroqc.eval.Measure.candidate(EEG, c, ref); b = neuroqc.eval.Measure.candidate(off, c, ref);
+verifyEqual(tc, b.sme, a.sme, 'AbsTol', 1e-3);
+end
+
+function testFilterProbeIsMonotonicAndNeutral(tc)
+c = contractFor();
+mk = @(type, v) {struct('type', type, 'params', struct('cutoff', v), 'key', sprintf('%s(%g)', type, v), 'slot', type)};
+hp = [0.05 0.1 0.3 0.5 1 2]; lp = [10 20 30 40];
+eh = arrayfun(@(v) neuroqc.eval.FilterProbe.run(mk('highpass', v), 500, c).amplitudeError, hp);
+el = arrayfun(@(v) neuroqc.eval.FilterProbe.run(mk('lowpass', v), 500, c).amplitudeError, lp);
+rs = neuroqc.eval.FilterProbe.run({struct('type', 'resample', 'params', struct('fs', 250), 'key', 'resample(250)', 'slot', 'r')}, 500, c);
+fprintf('probe amp error HP %s: %s\nprobe amp error LP %s: %s\n', mat2str(hp), mat2str(eh, 3), mat2str(lp), mat2str(el, 3));
+verifyTrue(tc, all(diff(eh) >= -1e-4));   % more high-pass -> more distortion
+verifyTrue(tc, all(diff(el) <= 1e-4));    % more low-pass (lower edge) -> more distortion
+verifyLessThan(tc, eh(2), 0.02);          % 0.1 Hz: negligible for a 300-600 ms component
+verifyLessThan(tc, rs.amplitudeError, 0.01);
+end
+
+function testEnumerationEqualsBruteForce(tc)
+% Independent brute force: all permutations x all parameter values.
+c = contractFor();
+p = neuroqc.plan.Plan();
+p = p.add('highpass', 'cutoff', {0.1, 0.5}); p = p.add('lowpass', 'cutoff', {20, 30, 40});
+p = p.add('linenoise', 'freq', {50, 60}); p.OrderMode = 'search';
+leaves = p.enumerate(fakeState(false, 500), c);
+vals = {{0.1, 0.5}, {20, 30, 40}, {50, 60}}; types = {'highpass','lowpass','linenoise'};
+keys = {};
+P = perms(1:3);
+for r = 1:size(P, 1)
+    for i = 1:2, for j = 1:3, for k = 1:2
+        v = {vals{1}{i}, vals{2}{j}, vals{3}{k}};
+        parts = cell(1, 3);
+        for q = 1:3
+            t = P(r, q);
+            if t == 3, parts{q} = sprintf('linenoise(freq=%g,halfwidth=2)', v{3});
+            else, parts{q} = sprintf('%s(cutoff=%g)', types{t}, v{t}); end
+        end
+        keys{end+1} = strjoin(parts, ' > '); %#ok<AGROW>
+    end, end, end
+end
+verifyEqual(tc, sort({leaves.key})', sort(unique(keys))');
+end
+
+function testPrefixSharingEqualsIndependentRuns(tc)
+% Depth-first prefix sharing must give exactly what each pipeline gives
+% when run on its own from the starting dataset (no state leaks between
+% branches).
+EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30));
+setBase(EEG);
+c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
+    'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz','P3','P4'}});
+p = neuroqc.plan.Plan();
+p = p.add('highpass', 'cutoff', {0.1, 0.5}); p = p.add('lowpass', 'cutoff', {20, 30});
+p = p.add('epoch'); p = p.add('baseline'); p = p.add('reject_threshold', 'uv', {80, 1000});
+r = neuroqc.NeuroQC.optimize(p, c);
+for k = 1:numel(r.leaves)
+    E = neuroqc.run.Executor.replay(r, k);
+    m = neuroqc.eval.Measure.candidate(E, c, r.ref);
+    verifyEqual(tc, m.composite, r.cands(k).m.composite, 'RelTol', 1e-12, r.labels{k});
+    h = regexp(E.history, '[^\n]+', 'match');
+    verifyEqual(tc, h(end-numel(r.cands(k).coms)+1:end), r.cands(k).coms);
+end
+end
+
+% ------------------------------------------------- EEGLAB integration
+function testLiveDetectionAndUnstoredWarning(tc)
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
+setBase(EEG);
+[cur, info] = neuroqc.live.Session.current();
+verifyEqual(tc, cur.setname, 'nqc_synth'); verifyTrue(tc, info.stored);
+evalin('base', 'EEG.setname = ''changed on the command line'';');
+[cur, info] = neuroqc.live.Session.current();
+verifyEqual(tc, cur.setname, 'changed on the command line'); verifyFalse(tc, info.stored);
+end
+
+function testApplyThroughEeglabCodePathRecordsHistory(tc)
+% "Apply now" wraps the call in EEGLAB's own try/catch + eeglab_new, so
+% EEGLAB records it (EEG.history and ALLCOM). DEBUG_EEGLAB_MENUS keeps
+% eeglab_new from opening its interactive "new dataset" dialog in a test.
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
+setBase(EEG);
+evalin('base', 'DEBUG_EEGLAB_MENUS = 1;');
+cleanup = onCleanup(@() evalin('base', 'clear DEBUG_EEGLAB_MENUS'));
+neuroqc.run.Native.applyCall('[EEG, LASTCOM] = pop_reref(EEG, []);', 'reref');
+cur = evalin('base', 'EEG');
+verifyTrue(tc, contains(cur.history, 'pop_reref( EEG, [])'));
+s = neuroqc.live.DataState.fromEEG(cur);
+verifyEqual(tc, s.process(end).step, 'reref');
+global ALLCOM %#ok<GVMIS>
+verifyTrue(tc, any(contains(ALLCOM, 'pop_reref')));
+end
+
+function testCaptureReturnsCommandWithoutTouchingData(tc)
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
+com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');
+verifyTrue(tc, startsWith(com, 'EEG = pop_eegfiltnew('));
+p = neuroqc.plan.Plan(); p = p.addNative(com);     % becomes a fixed step
+verifyEqual(tc, p.Slots(1).alternatives{1}.type, 'native');
+end
+
 % -------------------------------------------------------------------- GUI
 function testPanelFollowsLiveDatasetAndRuns(tc)
 EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30));
@@ -267,6 +436,19 @@ end
 function st = fakeState(epoched, srate)
 st = struct('isEpoched', epoched, 'srate', srate, 'ica', struct('present', false), ...
     'process', struct('step', {}), 'filters', struct('highpass', []));
+end
+
+function c = cand(S)
+c = struct('status', 'ok', 'message', '', 'm', struct('S', {{S}}, 'composite', NaN, ...
+    'retention', mean(~isnan(S)), 'kept', sum(~isnan(S))), 'interpolatedFraction', 0, ...
+    'probe', struct('amplitudeError', 0, 'latencyShiftMs', 0, 'artifactPct', 0));
+c.m.composite = neuroqc.eval.Measure.sme(S);
+end
+
+function tf = worse(a, b, ref, o)
+% true if the noisier-looking of a/b is declared distinguishable from the other
+R = neuroqc.eval.Rank.run([cand(a) cand(b)], ref, o);
+tf = sum(R.table.tiedWithBest) < 2;
 end
 
 function c = contractFor()

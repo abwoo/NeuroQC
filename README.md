@@ -110,7 +110,9 @@ Ordering:
    - A paired bootstrap over trials gives each candidate an interval for its SME difference from the
      best. It is paired because trials are identified by `urevent`, so the same trials are
      resampled for every candidate.
-   - Candidates whose interval reaches zero are *tied* with the best.
+   - Candidates whose interval reaches zero are *tied* with the best. The default 98% interval keeps
+     the false "worse" rate at or below about 5% for 20–100 trials per condition, checked by
+     simulation.
    - Among tied candidates, the recommendation is the least aggressive one: most trials kept, then
      least filter distortion.
    - A per-parameter summary shows which choices matter for this dataset.
