@@ -143,22 +143,14 @@ classdef Plan
             %   report  counts, excluded combinations with reasons,
             %           searched parameters, search mode
             %
-            %   opts.searchMode 'exhaustive' (default): every legal pipeline;
-            %       refuses (does not truncate) above opts.maxLeaves.
-            %       Orders and values are explored together depth first and
-            %       an illegal prefix is cut immediately, so step orders are
-            %       never listed in advance (8 free steps = 40320 orders is
-            %       fine when most are illegal). opts.maxVisits bounds the
-            %       work (refused, never truncated, above it).
-            %   opts.searchMode 'sample': opts.sampleSize distinct legal
-            %       pipelines drawn uniformly over (order, parameter values)
-            %       with opts.sampleSeed (orders are drawn exactly uniformly
-            %       among those the pins and before() allow, by counting
-            %       them, not listing them). The result is then explicitly
-            %       an approximate search and is never reported as an optimum.
+            %   Every legal pipeline is generated; above opts.maxLeaves the
+            %   search is refused (never truncated or sampled). Orders and
+            %   values are explored together depth first and an illegal
+            %   prefix is cut immediately, so step orders are never listed in
+            %   advance (8 free steps = 40320 orders is fine when most are
+            %   illegal). opts.maxVisits bounds the work (refused above it).
             if nargin < 4, opts = struct(); end
-            opts = withDefaults(opts, struct('maxLeaves', 500, 'maxVisits', 2e6, ...
-                'searchMode', 'exhaustive', 'sampleSize', 100, 'sampleSeed', 1));
+            opts = withDefaults(opts, struct('maxLeaves', 500, 'maxVisits', 2e6));
             assert(~isempty(obj.Slots), 'NeuroQC:Plan', 'The plan is empty: add at least one step.');
             n = numel(obj.Slots);
             obj = obj.resolveAuto(state);
@@ -166,37 +158,17 @@ classdef Plan
             for k = 1:n
                 inst{k} = obj.expandSlot(k, contract);
             end
-            [nextOf, nOrders, completions] = obj.orderSpace();
+            [nextOf, nOrders] = obj.orderSpace();
             counts = cellfun(@numel, inst);
             upper = nOrders * prod(counts);
             st0 = rootState(state);
             leaves = struct('path', {}, 'key', {}, 'order', {}, 'stratum', {});
             seen = containers.Map('KeyType', 'char', 'ValueType', 'logical');
             reasons = containers.Map('KeyType', 'char', 'ValueType', 'double');
-            report = struct('searchMode', opts.searchMode, 'upperBound', upper);
-            switch opts.searchMode
-                case 'exhaustive'
-                    visits = 0;
-                    walk(0, [], {}, st0);
-                    explainIfEmpty();
-                case 'sample'
-                    assert(nOrders > 0, 'NeuroQC:NoLegalPipeline', 'The pins and before() constraints allow no step order.');
-                    rs = RandStream('mt19937ar', 'Seed', opts.sampleSeed);
-                    attempts = 0; maxAttempts = 50 * opts.sampleSize; legal = 0;
-                    while numel(leaves) < opts.sampleSize && attempts < maxAttempts
-                        attempts = attempts + 1;
-                        order = drawOrder(rs);
-                        pick = arrayfun(@(k) randi(rs, counts(k)), 1:n);
-                        if drawPath(order, pick), legal = legal + 1; end
-                    end
-                    explainIfEmpty();
-                    report.attempts = attempts;
-                    report.legalFraction = legal / attempts;
-                    report.estimatedLegalPipelines = round(report.legalFraction * upper);
-                    report.sampleSize = numel(leaves);
-                otherwise
-                    error('NeuroQC:Plan', 'searchMode must be exhaustive or sample');
-            end
+            report = struct('upperBound', upper);
+            visits = 0;
+            walk(0, [], {}, st0);
+            explainIfEmpty();
             tree = buildTree(leaves);
             report.nLeaves = numel(leaves);
             report.nOrders = nOrders;
@@ -217,8 +189,8 @@ classdef Plan
                         visits = visits + 1;
                         assert(visits <= opts.maxVisits, 'NeuroQC:SearchTooLarge', ...
                             ['More than %d partial pipelines explored (%d orders x %s values per step). Nothing ', ...
-                             'was run or truncated. Fix more parameters, pin steps or add before() constraints, ', ...
-                             'or use searchMode ''sample''.'], opts.maxVisits, nOrders, mat2str(counts));
+                             'was run or truncated. Fix more parameters, pin steps or add before() constraints.'], ...
+                             opts.maxVisits, nOrders, mat2str(counts));
                         in = cands{c};
                         if strcmp(in.type, 'none')
                             walk(bitset(mask, s), [order s], path, st);
@@ -234,43 +206,15 @@ classdef Plan
                 end
             end
 
-            function order = drawOrder(rs)
-                % uniform over the allowed orders: each next slot with
-                % probability proportional to the completions it leaves
-                mask = 0; order = zeros(1, n);
-                for pos = 1:n
-                    nx = nextOf(mask, pos);
-                    w = arrayfun(@(t) completions(bitset(mask, t)), nx);
-                    t = nx(find(rand(rs) * sum(w) < cumsum(w), 1));
-                    order(pos) = t; mask = bitset(mask, t);
-                end
-            end
-
-            function ok = drawPath(order, pick)
-                st = st0; path = {}; ok = false;
-                for pos = 1:numel(order)
-                    in = inst{order(pos)}{pick(order(pos))};
-                    if strcmp(in.type, 'none'), continue; end
-                    [why, st] = neuroqc.plan.Catalog.apply(in.type, in.params, st);
-                    if ~isempty(why), note(pos, in, why); return; end
-                    path{end+1} = in; %#ok<AGROW>
-                end
-                ok = true;
-                addLeaf(order, path);
-            end
-
             function addLeaf(order, path)
                 key = strjoin(cellfun(@(i) i.key, path, 'UniformOutput', false), ' > ');
                 if isempty(key), key = '(no step)'; end
                 if isKey(seen, key), return; end
                 seen(key) = true;
                 leaves(end+1) = struct('path', {path}, 'key', key, 'order', order, 'stratum', stratumOf(path));
-                if strcmp(opts.searchMode, 'exhaustive')
-                    assert(numel(leaves) <= opts.maxLeaves, 'NeuroQC:SearchTooLarge', ...
-                        ['More than maxLeaves = %d legal pipelines. Nothing was run or truncated. Fix more ', ...
-                         'parameters/order, raise opts.maxLeaves deliberately, or use searchMode ''sample'' ', ...
-                         '(approximate).'], opts.maxLeaves);
-                end
+                assert(numel(leaves) <= opts.maxLeaves, 'NeuroQC:SearchTooLarge', ...
+                    ['More than maxLeaves = %d legal pipelines. Nothing was run or truncated. Fix more ', ...
+                     'parameters or the order, or raise maxLeaves deliberately.'], opts.maxLeaves);
             end
 
             function note(pos, in, why)
@@ -347,15 +291,14 @@ classdef Plan
             end
         end
 
-        function [nextOf, nOrders, completions] = orderSpace(obj)
+        function [nextOf, nOrders] = orderSpace(obj)
             % The allowed step orders without listing them.
             %   nextOf(mask, pos)  slots that may come at position pos when
             %                      the slots in bitmask mask are placed
-            %   completions(mask)  number of allowed ways to finish
             %   nOrders            number of allowed orders
             n = numel(obj.Slots);
             if strcmp(obj.OrderMode, 'fixed')
-                nextOf = @(mask, pos) pos; nOrders = 1; completions = @(mask) 1;
+                nextOf = @(mask, pos) pos; nOrders = 1;
                 return;
             end
             assert(strcmp(obj.OrderMode, 'search'), 'NeuroQC:Plan', 'OrderMode must be fixed or search');
@@ -369,7 +312,6 @@ classdef Plan
             end
             memo = containers.Map('KeyType', 'double', 'ValueType', 'double');
             nextOf = @nextSlots;
-            completions = @count;
             nOrders = count(0);
             function s = nextSlots(mask, pos)
                 if pinned(pos) && ~bitget(mask, pos)

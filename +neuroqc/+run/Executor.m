@@ -8,7 +8,7 @@ classdef Executor
     %     prints its state and parsed EEG.history. The live dataset is never
     %     modified: everything runs on NeuroQC's own copy ("root").
     %   - Enumerates the legal pipelines (exhaustive, or explicitly
-    %     sampled) as a prefix tree and runs it depth first, so pipelines
+    %     never truncated or sampled) as a prefix tree and runs it depth first, so pipelines
     %     that share their first steps share that work.
     %   - Each EEGLAB command is printed and appended to the candidate's
     %     EEG.history.
@@ -17,7 +17,6 @@ classdef Executor
     %     ranks (neuroqc.eval.Rank).
     %
     %   opts (all optional; see also neuroqc.eval.Rank.defaults):
-    %     searchMode    'exhaustive' | 'sample' (sampleSize, sampleSeed)
     %     maxLeaves     refuse above this many pipelines (default 500)
     %     signalCheck   'auto' (injection when the plan contains data-driven
     %                   spatial/temporal steps, else filter probe) |
@@ -35,8 +34,7 @@ classdef Executor
         function result = run(plan, contract, opts)
             if nargin < 3, opts = struct(); end
             opts = withDefaults(opts, struct('dryRun', false, 'signalCheck', 'auto', 'injectUv', 5, ...
-                'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', ...
-                'searchMode', 'exhaustive'));
+                'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal'));
             [EEG, live] = neuroqc.live.Session.current();
             assert(~isempty(EEG), 'NeuroQC:NoDataset', 'No dataset is loaded in EEGLAB.');
             if ~live.stored
@@ -156,7 +154,7 @@ classdef Executor
             R = neuroqc.eval.Rank.run(allc, ref, opts);
             result.ranking = R;
             result.marginal = neuroqc.eval.Rank.marginal(R, leaves, result.report.searched);
-            neuroqc.eval.Rank.print(R, result.labels, opts.searchMode);
+            neuroqc.eval.Rank.print(R, result.labels);
             notes = unique([allc.unmatched]);
             if ~isempty(notes)
                 neuroqc.utils.log(['Signal check note: %s were re-run rather than replayed on the injected copy; ', ...
@@ -479,12 +477,7 @@ classdef Executor
         end
 
         function printReport(rep)
-            if strcmp(rep.searchMode, 'sample')
-                neuroqc.utils.log(['SAMPLED search: %d distinct legal pipelines drawn (%d attempts; about %d legal ', ...
-                    'pipelines exist). Results are NOT a proven optimum.'], rep.nLeaves, rep.attempts, rep.estimatedLegalPipelines);
-            else
-                neuroqc.utils.log('Exhaustive search: %d legal pipeline(s) from %d order(s).', rep.nLeaves, rep.nOrders);
-            end
+            neuroqc.utils.log('Exhaustive search: %d legal pipeline(s) from %d order(s).', rep.nLeaves, rep.nOrders);
             neuroqc.utils.log('%d step executions with prefix sharing (%d without).', rep.nNodes, rep.nStepsUnshared);
             for k = 1:numel(rep.rejected)
                 neuroqc.utils.log('  excluded combinations: %s (x%d)', rep.rejected(k).reason, rep.rejected(k).count);

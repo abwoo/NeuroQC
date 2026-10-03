@@ -304,7 +304,7 @@ verifyEqual(tc, app.Plan.Slots(2).alternatives{1}.params.channels, {'P7', 'P8'})
 end
 
 function testPanelOptionsResumeAndInspect(tc)
-% Options that used to need the command line (sampled search, checkpoint,
+% Options that used to need the command line (checkpoint,
 % resume), the objective list, and EEGLAB viewers on a candidate.
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
 nqc_setBase(EEG);
@@ -316,14 +316,10 @@ verifyEqual(tc, app.ObjectiveField.Items, {'composite', 'pareto', 'P3.mean'});
 app.TypeDrop.Value = 'highpass'; app.addStep();
 app.planEdited(struct('Indices', [1 3], 'NewData', 'cutoff = {0.1, 0.3, 0.5}'));
 app.TypeDrop.Value = 'epoch'; app.addStep(); app.TypeDrop.Value = 'baseline'; app.addStep();
-o = app.Options; o.searchMode = 'sample'; o.sampleSize = 2;
-app.setOptions(o);
-app.run(false);
-verifyEqual(tc, app.Result.report.searchMode, 'sample');
-verifyEqual(tc, numel(app.Result.leaves), 2);
 % checkpoint + resume from the panel
+o = app.Options;
 d = tempname; c2 = onCleanup(@() rmdir(d, 's')); %#ok<NASGU>
-o.searchMode = 'exhaustive'; o.checkpoint = d; app.setOptions(o);
+o.checkpoint = d; app.setOptions(o);
 verifyError(tc, @() neuroqc.NeuroQC.optimize(app.Plan, app.contract(), struct('checkpoint', d, 'stopAfter', 1)), 'NeuroQC:Interrupted');
 app.resume(d);
 verifyEqual(tc, numel(app.Result.cands), 3);

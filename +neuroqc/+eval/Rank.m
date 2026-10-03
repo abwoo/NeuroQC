@@ -280,8 +280,7 @@ classdef Rank
                 'medianObjective','medianMinRetention','bestFeasibleObjective'});
         end
 
-        function print(R, labels, searchMode)
-            if nargin < 3, searchMode = 'exhaustive'; end
+        function print(R, labels)
             T = R.table; o = R.options;
             if strcmp(R.mode, 'pareto')
                 neuroqc.utils.log('Ranking: Pareto set over objectives %s (point estimates).', strjoin(R.objective, ', '));
@@ -332,9 +331,6 @@ classdef Rank
             end
             if numel(R.byStratum) > 1
                 neuroqc.utils.log('Strata differ in what is measured; their results are not comparable with each other.');
-            end
-            if strcmp(searchMode, 'sample')
-                neuroqc.utils.log('SEARCH WAS SAMPLED: the result is the best among the sampled candidates, not a proven optimum.');
             end
         end
     end

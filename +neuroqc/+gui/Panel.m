@@ -23,7 +23,7 @@ classdef Panel < handle
         TrialLabel; SummaryLabel
         LimitFields = struct()
         ObjectiveField
-        Options = struct('dataUnit', 'auto', 'checkpoint', '', 'searchMode', 'exhaustive', 'sampleSize', 100, ...
+        Options = struct('dataUnit', 'auto', 'checkpoint', '', ...
             'parallel', false, 'externalQC', [])
         ResultTable; StatusLabel; DetailArea
     end
@@ -174,7 +174,7 @@ classdef Panel < handle
                 'composite | pareto | one objective (component.measure); a priority list can be typed, comma-separated');
             uibutton(ag, 'Text', 'Preview count', 'ButtonPushedFcn', @(~, ~) obj.run(true));
             uibutton(ag, 'Text', 'Run search', 'FontWeight', 'bold', 'ButtonPushedFcn', @(~, ~) obj.run(false));
-            uibutton(ag, 'Text', 'Options...', 'Tooltip', 'Data unit, checkpoint folder, sampled search, parallel, external QC table', ...
+            uibutton(ag, 'Text', 'Options...', 'Tooltip', 'Data unit, checkpoint folder, parallel, external QC table', ...
                 'ButtonPushedFcn', @(~, ~) obj.optionsDialog());
             obj.StatusLabel = uilabel(ag, 'Text', '', 'FontColor', [0 0 0.5], 'WordWrap', 'on');
             obj.StatusLabel.Layout.Row = [1 2]; obj.StatusLabel.Layout.Column = 6;
@@ -672,7 +672,7 @@ classdef Panel < handle
         function optionsDialog(obj)
             o = obj.Options;
             d = uifigure('Name', 'NeuroQC search options', 'Position', [240 240 520 300], 'WindowStyle', 'modal');
-            gl = uigridlayout(d, [7 3]); gl.ColumnWidth = {170, '1x', 110}; gl.RowHeight = repmat({26}, 1, 7);
+            gl = uigridlayout(d, [6 3]); gl.ColumnWidth = {170, '1x', 110}; gl.RowHeight = repmat({26}, 1, 6);
             uilabel(gl, 'Text', 'Data unit of the dataset');
             du = uidropdown(gl, 'Items', {'auto', 'uV', 'V'}, 'Value', o.dataUnit, 'Tooltip', ...
                 'auto: from the amplitude scale of the dataset; V: scaled to uV on NeuroQC''s copy (ICA weights too)');
@@ -680,9 +680,6 @@ classdef Panel < handle
             uilabel(gl, 'Text', 'Checkpoint folder');
             ck = uilabel(gl, 'Text', orDash(o.checkpoint));
             uibutton(gl, 'Text', 'Choose...', 'ButtonPushedFcn', @(~, ~) pickDir());
-            uilabel(gl, 'Text', 'Search');
-            sm = uidropdown(gl, 'Items', {'exhaustive', 'sample'}, 'Value', o.searchMode);
-            ss = uispinner(gl, 'Limits', [1 1e5], 'Value', o.sampleSize, 'Tooltip', 'pipelines drawn when sampling');
             uilabel(gl, 'Text', 'Parallel (Parallel Computing Toolbox)');
             pa = uicheckbox(gl, 'Text', '', 'Value', o.parallel);
             uilabel(gl, 'Text', '');
@@ -702,16 +699,15 @@ classdef Panel < handle
                 if ischar(f), o.externalQC = fullfile(p, f); qc.Text = o.externalQC; end
             end
             function apply()
-                o.dataUnit = du.Value; o.searchMode = sm.Value; o.sampleSize = ss.Value; o.parallel = pa.Value;
+                o.dataUnit = du.Value; o.parallel = pa.Value;
                 obj.setOptions(o); delete(d);
             end
         end
 
         function setOptions(obj, o)
             obj.Options = o;
-            neuroqc.utils.log('Search options: unit %s, %s search%s, checkpoint %s, parallel %d, external QC %s', o.dataUnit, ...
-                o.searchMode, ternary(strcmp(o.searchMode, 'sample'), sprintf(' (%d)', o.sampleSize), ''), orDash(o.checkpoint), ...
-                o.parallel, orDash(qcText(o.externalQC)));
+            neuroqc.utils.log('Search options: unit %s, checkpoint %s, parallel %d, external QC %s', o.dataUnit, ...
+                orDash(o.checkpoint), o.parallel, orDash(qcText(o.externalQC)));
             obj.invalidate('Options changed');
         end
 

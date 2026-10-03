@@ -179,18 +179,17 @@ verifyEqual(tc, numel(leaves), legal);
 verifyEqual(tc, rep.nOrders, factorial(8));
 end
 
-function testOrderSamplingIsUniformOverAllowedOrders(tc)
-% With a before() constraint the allowed orders are counted, not listed,
-% and drawn uniformly.
+function testAllowedOrdersAreCountedAndAllRun(tc)
+% With a before() constraint the allowed orders are counted (not listed)
+% and every one of them is generated - nothing is sampled or dropped.
 p = neuroqc.plan.Plan();
 p = p.add('highpass', 'cutoff', 0.1); p = p.add('lowpass', 'cutoff', 30); p = p.add('linenoise');
 p.OrderMode = 'search'; p = p.before('highpass', 'lowpass');
 [~, nOrders] = p.orderSpace();
 verifyEqual(tc, nOrders, 3);
-o = struct('searchMode', 'sample', 'sampleSize', 3, 'sampleSeed', 2);
-[l, ~, rep] = p.enumerate(nqc_fakeState(false, 500), nqc_contract(), o);
+[l, ~, rep] = p.enumerate(nqc_fakeState(false, 500), nqc_contract());
 verifyEqual(tc, numel(l), 3);
-verifyEqual(tc, rep.estimatedLegalPipelines, 3);
+verifyEqual(tc, rep.nOrders, 3);
 for k = 1:numel(l)
     t = cellfun(@(i) i.type, l(k).path, 'UniformOutput', false);
     verifyLessThan(tc, find(strcmp(t, 'highpass')), find(strcmp(t, 'lowpass')));
@@ -225,30 +224,3 @@ verifyEmpty(tc, changed);                                            % another c
 verifyEmpty(tc, neuroqc.run.Native.eeglabAlt(sprintf('EEG = pop_iclabel(EEG, ''default'');\nEEG = pop_subcomp(EEG, [], 0);')));
 end
 
-function testSampledSearchIsLabelledDistinctAndLegal(tc)
-p = neuroqc.plan.Plan();
-p = p.add('highpass', 'cutoff', num2cell(0.1:0.1:2));
-p = p.add('lowpass', 'cutoff', num2cell(20:1:45));
-p = p.add('epoch'); p = p.add('baseline');
-o = struct('searchMode', 'sample', 'sampleSize', 40, 'sampleSeed', 3);
-[l1, ~, rep] = p.enumerate(nqc_fakeState(false, 500), nqc_contract(), o);
-l2 = p.enumerate(nqc_fakeState(false, 500), nqc_contract(), o);
-verifyEqual(tc, rep.searchMode, 'sample');
-verifyEqual(tc, numel(l1), 40);
-verifyEqual(tc, numel(unique({l1.key})), 40);          % distinct
-verifyEqual(tc, {l1.key}, {l2.key});                  % reproducible with the seed
-verifyEqual(tc, rep.estimatedLegalPipelines, 20 * 26); % every combination is legal here
-end
-
-function testSampledSearchFindsLegalOnesAmongIllegal(tc)
-% Orders are free; most orders are illegal (baseline before epoch...).
-p = neuroqc.plan.Plan();
-p = p.add('highpass', 'cutoff', {0.1, 0.5}); p = p.add('epoch'); p = p.add('baseline');
-p.OrderMode = 'search';
-o = struct('searchMode', 'sample', 'sampleSize', 2, 'sampleSeed', 1);
-[l, ~, rep] = p.enumerate(nqc_fakeState(false, 500), nqc_contract(), o);
-verifyEqual(tc, numel(l), 2);
-exhaustive = p.enumerate(nqc_fakeState(false, 500), nqc_contract());
-verifyTrue(tc, all(ismember({l.key}, {exhaustive.key})));
-verifyLessThan(tc, rep.legalFraction, 1);
-end
