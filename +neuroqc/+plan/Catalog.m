@@ -64,7 +64,8 @@ classdef Catalog
                 case 'reref'
                     d.label = 'Re-reference'; d.dialog = 'pop_reref';
                     d.params = [P('mode', 'average', {}, true, '''average'' or ''channels'''), ...
-                        P('channels', {}, {}, true, 'reference channel labels (mode = channels)')];
+                        P('channels', {}, {}, true, 'reference channel labels (mode = channels)'), ...
+                        P('exclude', {}, {}, true, 'channels neither re-referenced nor part of the average (e.g. EOG, ECG)')];
                 case 'ica'
                     d.label = 'ICA (runica, extended)'; d.dialog = 'pop_runica';
                     d.params = [P('fitHighpass', 1, {}, false, 'fit ICA on a copy high-passed at this edge (Hz); 0 = fit on the data as is'), ...

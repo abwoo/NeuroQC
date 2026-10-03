@@ -60,12 +60,19 @@ classdef Steps
                     coms = {'EEG = pop_interp(EEG, EEG.etc.neuroqc.rootChanlocs, ''spherical'');'};
                     info.interpolated = missing;
                 case 'reref'
+                    ex = {};
+                    if isfield(p, 'exclude') && ~isempty(p.exclude)
+                        xi = find(ismember(lower({EEG.chanlocs.labels}), lower(cellstr(p.exclude))));
+                        assert(numel(xi) == numel(cellstr(p.exclude)), 'NeuroQC:Reref', ...
+                            'reref exclude: channel(s) not found: %s', strjoin(setdiff(lower(cellstr(p.exclude)), lower({EEG.chanlocs.labels})), ', '));
+                        ex = {'exclude', xi};
+                    end
                     if strcmp(p.mode, 'average')
-                        [EEG, com] = pop_reref(EEG, []);
+                        [EEG, com] = pop_reref(EEG, [], ex{:});
                     else
                         ch = cellstr(p.channels);
                         assert(~isempty(ch), 'NeuroQC:Reref', 'reref mode channels needs channel labels');
-                        [EEG, com] = pop_reref(EEG, ch);
+                        [EEG, com] = pop_reref(EEG, ch, ex{:});
                     end
                     coms = {com};
                     info.reref = p;

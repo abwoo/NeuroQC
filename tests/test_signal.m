@@ -59,6 +59,31 @@ verifyGreaterThan(tc, r.topoCorr, 0.99);
 verifyGreaterThan(tc, r.waveformCorr, 0.99);
 end
 
+function testReReferenceWithExcludedChannels(tc)
+% Excluded channels (e.g. EOG) neither enter the average nor change; the
+% expected field must follow the same rule.
+[S0, truth] = neuroqc.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
+in = inst('reref', 'mode', 'average', 'channels', {}, 'exclude', {'FPz', 'Oz'});
+S = neuroqc.run.Steps.replayDecision(in, S0, struct(), ctx(tc));
+k = strcmpi({S.chanlocs.labels}, 'FPz');
+verifyEqual(tc, double(S.data(k, :)), double(S0.data(k, :)), 'AbsTol', 1e-4);
+r = neuroqc.eval.Injection.compare(S, tc.TestData.c, truth, {in});
+verifyLessThan(tc, r.amplitudeError, 0.02);
+verifyGreaterThan(tc, r.topoCorr, 0.99);
+end
+
+function testOverlappingEpochsAreNotReadAsDistortion(tc)
+% Events 0.42 s apart with 1.2 s epochs: each epoch contains neighbouring
+% injected responses. The expectation must include them.
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 60, 'artifactTrials', 0));
+c = tc.TestData.c; ref = neuroqc.eval.Measure.reference(EEG, c);
+[S, truth] = neuroqc.eval.Injection.prepare(EEG, c, ref);
+r = neuroqc.eval.Injection.compare(S, c, truth, {});
+verifyLessThan(tc, r.amplitudeError, 0.01);
+verifyLessThan(tc, r.artifactPct, 0.01);
+verifyGreaterThan(tc, r.waveformCorr, 0.999);
+end
+
 function testIcaRemovalOfSignalComponentIsDetected(tc)
 % With identity unmixing every component is one channel: removing the Pz
 % component deletes the measured signal; removing FPz does not touch it.

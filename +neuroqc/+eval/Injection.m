@@ -61,6 +61,7 @@ classdef Injection
             tt = (round(contract.epoch(1) * fs):round(contract.epoch(2) * fs)) / fs;
             g = template(tt, contract);                       % nComp x samples
             sig = A * (W * g);                                % nch x samples
+            onsets = []; urs = [];
             if root.trials == 1
                 codes = contract.allEvents();
                 for e = 1:numel(root.event)
@@ -70,6 +71,8 @@ classdef Injection
                     % excludes): epoching averages all of them, so the known amplitude must
                     % be present in each, whichever trials the measure later keeps.
                     c0 = round(ev.latency);
+                    onsets(end+1) = (c0 - 1) / fs; %#ok<AGROW>
+                    if isfield(ev, 'urevent') && ~isempty(ev.urevent), urs(end+1) = ev.urevent; else, urs(end+1) = NaN; end %#ok<AGROW>
                     cols = c0 + round(contract.epoch(1) * fs) + (0:numel(tt)-1);
                     ok = cols >= 1 & cols <= root.pnts;
                     S.data(:, cols(ok)) = S.data(:, cols(ok)) + cast(sig(:, ok), 'like', S.data);
@@ -80,7 +83,10 @@ classdef Injection
                 cols = i0 + (0:numel(tt)-1); ok = cols <= root.pnts;
                 S.data(:, cols(ok), :) = S.data(:, cols(ok), :) + cast(sig(:, ok), 'like', S.data);
             end
-            truth = struct('kind', 'erp', 'weights', W, 'labels', {labels}, 'A', A);
+            % onsets/urevents let compare() build the expected average when
+            % epochs overlap (neighbouring events inside one epoch window)
+            truth = struct('kind', 'erp', 'weights', W, 'labels', {labels}, 'A', A, ...
+                'onsets', onsets, 'urevents', urs);
         end
 
         function r = compare(S, contract, truth, path)
@@ -108,7 +114,7 @@ classdef Injection
             bl = times >= contract.baseline(1) - 1e-9 & times <= contract.baseline(2) + 1e-9;
             avg = mean(double(S.data), 3);
             avg = avg - mean(avg(:, bl), 2);
-            g = template(times, contract);
+            g = expectedTimeCourse(S, times, contract, truth);
             ex = truth.A * (Ew * g);
             ex = ex - mean(ex(:, bl), 2);
             nJ = numel(contract.components);
@@ -133,6 +139,36 @@ classdef Injection
 end
 
 % ---------------------------------------------------------------------
+function g = expectedTimeCourse(S, times, contract, truth)
+% Average over the kept epochs of every injected template that falls in
+% each epoch, so overlapping epochs (events closer than the epoch length)
+% are expected, not read as distortion. Falls back to the single template
+% when the epochs cannot be mapped to injected events.
+g = template(times, contract);
+if ~isfield(truth, 'onsets') || isempty(truth.onsets) || ~isfield(S, 'epoch') || isempty(S.epoch), return; end
+codes = contract.allEvents();
+span = [times(1) times(end)];
+G = zeros(size(g)); n = 0;
+for ep = 1:numel(S.epoch)
+    lat = S.epoch(ep).eventlatency; typ = S.epoch(ep).eventtype; ue = S.epoch(ep).eventurevent;
+    if ~iscell(lat), lat = {lat}; typ = {typ}; ue = {ue}; end
+    typ = cellfun(@(x) strtrim(char(string(x))), typ, 'UniformOutput', false);
+    z = find(abs(cell2mat(lat)) < 1e-6 & ismember(typ, codes), 1);
+    if isempty(z) || isempty(ue{z}), return; end
+    k = find(truth.urevents == ue{z}, 1);
+    if isempty(k), return; end
+    L = truth.onsets(k);
+    near = find(truth.onsets >= L + span(1) - diff(span) & truth.onsets <= L + span(2) + diff(span));
+    for o = near
+        rel = times + L - truth.onsets(o);              % time relative to that onset
+        inWin = rel >= contract.epoch(1) - 1e-9 & rel <= contract.epoch(2) + 1e-9;   % injected span
+        G = G + template(rel, contract) .* inWin;
+    end
+    n = n + 1;
+end
+if n > 0, g = G / n; end
+end
+
 function w = topography(EEG, roi)
 labs = lower({EEG.chanlocs.labels});
 inRoi = ismember(labs, lower(roi));
@@ -162,18 +198,21 @@ function E = expectedWeights(truth, leafLabels, path)
 E = zeros(numel(leafLabels), size(truth.weights, 2));
 E(ok, :) = truth.weights(loc(ok), :);
 for q = 1:numel(path)
-    in = path{q}; mode = ''; chans = {};
-    if strcmp(in.type, 'reref'), mode = in.params.mode; chans = cellstr(in.params.channels);
+    in = path{q}; mode = ''; chans = {}; ex = false(numel(leafLabels), 1);
+    if strcmp(in.type, 'reref')
+        mode = in.params.mode; chans = cellstr(in.params.channels);
+        if isfield(in.params, 'exclude'), ex = ismember(lower(leafLabels(:)), lower(cellstr(in.params.exclude))); end
     elseif strcmp(in.type, 'native')
         e = neuroqc.live.History.classify(in.params.command);
         if strcmp(e.step, 'reref') && isfield(e.params, 'mode'), mode = e.params.mode; end
     end
     switch mode
-        case 'average'
-            E = E - mean(E(ok, :), 1);
+        case 'average'   % excluded channels neither enter the average nor change
+            inc = ok(:) & ~ex;
+            E(~ex, :) = E(~ex, :) - mean(E(inc, :), 1);
         case 'channels'
             [rk, rl] = ismember(lower(chans), lower(truth.labels));
-            if any(rk), E = E - mean(truth.weights(rl(rk), :), 1); end
+            if any(rk), E(~ex, :) = E(~ex, :) - mean(truth.weights(rl(rk), :), 1); end
     end
 end
 end
