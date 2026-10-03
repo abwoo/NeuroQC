@@ -106,15 +106,30 @@ classdef Native
             com = neuroqc.run.Native.captureCall(EEG, neuroqc.run.Native.menuCall(type));
         end
 
-        function com = captureCall(EEG, call)
-            % Run an EEGLAB call on a copy; return only the command it produced.
-            LASTCOM = runCall(EEG, call);
+        function [com, EEGout] = captureCall(EEG, call)
+            % Run an EEGLAB call on a copy; return the command it produced
+            % (and the processed copy, which the caller may inspect).
+            [LASTCOM, EEGout] = runCall(EEG, call);
             com = strtrim(char(LASTCOM));
             if isempty(com)
                 neuroqc.utils.log('Dialog cancelled; nothing captured.');
             else
                 neuroqc.utils.log('Captured: %s', com);
             end
+        end
+
+        function args = argsOf(command, fn)
+            % The arguments after EEG of one EEGLAB call, evaluated:
+            % 'EEG = pop_rmbase( EEG, [-200 0] ,[]);' -> {[-200 0], []}.
+            % The command is one the user produced in an EEGLAB dialog of
+            % their own session.
+            cmd = strtrim(char(command));
+            pat = ['^\s*(\[[^\]]*\]|\w+)\s*=\s*' fn '\s*\(\s*EEG\s*(,|\))'];
+            tok = regexp(cmd, pat, 'tokens', 'once');
+            assert(~isempty(tok), 'NeuroQC:Native', 'Not a %s(EEG, ...) command: %s', fn, cmd);
+            if strcmp(tok{2}, ')'), args = {}; return; end
+            body = regexprep(cmd, pat, 'NQC_ARGS__ = argList(');
+            args = evalArgs(body);
         end
 
         function [tryStr, catchStr] = eeglabStrings(type)
@@ -133,7 +148,16 @@ classdef Native
     end
 end
 
-function LASTCOM = runCall(EEG, call) %#ok<INUSL>
+function [LASTCOM, EEG] = runCall(EEG, call)
 LASTCOM = '';
 eval(call);
+end
+
+function NQC_ARGS__ = evalArgs(NQC_BODY__)
+NQC_ARGS__ = {};
+eval(NQC_BODY__);
+end
+
+function c = argList(varargin)
+c = varargin;
 end

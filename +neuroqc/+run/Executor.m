@@ -352,6 +352,16 @@ classdef Executor
             end
         end
 
+        function [elig, EEG] = eligibleUrevents(EEG, contract)
+            % urevent ids the contract's trial rule keeps ([] = all trials),
+            % for display before a search (EEG is a copy; urevents are
+            % built the same way the search builds them).
+            if ~isfield(EEG, 'urevent') || isempty(EEG.urevent)
+                [~, EEG] = evalc('eeg_checkset(EEG, ''makeur'')');
+            end
+            elig = eligibleTrials(EEG, contract);
+        end
+
         function [EEG, com] = selectEligible(EEG, contract)
             % Output only the trials the trial rule keeps. The rule decides
             % which trials are scored; the data a candidate hands on must

@@ -122,6 +122,69 @@ app.invalidate('Settings changed');      % what every contract/limit field calls
 verifyEmpty(tc, app.Result);
 end
 
+function testNativeCommandArgumentsAreRead(tc)
+% Settings come back from EEGLAB dialogs as commands; their arguments are
+% evaluated, not pattern-matched.
+a = neuroqc.run.Native.argsOf('EEG = pop_epoch( EEG, {  ''11''  ''S  1''  }, [-0.2           1], ''newname'', ''x'', ''epochinfo'', ''yes'');', 'pop_epoch');
+verifyEqual(tc, a{1}, {'11', 'S  1'});
+verifyEqual(tc, a{2}, [-0.2 1]);
+verifyEqual(tc, a(3:6), {'newname', 'x', 'epochinfo', 'yes'});
+a = neuroqc.run.Native.argsOf('EEG = pop_rmbase( EEG, [-200 0] ,[]);', 'pop_rmbase');
+verifyEqual(tc, a, {[-200 0], []});
+a = neuroqc.run.Native.argsOf('[EEG, ~, LASTCOM] = pop_epoch(EEG);', 'pop_epoch');
+verifyEmpty(tc, a);
+verifyError(tc, @() neuroqc.run.Native.argsOf('EEG = pop_reref(EEG, []);', 'pop_epoch'), 'NeuroQC:Native');
+end
+
+function testPanelContractFromEeglabDialogs(tc)
+% Conditions picked from the events, epoch and baseline from EEGLAB's own
+% dialogs (their commands), ROI from the channel list, trials from an
+% EEGLAB event selection: nothing is retyped, and the search uses exactly
+% what the panel shows.
+EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30, 'artifactTrials', 0));
+nqc_setBase(EEG);
+app = neuroqc.gui.Panel();
+cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.addCondition('target', {'11'});
+app.addCondition('standard', {'31'});
+verifyEqual(tc, app.CondField.Value, 'target: 11; standard: 31');
+[~, ~, com] = pop_epoch(EEG, {'11', '31'}, [-0.3 0.9], 'epochinfo', 'yes');   % what the dialog returns
+app.epochFromEEGLAB(com);
+verifyEqual(tc, str2num(app.EpochField.Value), [-0.3 0.9]); %#ok<ST2NM>
+[~, Ep] = evalc('pop_epoch(EEG, {''11'', ''31''}, [-0.3 0.9])');
+[~, com] = pop_rmbase(Ep, [-300 0]);
+app.baselineFromEEGLAB(com);
+verifyEqual(tc, str2num(app.BaseField.Value), [-0.3 0]); %#ok<ST2NM>   ms -> s
+app.addComponent('P3', [0.3 0.5], {'Pz', 'P3'}, 'mean', 'positive');
+app.setRoi(1, {'Pz', 'P3', 'P4'});
+verifyEqual(tc, app.CompField.Value, 'P3: 0.3 0.5 @ Pz P3 P4');
+verifyTrue(tc, contains(app.SummaryLabel.Text, 'target 30'));
+% trials: the condition events an EEGLAB event selection keeps
+[~, E] = evalc('eeg_checkset(EEG, ''makeur'')');
+late = find(([E.event.latency] - 1) / E.srate >= 30);
+[sel, ~, com] = pop_selectevent(E, 'event', late, 'deleteevents', 'on');
+app.trialRuleFromSelection(sel, com);
+verifyEqual(tc, app.TrialRule.mode, 'urevents');
+verifyTrue(tc, contains(app.SummaryLabel.Text, ' of 30'));
+c = app.contract();
+verifyEqual(tc, c.epoch, [-0.3 0.9]); verifyEqual(tc, c.baseline, [-0.3 0]);
+verifyEqual(tc, c.components(1).roi, {'Pz', 'P3', 'P4'});
+app.TypeDrop.Value = 'highpass'; app.addStep();
+app.planEdited(struct('Indices', [1 3], 'NewData', 'cutoff = 0.1'));
+app.TypeDrop.Value = 'epoch'; app.addStep();
+app.TypeDrop.Value = 'baseline'; app.addStep();
+app.run(false);
+verifyEqual(tc, app.Result.ref.n(1), sum(strcmp({sel.event.type}, '11')));
+verifyEqual(tc, app.Result.contract.trials.mode, 'urevents');
+app.setTrialRule(struct('mode', 'all'));            % a rule change clears the results
+verifyEmpty(tc, app.Result);
+% codes with spaces survive the text round trip
+app.setField(app.CondField, '');
+app.addCondition('s1', {'S  1'});
+verifyEqual(tc, app.CondField.Value, 's1: "S  1"');
+c = app.contract(); verifyEqual(tc, c.conditions(1).events, {'S  1'});
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');

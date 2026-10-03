@@ -19,6 +19,8 @@ classdef Panel < handle
         DatasetLabel; WarnArea; HistTable
         PlanTable; TypeDrop; OrderDrop
         CondField; EpochField; BaseField; CompField; EventsLabel
+        TrialRule = struct('mode', 'all')
+        TrialLabel; SummaryLabel
         LimitFields = struct()
         ObjectiveField
         ResultTable; StatusLabel
@@ -45,7 +47,7 @@ classdef Panel < handle
             obj.Fig = uifigure('Name', sprintf('NeuroQC %s', neuroqc.NeuroQC.version()), ...
                 'Position', [60 60 1380 860], 'CloseRequestFcn', @(~, ~) obj.delete());
             g = uigridlayout(obj.Fig, [3 2]);
-            g.RowHeight = {80, '1x', '1x'}; g.ColumnWidth = {'1x', '1.25x'};
+            g.RowHeight = {80, 250, '1x'}; g.ColumnWidth = {'1x', '1.25x'};   % contract and results get the remaining height
 
             top = uigridlayout(g, [1 2]); top.Layout.Column = [1 2]; top.ColumnWidth = {'1x', '1x'}; top.Padding = [0 0 0 0];
             obj.DatasetLabel = uilabel(top, 'Text', 'No dataset', 'FontName', 'Courier', 'VerticalAlignment', 'top', 'WordWrap', 'on');
@@ -83,17 +85,46 @@ classdef Panel < handle
 
             % contract + run + results (right, row 3)
             rp = uipanel(g, 'Title', 'Analysis contract, constraints, results'); rp.Layout.Row = 3; rp.Layout.Column = 2;
-            rg = uigridlayout(rp, [4 1]); rg.RowHeight = {84, 30, 28, '1x'};
-            cg = uigridlayout(rg, [3 4]); cg.Padding = [0 0 0 0]; cg.ColumnWidth = {80, '1x', 70, 110};
+            rg = uigridlayout(rp, [4 1]); rg.RowHeight = {196, 56, 28, '1x'};
+            % Each item: label | its text (the one source of the setting, also
+            % editable by hand) | buttons that fill it from EEGLAB's dialogs.
+            cg = uigridlayout(rg, [7 4]); cg.Padding = [0 0 0 0]; cg.RowSpacing = 3;
+            cg.ColumnWidth = {80, '1x', 150, 95}; cg.RowHeight = repmat({24}, 1, 7);
             uilabel(cg, 'Text', 'Conditions');
-            obj.CondField = uieditfield(cg, 'Placeholder', 'target: 11 21; standard: 31');
+            obj.CondField = uieditfield(cg, 'Placeholder', 'target: 11 21; standard: 31  (codes with spaces in "quotes")');
+            uibutton(cg, 'Text', 'Add from events...', 'Tooltip', ...
+                'Name a condition and pick its event codes from the dataset''s own event list (EEGLAB selection window)', ...
+                'ButtonPushedFcn', @(~, ~) obj.addCondition());
+            uibutton(cg, 'Text', 'Clear', 'ButtonPushedFcn', @(~, ~) obj.setField(obj.CondField, ''));
+            uilabel(cg, 'Text', 'Trials');
+            obj.TrialLabel = uilabel(cg, 'Text', 'all trials', 'FontColor', [0.2 0.2 0.2]);
+            uibutton(cg, 'Text', 'Choose trials...', 'Tooltip', ...
+                'Which trials count: all, between start/end markers, time ranges, or an EEGLAB event selection (pop_selectevent)', ...
+                'ButtonPushedFcn', @(~, ~) obj.chooseTrials());
+            uibutton(cg, 'Text', 'All trials', 'ButtonPushedFcn', @(~, ~) obj.setTrialRule(struct('mode', 'all')));
             uilabel(cg, 'Text', 'Epoch (s)'); obj.EpochField = uieditfield(cg, 'Value', '-0.2 1');
-            uilabel(cg, 'Text', 'Components');
-            obj.CompField = uieditfield(cg, 'Placeholder', 'P3: 0.3 0.6 @ Pz CPz POz; N2: 0.2 0.3 @ Fz FCz');
+            uibutton(cg, 'Text', 'EEGLAB pop_epoch...', 'Tooltip', ...
+                'Set the epoch in EEGLAB''s own epoching dialog (run on a copy); the window is filled in here', ...
+                'ButtonPushedFcn', @(~, ~) obj.epochFromEEGLAB());
+            uilabel(cg, 'Text', '');
             uilabel(cg, 'Text', 'Baseline (s)'); obj.BaseField = uieditfield(cg, 'Value', '-0.2 0');
-            obj.EventsLabel = uilabel(cg, 'Text', 'Event types: -', 'FontColor', [0.3 0.3 0.3]);
-            obj.EventsLabel.Layout.Column = [1 4];
-            lg = uigridlayout(rg, [1 18]); lg.Padding = [0 0 0 0];
+            uibutton(cg, 'Text', 'EEGLAB pop_rmbase...', 'Tooltip', ...
+                'Set the baseline in EEGLAB''s own baseline dialog on epoched preview data (ms are converted to s)', ...
+                'ButtonPushedFcn', @(~, ~) obj.baselineFromEEGLAB());
+            uilabel(cg, 'Text', '');
+            uilabel(cg, 'Text', 'Components');
+            obj.CompField = uieditfield(cg, 'Placeholder', 'P3: 0.3 0.6 @ Pz CPz POz; N2: 0.2 0.3 @ Fz FCz # peakLatency negative');
+            uibutton(cg, 'Text', 'Add component...', 'Tooltip', ...
+                'Name, window and measure, then the ROI from the dataset''s channels (EEGLAB channel selection)', ...
+                'ButtonPushedFcn', @(~, ~) obj.addComponent());
+            uibutton(cg, 'Text', 'Set ROI...', 'Tooltip', 'Replace the ROI of a component with channels chosen in EEGLAB''s channel selection', ...
+                'ButtonPushedFcn', @(~, ~) obj.setRoi());
+            obj.SummaryLabel = uilabel(cg, 'Text', '', 'FontColor', [0 0.3 0.1], 'WordWrap', 'on');
+            obj.SummaryLabel.Layout.Column = [1 4]; obj.SummaryLabel.Layout.Row = 6;
+            obj.EventsLabel = uilabel(cg, 'Text', 'Event types: -', 'FontColor', [0.3 0.3 0.3], 'WordWrap', 'on');
+            obj.EventsLabel.Layout.Column = [1 4]; obj.EventsLabel.Layout.Row = 7;
+            lg = uigridlayout(rg, [2 10]); lg.Padding = [0 0 0 0]; lg.RowSpacing = 4;
+            lg.ColumnWidth = {'fit', '1x', 'fit', '1x', 'fit', '1x', 'fit', '1x', 'fit', '1x'};
             d = neuroqc.eval.Rank.defaults();
             names = {'minTrials','minRetention','maxInterpolated','maxAmplitudeError','maxLatencyShiftMs', ...
                 'maxArtifactPct','minWaveformCorr','minTopoCorr'};
@@ -105,6 +136,7 @@ classdef Panel < handle
             uilabel(lg, 'Text', 'max pipelines', 'HorizontalAlignment', 'right');
             obj.LimitFields.maxLeaves = uieditfield(lg, 'numeric', 'Value', 500);
             ag = uigridlayout(rg, [1 7]); ag.Padding = [0 0 0 0];
+            ag.ColumnWidth = {'fit', 110, 'fit', 'fit', 'fit', 'fit', '1x'};
             uilabel(ag, 'Text', 'Objective', 'HorizontalAlignment', 'right');
             obj.ObjectiveField = uieditfield(ag, 'Value', 'composite', 'Tooltip', ...
                 'composite | pareto | priority list, e.g. P3.mean, N2.peakLatency');
@@ -120,7 +152,7 @@ classdef Panel < handle
             settings = [{obj.CondField, obj.EpochField, obj.CompField, obj.BaseField, obj.ObjectiveField}, ...
                 struct2cell(obj.LimitFields)'];
             for k = 1:numel(settings)
-                settings{k}.ValueChangedFcn = @(~, ~) obj.invalidate('Settings changed');
+                settings{k}.ValueChangedFcn = @(~, ~) obj.settingsChanged();
             end
         end
 
@@ -153,6 +185,7 @@ classdef Panel < handle
             obj.HistTable.Data = [num2cell([h.line]') {h.kind}' {h.step}' {h.statement}'];
             ev = arrayfun(@(k) sprintf('%s (%d)', s.eventTypes{k}, s.eventCounts(k)), 1:numel(s.eventTypes), 'UniformOutput', false);
             obj.EventsLabel.Text = ['Event types: ' strjoin(ev, ', ')];
+            obj.updateSummary();
             if ~force, neuroqc.utils.log('Current EEGLAB dataset changed: %s (%d history entries).', s.setname, numel(h)); end
             if ~isempty(obj.Result) && ~strcmp(fp, obj.Result.rootFingerprint)
                 obj.StatusLabel.Text = sprintf(['Shown results were computed on "%s", not on the current dataset; ', ...
@@ -299,23 +332,255 @@ classdef Panel < handle
 
         % -------------------------------------------------------------- run
         function c = contract(obj)
-            conds = {};
-            for part = strsplit(strtrim(obj.CondField.Value), ';')
-                p = strtrim(part{1}); if isempty(p), continue; end
-                kv = strsplit(p, ':'); assert(numel(kv) == 2, 'NeuroQC:Contract', 'Conditions: name: ev1 ev2; name2: ev3');
-                conds(end+1, :) = {strtrim(kv{1}), strsplit(strtrim(kv{2}))}; %#ok<AGROW>
+            c = neuroqc.eval.Contract('conditions', parseConditions(obj.CondField.Value), ...
+                'components', parseComponents(obj.CompField.Value), ...
+                'epoch', str2num(obj.EpochField.Value), 'baseline', str2num(obj.BaseField.Value), ... %#ok<ST2NM>
+                'trials', obj.TrialRule);
+        end
+
+        % ------------------------------------- contract from EEGLAB dialogs
+        function setField(obj, field, value)
+            field.Value = value;
+            obj.settingsChanged();
+        end
+
+        function settingsChanged(obj)
+            obj.invalidate('Settings changed');
+            obj.updateSummary();
+        end
+
+        function addCondition(obj, name, codes)
+            % Name a condition and pick its codes from the current events
+            % (EEGLAB's pop_chansel list, as in pop_epoch's event button).
+            if nargin < 3
+                EEG = neuroqc.live.Session.current();
+                if isempty(EEG), uialert(obj.Fig, 'No dataset in EEGLAB.', 'NeuroQC'); return; end
+                s = neuroqc.live.DataState.fromEEG(EEG);
+                if isempty(s.eventTypes), uialert(obj.Fig, 'The dataset has no events.', 'NeuroQC'); return; end
+                items = arrayfun(@(k) sprintf('%s  (%d)', s.eventTypes{k}, s.eventCounts(k)), 1:numel(s.eventTypes), 'UniformOutput', false);
+                idx = pop_chansel(items, 'withindex', 'off');
+                if isempty(idx), return; end
+                codes = s.eventTypes(idx);
+                a = inputdlg(sprintf('Name of the condition with events %s:', strjoin(codes, ', ')), ...
+                    'NeuroQC condition', 1, {sprintf('cond%d', size(parseConditions(obj.CondField.Value), 1) + 1)});
+                if isempty(a) || isempty(strtrim(a{1})), return; end
+                name = strtrim(a{1});
             end
-            comps = {};
-            for part = strsplit(strtrim(obj.CompField.Value), ';')
-                p = strtrim(part{1}); if isempty(p), continue; end
-                tok = regexp(p, '^([^:]+):\s*([-\d\.eE]+)\s+([-\d\.eE]+)\s*@\s*([^#]+)(.*)$', 'tokens', 'once');
-                assert(~isempty(tok), 'NeuroQC:Contract', 'Components: name: start end @ ch1 ch2 [# measure polarity]; ...');
-                meas = strsplit(strtrim(strrep(tok{5}, '#', '')));
-                meas = meas(~cellfun(@isempty, meas)); if isempty(meas), meas = {'mean'}; end
-                comps(end+1, :) = {strtrim(tok{1}), [str2double(tok{2}) str2double(tok{3})], strsplit(strtrim(tok{4})), meas}; %#ok<AGROW>
+            conds = parseConditions(obj.CondField.Value);
+            assert(~any(strcmpi(conds(:, 1), name)), 'NeuroQC:Contract', 'A condition named %s exists already.', name);
+            used = intersect(cellstr(codes), [conds{:, 2}]);
+            if ~isempty(used)
+                uialert(obj.Fig, sprintf('Event code(s) %s already belong to another condition.', strjoin(used, ', ')), 'NeuroQC');
+                return;
             end
-            c = neuroqc.eval.Contract('conditions', conds, 'components', comps, ...
-                'epoch', str2num(obj.EpochField.Value), 'baseline', str2num(obj.BaseField.Value)); %#ok<ST2NM>
+            conds(end+1, :) = {name, cellstr(codes)};
+            obj.setField(obj.CondField, conditionsText(conds));
+            neuroqc.utils.log('Condition %s = events %s', name, strjoin(cellstr(codes), ', '));
+        end
+
+        function epochFromEEGLAB(obj, com)
+            % EEGLAB's epoching dialog on a copy; its window is the epoch.
+            if nargin < 2
+                EEG = neuroqc.live.Session.current();
+                if isempty(EEG), uialert(obj.Fig, 'No dataset in EEGLAB.', 'NeuroQC'); return; end
+                if EEG.trials > 1
+                    uialert(obj.Fig, 'The dataset is already epoched; the epoch is fixed by the data.', 'NeuroQC'); return;
+                end
+                com = neuroqc.run.Native.captureCall(EEG, '[EEG, ~, LASTCOM] = pop_epoch(EEG);');
+                if isempty(com), return; end
+            end
+            a = neuroqc.run.Native.argsOf(com, 'pop_epoch');
+            assert(numel(a) >= 2 && isnumeric(a{2}) && numel(a{2}) == 2, 'NeuroQC:Native', 'No epoch limits in %s', com);
+            obj.EpochField.Value = num2str(a{2});
+            types = a{1}; if ~iscell(types), types = {types}; end
+            types = cellfun(@(x) strtrim(char(string(x))), types, 'UniformOutput', false);
+            conds = parseConditions(obj.CondField.Value);
+            if isempty(conds) && ~isempty(types)
+                conds = [types(:) cellfun(@(t) {t}, types(:), 'UniformOutput', false)];
+                obj.CondField.Value = conditionsText(conds);
+                neuroqc.utils.log('Conditions set from the epoching events (one per code): %s', strjoin(types, ', '));
+            elseif ~isempty(setxor(types, [conds{:, 2}])) && ~isempty(types)
+                neuroqc.utils.log(['Note: NeuroQC epochs on the condition events (%s); the events chosen in the dialog ', ...
+                    '(%s) are not used. Edit the conditions to change them.'], strjoin([conds{:, 2}], ', '), strjoin(types, ', '));
+            end
+            extra = a(3:end);
+            keys = extra(1:2:end); keys = keys(cellfun(@ischar, keys));
+            ignored = setdiff(keys, {'epochinfo','newname'});
+            if ~isempty(ignored)
+                neuroqc.utils.log('Note: pop_epoch option(s) %s are not part of the NeuroQC epoch step and are not used.', strjoin(ignored, ', '));
+            end
+            obj.settingsChanged();
+            neuroqc.utils.log('Epoch from EEGLAB: [%s] s', obj.EpochField.Value);
+        end
+
+        function baselineFromEEGLAB(obj, com)
+            % EEGLAB's baseline dialog on epoched preview data (the dataset
+            % itself, or a copy epoched with the planned window).
+            if nargin < 2
+                EEG = neuroqc.live.Session.current();
+                if isempty(EEG), uialert(obj.Fig, 'No dataset in EEGLAB.', 'NeuroQC'); return; end
+                if EEG.trials == 1
+                    c = obj.contract();
+                    codes = c.allEvents();
+                    assert(~isempty(codes), 'NeuroQC:Contract', 'Define the conditions first (the preview is epoched on their events).');
+                    [~, EEG] = evalc('pop_epoch(EEG, codes, c.effectiveEpoch(), ''epochinfo'', ''yes'')');
+                    neuroqc.utils.log('Baseline dialog on a preview copy epoched [%g %g] s on %s.', c.effectiveEpoch(), strjoin(codes, ', '));
+                end
+                com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_rmbase(EEG);');
+                if isempty(com), return; end
+            else
+                EEG = [];
+            end
+            a = neuroqc.run.Native.argsOf(com, 'pop_rmbase');
+            ms = []; if ~isempty(a), ms = a{1}; end
+            if isempty(ms) && numel(a) >= 2 && ~isempty(a{2}) && ~isempty(EEG)
+                ms = EEG.times(a{2}([1 end]));                   % given as points
+            end
+            assert(numel(ms) == 2, 'NeuroQC:Native', 'No baseline range in %s', com);
+            obj.BaseField.Value = num2str(ms / 1000);
+            if numel(a) >= 3 && ~isempty(a{3})
+                neuroqc.utils.log('Note: the baseline dialog selected channels; NeuroQC removes the baseline on all channels.');
+            end
+            obj.settingsChanged();
+            neuroqc.utils.log('Baseline from EEGLAB: [%g %g] ms -> [%s] s', ms, obj.BaseField.Value);
+        end
+
+        function addComponent(obj, name, win, roi, measure, polarity)
+            if nargin < 2
+                a = inputdlg({'Component name', 'Window start (s)', 'Window end (s)'}, 'NeuroQC component', 1, ...
+                    {'P3', '0.3', '0.6'});
+                if isempty(a), return; end
+                name = strtrim(a{1}); win = [str2double(a{2}) str2double(a{3})];
+                assert(~isempty(name) && all(isfinite(win)) && win(2) > win(1), 'NeuroQC:Contract', ...
+                    'Give a name and a window with start < end (s).');
+                ms = {'mean amplitude', 'peak amplitude (positive)', 'peak amplitude (negative)', ...
+                    'peak latency (positive)', 'peak latency (negative)'};
+                [k, ok] = listdlg('ListString', ms, 'SelectionMode', 'single', 'Name', 'Measure', 'ListSize', [260 110]);
+                if ~ok, return; end
+                measure = {'mean','peakAmplitude','peakAmplitude','peakLatency','peakLatency'}; measure = measure{k};
+                polarity = {'positive','positive','negative','positive','negative'}; polarity = polarity{k};
+                roi = obj.pickChannels();
+                if isempty(roi), return; end
+            end
+            comps = parseComponents(obj.CompField.Value);
+            comps(end+1, :) = {name, win, cellstr(roi), {measure, polarity}};
+            obj.setField(obj.CompField, componentsText(comps));
+        end
+
+        function setRoi(obj, k, roi)
+            comps = parseComponents(obj.CompField.Value);
+            if isempty(comps), uialert(obj.Fig, 'Add a component first.', 'NeuroQC'); return; end
+            if nargin < 2
+                k = 1;
+                if size(comps, 1) > 1
+                    [k, ok] = listdlg('ListString', comps(:, 1), 'SelectionMode', 'single', 'Name', 'Component');
+                    if ~ok, return; end
+                end
+                roi = obj.pickChannels(comps{k, 3});
+                if isempty(roi), return; end
+            end
+            comps{k, 3} = cellstr(roi);
+            obj.setField(obj.CompField, componentsText(comps));
+        end
+
+        function labels = pickChannels(obj, current)
+            % EEGLAB's channel selection over the current dataset's channels.
+            labels = {};
+            EEG = neuroqc.live.Session.current();
+            if isempty(EEG), uialert(obj.Fig, 'No dataset in EEGLAB.', 'NeuroQC'); return; end
+            args = {'withindex', 'on'};
+            if nargin > 1 && ~isempty(current)
+                [~, sel] = ismember(lower(current), lower({EEG.chanlocs.labels}));
+                args = [args {'select', sel(sel > 0)}];
+            end
+            [idx, ~, names] = pop_chansel({EEG.chanlocs.labels}, args{:});
+            if ~isempty(idx), labels = {EEG.chanlocs(idx).labels}; elseif iscell(names), labels = names; end
+            if ~isempty(labels), neuroqc.utils.log('ROI: %s (%d channels)', strjoin(labels, ' '), numel(labels)); end
+        end
+
+        function chooseTrials(obj)
+            opts = {'All trials', 'Between a start and an end marker', 'Time ranges (s)', ...
+                'EEGLAB event selection (pop_selectevent)'};
+            [k, ok] = listdlg('ListString', opts, 'SelectionMode', 'single', 'Name', 'Trials', 'ListSize', [300 90]);
+            if ~ok, return; end
+            EEG = neuroqc.live.Session.current();
+            if isempty(EEG) && k > 1, uialert(obj.Fig, 'No dataset in EEGLAB.', 'NeuroQC'); return; end
+            switch k
+                case 1
+                    obj.setTrialRule(struct('mode', 'all'));
+                case 2
+                    s = neuroqc.live.DataState.fromEEG(EEG);
+                    a = pop_chansel(s.eventTypes, 'selectionmode', 'single', 'withindex', 'off');
+                    if isempty(a), return; end
+                    b = pop_chansel(s.eventTypes, 'selectionmode', 'single', 'withindex', 'off');
+                    if isempty(b), return; end
+                    obj.setTrialRule(struct('mode', 'marker_ranges', 'startCode', s.eventTypes{a}, 'endCode', s.eventTypes{b}));
+                case 3
+                    a = inputdlg('Time ranges in s, one per row as "start end" (Inf = end of recording):', ...
+                        'Trials', [4 50], {'0 Inf'});
+                    if isempty(a), return; end
+                    r = str2num(a{1}); %#ok<ST2NM>
+                    assert(size(r, 2) == 2 && all(r(:, 2) > r(:, 1)), 'NeuroQC:Contract', 'Each row: start end, with end > start.');
+                    obj.setTrialRule(struct('mode', 'time_ranges', 'ranges', r));
+                case 4
+                    if ~isfield(EEG, 'urevent') || isempty(EEG.urevent), [~, EEG] = evalc('eeg_checkset(EEG, ''makeur'')'); end
+                    [com, sel] = neuroqc.run.Native.captureCall(EEG, '[EEG, ~, LASTCOM] = pop_selectevent(EEG);');
+                    if isempty(com), return; end
+                    obj.trialRuleFromSelection(sel, com);
+            end
+        end
+
+        function trialRuleFromSelection(obj, sel, com)
+            % The trials are the condition events that the EEGLAB event
+            % selection kept (identified by urevent).
+            c = obj.contract();
+            codes = c.allEvents();
+            assert(~isempty(codes), 'NeuroQC:Contract', 'Define the conditions first.');
+            ty = arrayfun(@(e) strtrim(char(string(e.type))), sel.event, 'UniformOutput', false);
+            keep = ismember(ty, codes) & arrayfun(@(e) isfield(e, 'urevent') && ~isempty(e.urevent), sel.event);
+            ids = unique(arrayfun(@(e) double(e.urevent), sel.event(keep)));
+            assert(~isempty(ids), 'NeuroQC:TrialRule', 'The event selection keeps no condition event.');
+            obj.setTrialRule(struct('mode', 'urevents', 'ids', ids(:)', 'source', com));
+        end
+
+        function setTrialRule(obj, rule)
+            c = neuroqc.eval.Contract('trials', rule); c.validateTrialRule();
+            obj.TrialRule = rule;
+            obj.TrialLabel.Text = trialText(rule);
+            neuroqc.utils.log('Trial rule: %s', obj.TrialLabel.Text);
+            obj.settingsChanged();
+        end
+
+        function updateSummary(obj)
+            % Trials per condition in the current dataset, under the rule.
+            if isempty(obj.SummaryLabel) || ~isvalid(obj.SummaryLabel), return; end
+            try
+                EEG = neuroqc.live.Session.current();
+                c = obj.contract();
+                if isempty(EEG) || isempty(c.conditions), obj.SummaryLabel.Text = ''; return; end
+                [elig, E] = neuroqc.run.Executor.eligibleUrevents(EEG, c);
+                parts = cell(1, numel(c.conditions));
+                for k = 1:numel(c.conditions)
+                    if E.trials == 1
+                        ty = arrayfun(@(e) strtrim(char(string(e.type))), E.event, 'UniformOutput', false);
+                        isC = ismember(ty, c.conditions(k).events);
+                        n = sum(isC);
+                        ne = n; if ~isempty(elig), ne = sum(ismember(arrayfun(@(e) double(e.urevent), E.event(isC)), elig)); end
+                    else
+                        if ~isempty(elig), E.etc.neuroqc.eligibleUrevents = elig; end
+                        T = neuroqc.eval.Measure.trials(E, c);
+                        n = NaN; ne = sum(T.cond == k);
+                    end
+                    if isempty(elig) || isnan(n), parts{k} = sprintf('%s %d', c.conditions(k).name, ne);
+                    else, parts{k} = sprintf('%s %d of %d', c.conditions(k).name, ne, n); end
+                end
+                roi = ''; if ~isempty(c.components), roi = sprintf(' | ROI channels: %d', numel(c.allRoi())); end
+                obj.SummaryLabel.Text = ['Trials: ' strjoin(parts, ', ') roi];
+                obj.SummaryLabel.FontColor = [0 0.3 0.1];
+            catch ME
+                obj.SummaryLabel.Text = ME.message;
+                obj.SummaryLabel.FontColor = [0.7 0.2 0];
+            end
         end
 
         function run(obj, dry)
@@ -391,6 +656,77 @@ classdef Panel < handle
             neuroqc.NeuroQC.script(obj.Result, k);
         end
     end
+end
+
+function tok = tokens(s)
+% whitespace-separated items; "quoted" items may contain spaces
+tok = regexp(strtrim(char(s)), '"[^"]*"|\S+', 'match');
+tok = regexprep(tok, '^"(.*)"$', '$1');
+end
+
+function t = quoteItem(x)
+x = char(x);
+if any(isspace(x)) || isempty(x), t = ['"' x '"']; else, t = x; end
+end
+
+function conds = parseConditions(txt)
+% 'target: 11 21; standard: 31' -> {'target', {'11','21'}; 'standard', {'31'}}
+conds = cell(0, 2);
+for part = strsplit(strtrim(char(txt)), ';')
+    p = strtrim(part{1}); if isempty(p), continue; end
+    k = strfind(p, ':');
+    assert(~isempty(k), 'NeuroQC:Contract', 'Conditions: name: ev1 ev2; name2: ev3');
+    ev = tokens(p(k(1)+1:end));
+    assert(~isempty(ev), 'NeuroQC:Contract', 'Condition %s has no event code.', strtrim(p(1:k(1)-1)));
+    conds(end+1, :) = {strtrim(p(1:k(1)-1)), ev}; %#ok<AGROW>
+end
+end
+
+function t = conditionsText(conds)
+parts = cell(1, size(conds, 1));
+for k = 1:size(conds, 1)
+    parts{k} = sprintf('%s: %s', conds{k, 1}, strjoin(cellfun(@quoteItem, conds{k, 2}, 'UniformOutput', false), ' '));
+end
+t = strjoin(parts, '; ');
+end
+
+function comps = parseComponents(txt)
+% 'P3: 0.3 0.6 @ Pz CPz # peakLatency negative' -> rows {name, win, roi, measure}
+comps = cell(0, 4);
+for part = strsplit(strtrim(char(txt)), ';')
+    p = strtrim(part{1}); if isempty(p), continue; end
+    tok = regexp(p, '^([^:]+):\s*([-\d\.eE]+)\s+([-\d\.eE]+)\s*@\s*([^#]+)(.*)$', 'tokens', 'once');
+    assert(~isempty(tok), 'NeuroQC:Contract', 'Components: name: start end @ ch1 ch2 [# measure polarity]; ...');
+    meas = strsplit(strtrim(strrep(tok{5}, '#', '')));
+    meas = meas(~cellfun(@isempty, meas)); if isempty(meas), meas = {'mean'}; end
+    comps(end+1, :) = {strtrim(tok{1}), [str2double(tok{2}) str2double(tok{3})], tokens(tok{4}), meas}; %#ok<AGROW>
+end
+end
+
+function t = componentsText(comps)
+parts = cell(1, size(comps, 1));
+for k = 1:size(comps, 1)
+    m = cellstr(comps{k, 4});
+    tail = '';
+    if ~(isscalar(m) && strcmp(m{1}, 'mean')) && ~(numel(m) == 2 && strcmp(m{1}, 'mean'))
+        tail = [' # ' strjoin(m, ' ')];
+    end
+    parts{k} = sprintf('%s: %g %g @ %s%s', comps{k, 1}, comps{k, 2}, ...
+        strjoin(cellfun(@quoteItem, comps{k, 3}, 'UniformOutput', false), ' '), tail);
+end
+t = strjoin(parts, '; ');
+end
+
+function t = trialText(r)
+switch r.mode
+    case 'all', t = 'all trials';
+    case 'marker_ranges', t = sprintf('between markers %s and %s', char(string(r.startCode)), char(string(r.endCode)));
+    case 'time_ranges', t = sprintf('time ranges %s s', mat2str(r.ranges));
+    case 'urevents'
+        t = sprintf('%d selected events', numel(r.ids));
+        if isfield(r, 'source'), t = [t ' (' r.source ')']; end
+    otherwise, t = r.mode;
+end
 end
 
 function t = orDash(t)
