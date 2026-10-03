@@ -30,7 +30,7 @@ error. The History list must keep 1 row unless the step says *Apply now*.
 | 12 | *Skipping allowed on/off*, *Must come before…* | Effective column gains `none (skip)`; the order rule appears under the buttons. |
 | 13 | Select `reref` (Add), *Apply now in EEGLAB*: average reference. | The History list gains a `reref` row; EEGLAB shows the new dataset. |
 | 14 | *Chan. locations…* | `pop_chanedit` opens on the current dataset; OK updates it (history row). |
-| 15 | *Options…*: choose a checkpoint folder, sampled search 5. *Run search*. | Status shows done; results appear; details area shows the selected row in full. |
+| 15 | *Options…*: choose a checkpoint folder. *Run search*. | Status shows done; results appear; details area shows the selected row in full. |
 | 16 | Select a result, *Inspect selected (EEGLAB)…* > candidate > *Scroll data*. | `eegplot` titled `NeuroQC candidate n (not adopted)`; ALLEEG unchanged. |
 | 17 | Make the window small. | The panel scrolls; no part is squeezed to nothing. |
 

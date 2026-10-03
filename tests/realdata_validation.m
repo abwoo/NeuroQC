@@ -8,7 +8,8 @@ function out = realdata_validation(file, contract)
 %
 %   Checks: the file on disk is unchanged; srate residue handling; every
 %   epoch is time-locked to its event at 0 ms with the right urevent;
-%   O1/O2 keep / remove / interpolate are compared, not decided in advance;
+%   keep / remove / interpolate of the two most variable channels are
+%   compared, not decided in advance;
 %   injection on real data; timing of the search.
 if nargin < 1 || isempty(file), file = getenv('NEUROQC_REAL_RAW'); end
 assert(isfile(file), 'Set NEUROQC_REAL_RAW or pass a .set file.');
@@ -21,20 +22,28 @@ if nargin < 2 || isempty(contract)
     [u, ~, ic] = unique(t); [~, o] = sort(accumarray(ic(:), 1), 'descend');
     codes = u(o(1:2));
     fprintf('TECHNICAL contract: conditions %s and %s (most frequent codes).\n', codes{:});
+    labs = {EEG.chanlocs.labels};
+    roi = labs(ismember(lower(labs), {'pz','p3','p4','poz'}));        % parietal if present
+    if numel(roi) < 2, roi = labs(1:min(4, end)); end                  % otherwise any channels: technical only
     contract = neuroqc.eval.Contract('conditions', {['c' codes{1}], codes(1); ['c' codes{2}], codes(2)}, ...
-        'epoch', [-0.2 0.8], 'baseline', [-0.2 0], 'components', {'late', [0.3 0.5], {'Pz','P3','P4','POz'}});
+        'epoch', [-0.2 0.8], 'baseline', [-0.2 0], 'components', {'late', [0.3 0.5], roi});
 end
 assignin('base', 'NQC_TMP', EEG);
 evalin('base', 'global ALLCOM; ALLEEG = []; [ALLEEG, EEG, CURRENTSET] = eeg_store([], NQC_TMP, 0); clear NQC_TMP;');
 neuroqc.NeuroQC.state();
 
-eog = intersect({'POL EYEL', 'POL EYER', 'EOG', 'VEOG', 'HEOG'}, {EEG.chanlocs.labels});
+labs = {EEG.chanlocs.labels};
+isEog = ~cellfun(@isempty, regexpi(labs, 'eog|eye', 'once'));
+if isfield(EEG.chanlocs, 'type'), isEog = isEog | strcmpi(arrayfun(@(c) char(string(c.type)), EEG.chanlocs, 'UniformOutput', false), 'EOG'); end
+eog = labs(isEog);
+v = var(double(EEG.data(:, 1:min(end, round(60 * EEG.srate)))), 0, 2); v(isEog) = -Inf;
+[~, o] = sort(v, 'descend'); pair = labs(o(1:2));                      % the two most variable channels
 pl = neuroqc.plan.Plan();
-pl = pl.add('resample', 'fs', 250);
+if EEG.srate > 250, pl = pl.add('resample', 'fs', 250); end
 pl = pl.add('highpass', 'cutoff', {0.1, 0.5});
 pl = pl.add('lowpass', 'cutoff', 30);
-pl = pl.addChoice('o1o2', {'channels', 'labels', {'O1', 'O2'}, 'action', 'interpolate'}, ...
-    {'channels', 'labels', {'O1', 'O2'}, 'action', 'remove'}, 'none');
+pl = pl.addChoice('pair', {'channels', 'labels', pair, 'action', 'interpolate'}, ...
+    {'channels', 'labels', pair, 'action', 'remove'}, 'none');
 pl = pl.add('reref', 'mode', 'average', 'exclude', eog);
 pl = pl.add('epoch'); pl = pl.add('baseline');
 pl = pl.add('reject_threshold', 'uv', {100, 150}, 'exclude', eog);

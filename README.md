@@ -6,17 +6,28 @@
   <img src="https://img.shields.io/badge/EEGLAB-2026.0.0-blueviolet?style=flat-square" alt="EEGLAB"/>
 </p>
 
-NeuroQC is an optimization and orchestration layer around EEGLAB. EEGLAB remains the execution
-engine and the GUI. NeuroQC reads the dataset that is current in EEGLAB together with its real
-`EEG.history`. You describe the processing you want from that point on and fix whatever you choose.
-NeuroQC then runs every legal combination of the parts you left open and reports:
+NeuroQC is a semi-automatic preprocessing optimizer attached to EEGLAB. It starts from the dataset as
+it is in EEGLAB now, takes the steps, order and fixed values you choose, runs every allowed
+combination of what you left open through EEGLAB itself, evaluates and compares the results, and
+hands the candidate pipelines back to you.
 
-- which result measures your component most precisely,
-- which results these data cannot tell apart from it,
-- why each of the others was excluded.
+What it does, and nothing more:
 
-Every candidate is checked against a known signal before it can be recommended, so stronger
-processing does not win merely by removing noise.
+1. **Reads the current EEGLAB state**: continuous or epoched, channels and locations, ICA, filters,
+   reference and the processing in `EEG.history`; what the data say (epochs, time-locking events,
+   baseline already removed, mains frequency, unit) fills the fields for you.
+2. **Lets you define the search**: which steps, in which order, which values are fixed and which
+   may vary, which steps may be skipped.
+3. **Uses EEGLAB's own dialogs** to configure steps, conditions, trials, epoch, baseline and ROI;
+   NeuroQC's own window manages candidates, order, locks and the comparison.
+4. **Runs every allowed combination** in EEGLAB (shared first steps computed once); it never
+   samples or truncates and then claims a full search.
+5. **Evaluates and compares**: constraints first (trials kept, interpolation, preservation of a known
+   signal), then measurement precision (SME) with intervals valid across all candidates. No
+   experimental effect (peak size, significance) is ever used.
+6. **Returns the results reproducibly**: why each candidate was recommended or excluded, its full
+   EEGLAB commands, a runnable script, and adoption as a new EEGLAB dataset whose history
+   reproduces it.
 
 > What is and is not covered: [docs/COVERAGE.md](docs/COVERAGE.md).
 
@@ -41,9 +52,9 @@ dataset and never modifies it during a search. Each candidate runs on its own co
 
 **Panel**: open EEGLAB > Tools > NeuroQC > *Optimize from current dataset…*
 
-- **History and state.** The left side shows the live `EEG.history`, parsed line by line, with a
-  provenance label on every item: recorded in the history, executed by NeuroQC, session-only command,
-  inferred from the data, or cannot be verified. The top shows the dataset's state and any warnings.
+- **History and state.** The left side shows the live `EEG.history`, parsed line by line. The top
+  shows the dataset's state (including channel locations) and any inconsistency between data and
+  history.
 - **Analysis contract, from EEGLAB's own dialogs.** Conditions are picked from the dataset's event
   list (*Add from events…*); the trials that count from markers, an EEGLAB data selection
   (`pop_select`) or event selection (`pop_selectevent`); the epoch from `pop_epoch`; the baseline from
@@ -74,59 +85,49 @@ dataset and never modifies it during a search. Each candidate runs on its own co
 **Script**
 
 ```matlab
-neuroqc.NeuroQC.state();                          % current dataset, parsed history, provenance
+neuroqc.NeuroQC.state();                          % current dataset, parsed history
 
 c = neuroqc.eval.Contract( ...
-    'conditions', {'target', {'11','21'}; 'standard', {'31'}}, ...
+    'conditions', {'target', {'11','21'}; 'standard', {'31'}}, ...      % your event codes
     'epoch', [-0.2 1.0], 'baseline', [-0.2 0], ...
-    'components', {'P3', [0.30 0.60], {'Pz','CPz','POz'}, 'mean'; ...
-                   'P3lat', [0.30 0.60], {'Pz'}, {'peakLatency','positive'}});
+    'components', {'P3', [0.30 0.60], {'Pz','CPz','POz'}, 'mean'});    % your measure
 
 p = neuroqc.plan.Plan();
-p = p.add('resample', 'fs', 250);                 % fixed
-p = p.add('highpass');                            % searched: catalog suggestions
-p = p.add('lowpass', 'cutoff', 30);
-p = p.addChoice('o1o2', {'channels','labels',{'O1','O2'},'action','interpolate'}, ...
-                        {'channels','labels',{'O1','O2'},'action','remove'}, 'none');
-p = p.add('reref', 'mode', {'average', 'channels'}, 'channels', {{'TP9','TP10'}}, ...
-          'exclude', {'HEOG','VEOG'});            % searched; ranked in separate strata
+p = p.add('highpass');                            % searched over its default list
+p = p.add('lowpass', 'cutoff', 30);               % fixed
+p = p.addEeglab('EEG = pop_reref(EEG, []);', 'reref');   % any EEGLAB call; its arguments are parameters
 p = p.add('ica', 'fitHighpass', 1);
-p = p.add('icremove', 'threshold', {0.8, 0.9});
+p = p.add('icremove', 'threshold', {0.8, 0.9});   % searched
 p = p.add('epoch'); p = p.add('baseline');        % windows come from the contract
-p = p.add('reject_threshold', 'uv', {100, 150}, 'exclude', {'HEOG','VEOG'});
+p = p.add('reject_threshold', 'uv', {100, 150});
 
-opts = struct('objective', {{'P3.mean', 'P3lat.peakLatency'}}, 'checkpoint', 'nqc_run1');
-r = neuroqc.NeuroQC.optimize(p, c, opts);
+r = neuroqc.NeuroQC.optimize(p, c, struct('checkpoint', 'nqc_run1'));
 neuroqc.NeuroQC.adopt(r);                         % recommended candidate -> new EEGLAB dataset
 neuroqc.NeuroQC.writeScript(r, 3, 'pipeline3.m'); % runnable EEGLAB function for candidate 3
 r = neuroqc.NeuroQC.resume('nqc_run1');           % continue an interrupted search
 ```
 
 Options are listed in `help neuroqc.run.Executor` (search) and `help neuroqc.eval.Rank`
-(constraints and ranking). Ordering:
-
-- By default the order you add steps is the order they run. If that order is illegal, NeuroQC lists
-  the conflicts and does not rearrange anything.
-- `p.OrderMode = 'search'` tries every legal order.
-- `p.pin('epoch')` keeps a step at its position, and `p.before('highpass','lowpass')` constrains
-  two steps.
+(constraints and ranking). By default the order you add steps is the order they run; if it is
+illegal, NeuroQC lists the conflicts and rearranges nothing. `p.OrderMode = 'search'` tries every
+legal order; `p.pin(id)` keeps a step in place and `p.before(a, b)` constrains two steps.
 
 ## How the search works
 
 1. **Starting point.**
-   - The current state is read from the EEG structure: epoched or not, sampling rate, channels, ICA
-     matrices, IC flags and reference.
+   - The current state is read from the EEG structure: epoched or not, sampling rate, channels and
+     their locations, ICA matrices, IC flags and reference.
    - `EEG.history` is parsed in order, without deduplication; continuation lines (`...`) are joined.
    - Where the history cannot describe the data, NeuroQC says so instead of guessing.
-   - Data in volts can be declared with `dataUnit = 'V'` and are converted on NeuroQC's copy.
+   - The data unit (uV or V) is judged from the amplitude scale (or set with `dataUnit`); volts are
+     converted on NeuroQC's copy.
    - A floating-point sampling-rate residue (common after EDF import) is rounded on the copy, and
      the change is recorded.
 2. **Legal pipelines.**
    - The plan expands into all combinations of searched values, alternatives and orders. Each is
      checked against the simulated data state; excluded combinations are counted with their reason.
-   - Exhaustive mode refuses to start above `maxLeaves`.
-   - `searchMode = 'sample'` draws a seeded random sample of legal pipelines. Its result is labelled
-     *approximate*, not a proven optimum.
+   - Every legal pipeline is run; above `maxLeaves` the search is refused with its size, never
+     sampled or truncated.
 3. **Execution.**
    - Pipelines run as a prefix tree, so a shared prefix (e.g. one ICA before several IC thresholds)
      is computed once.
@@ -166,17 +167,17 @@ Options are listed in `help neuroqc.run.Executor` (search) and `help neuroqc.eva
 
 - The contract (events, epoch and baseline windows, ROIs and time windows) defines what is measured.
   NeuroQC never searches it.
-- The injection check uses a known signal with an assumed topography: a Gaussian around the ROI when
+- The signal check uses a known signal with an assumed topography: a Gaussian around the ROI when
   channel locations exist, otherwise the ROI channels only. Real components can be affected
   differently, so passing the check is necessary but not sufficient.
-- ASR and native non-filter commands are re-run on the injected copy rather than decision-matched.
-  Their check is therefore less specific; the result says so.
+- EEGLAB commands that decide from the data on their own (other than the catalog steps, captured
+  mark/remove workflows and ASR) are re-run on the signal copy; the result says so.
 - Spherical interpolation needs channel locations. Without them, interpolation candidates fail with
   that reason.
-- Peak-measure bootstraps are slower (nested resampling). Use mean measures for large searches.
+- Peak-latency precision is itself hard to estimate with few trials, so peak-latency objectives
+  rarely separate candidates; mean-amplitude measures are more informative for choosing a pipeline.
 - Depth-first execution keeps one copy of the dataset per plan depth in memory (one per worker in
   parallel mode).
-- Thresholds such as 100 µV assume microvolts. NeuroQC warns when the data look like volts.
 
 ## Tests
 
@@ -184,21 +185,24 @@ Options are listed in `help neuroqc.run.Executor` (search) and `help neuroqc.eva
 addpath(fullfile(pwd, 'tests')); results = run_all();
 ```
 
-The suite has 76 automated tests on synthetic data with known ground truth:
+The automated suite runs on synthetic data with known ground truth:
 
-- the history parser,
+- the history parser and the data state,
 - plan legality and enumeration (checked against brute force),
-- the statistics, validated by simulation: SME vs empirical SD, false "worse" rate and power,
-  equivalence, bootstrapped latency SME,
-- signal preservation for filters, re-referencing, ICA removal, interpolation and rejection,
+- the statistics, validated by simulation: SME vs empirical SD, false "worse" rate across 2-24
+  candidates and power, bootstrapped peak SME vs replications,
+- signal preservation for filters, re-referencing, ICA removal, interpolation, rejection and ASR
+  (whose decisions are checked to reproduce EEGLAB's output exactly),
 - end-to-end searches, including resume and parallel execution,
 - EEGLAB and panel integration.
 
-All 76 automated tests pass in MATLAB R2026a with EEGLAB 2026.0.0. Two optional runs use your own
-data and are never committed:
+Two optional runs use your own data and are never committed:
 
 - `NEUROQC_REAL_SET` parses one of your datasets.
 - `tests/realdata_validation.m` runs a technical search on a working copy of a real recording.
+
+Clicking inside EEGLAB's dialogs cannot be automated; [tests/MANUAL_GUI_CHECK.md](tests/MANUAL_GUI_CHECK.md)
+lists what to click and what to expect.
 
 ## Cite
 
@@ -219,8 +223,7 @@ data and are never committed:
 - Zhang, G., Garrett, D. R., & Luck, S. J. (2024). Optimal filters for ERP research I: A general
   approach for selecting filter settings; II: Recommended settings for seven common ERP components.
   *Psychophysiology*, 61.
-- Schuirmann, D. J. (1987). A comparison of the two one-sided tests procedure and the power approach
-  for assessing the equivalence of average bioavailability. *J. Pharmacokinetics and
-  Biopharmaceutics*, 15.
+- Kothe, C. A. E., & Makeig, S. (2013). BCILAB: a platform for brain-computer interface
+  development. *Journal of Neural Engineering*, 10 (artifact subspace reconstruction).
 
 MIT License.
