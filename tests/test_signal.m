@@ -1,6 +1,6 @@
 function tests = test_signal
 %TEST_SIGNAL Signal-preservation checks against known ground truth:
-%   filter probe and matched-decision injection.
+%   matched-decision injection (filters included).
 tests = functiontests(localfunctions);
 end
 
@@ -14,30 +14,22 @@ tc.TestData.c = c;
 tc.TestData.ref = neuroqc.eval.Measure.reference(EEG, c);
 end
 
-% ------------------------------------------------------------ filter probe
-function testFilterProbe(tc)
-c = nqc_contract();
-gentle = neuroqc.eval.FilterProbe.run({inst('highpass', 'cutoff', 0.1), inst('lowpass', 'cutoff', 30)}, 250, c);
-harsh = neuroqc.eval.FilterProbe.run({inst('highpass', 'cutoff', 2)}, 250, c);
-none = neuroqc.eval.FilterProbe.run({}, 250, c);
-verifyLessThan(tc, gentle.amplitudeError, 0.05);
-verifyLessThan(tc, gentle.artifactPct, 0.05);
-verifyGreaterThan(tc, harsh.amplitudeError, 0.2);
-verifyGreaterThan(tc, harsh.artifactPct, gentle.artifactPct);
-verifyEqual(tc, none.amplitudeError, 0);
+function testFilterDistortionIsMeasuredByInjection(tc)
+% Fixed filters go through the same injection check: a gentle band keeps
+% the component, a 2 Hz high-pass visibly distorts it, and the error grows
+% with the high-pass edge.
+hp = [0.1 0.5 1 2]; e = zeros(size(hp));
+for k = 1:numel(hp)
+    [S, truth] = neuroqc.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
+    in = inst('highpass', 'cutoff', hp(k));
+    S = neuroqc.run.Steps.replayDecision(in, S, struct(), ctx(tc));
+    r = neuroqc.eval.Injection.compare(S, tc.TestData.c, truth, {in});
+    e(k) = r.amplitudeError;
 end
-
-function testFilterProbeIsMonotonicAndNeutral(tc)
-c = nqc_contract();
-hp = [0.05 0.1 0.3 0.5 1 2]; lp = [10 20 30 40];
-eh = arrayfun(@(v) neuroqc.eval.FilterProbe.run({inst('highpass', 'cutoff', v)}, 500, c).amplitudeError, hp);
-el = arrayfun(@(v) neuroqc.eval.FilterProbe.run({inst('lowpass', 'cutoff', v)}, 500, c).amplitudeError, lp);
-rs = neuroqc.eval.FilterProbe.run({inst('resample', 'fs', 250)}, 500, c);
-fprintf('probe amp error HP %s: %s\nprobe amp error LP %s: %s\n', mat2str(hp), mat2str(eh, 3), mat2str(lp), mat2str(el, 3));
-verifyTrue(tc, all(diff(eh) >= -1e-4));
-verifyTrue(tc, all(diff(el) <= 1e-4));
-verifyLessThan(tc, eh(2), 0.02);
-verifyLessThan(tc, rs.amplitudeError, 0.01);
+fprintf('injection amp error HP %s: %s\n', mat2str(hp), mat2str(e, 3));
+verifyLessThan(tc, e(1), 0.03);
+verifyGreaterThan(tc, e(end), 0.2);
+verifyTrue(tc, all(diff(e) >= -0.01));
 end
 
 function testReReferencingIsNotDistortion(tc)
@@ -123,15 +115,6 @@ verifyGreaterThan(tc, r.amplitudeError, 0.001);   % the real value at Pz is repl
 % field, not a collapse (a missing channel would give 1).
 verifyLessThan(tc, r.amplitudeError, 0.5);
 verifyGreaterThan(tc, r.topoCorr, 0.95);
-end
-
-function testHighpassDistortionAgreesWithProbe(tc)
-[S, truth] = neuroqc.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
-in = inst('highpass', 'cutoff', 2);
-S = neuroqc.run.Steps.replayDecision(in, S, struct(), ctx(tc));
-r = neuroqc.eval.Injection.compare(S, tc.TestData.c, truth, {in});
-p = neuroqc.eval.FilterProbe.run({in}, 250, tc.TestData.c);
-verifyEqual(tc, r.amplitudeError, p.amplitudeError, 'AbsTol', 0.03);
 end
 
 function testEpochRejectionDoesNotDistortTheAverage(tc)

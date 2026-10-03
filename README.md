@@ -66,8 +66,7 @@ dataset and never modifies it during a search. Each candidate runs on its own co
 - **Apply now in EEGLAB.** Runs the step on the current dataset through EEGLAB's own menu code path
   (`EEG.history`, `ALLCOM`, new dataset), so the plan starts after it.
 - **Run search / Options… / Resume…** Every command and score is printed in the Command Window and
-  the result is stored in `neuroqc_result`. Options: data unit, checkpoint folder, sampled search,
-  parallel, external QC table.
+  the result is stored in `neuroqc_result`. Options: data unit, checkpoint folder, parallel.
 - **Results.** Selecting a row shows its full pipeline, reason, measures and commands below the
   table. *Inspect selected* opens a rebuilt candidate (not adopted) or the source in EEGLAB's
   viewers; *Adopt* stores a candidate as a new EEGLAB dataset whose `EEG.history` reproduces it.
@@ -145,36 +144,23 @@ Options are listed in `help neuroqc.run.Executor` (search) and `help neuroqc.eva
      and rises when trials are lost, so it prices the rejection trade-off.
 5. **Signal preservation.** A known signal is used to catch processing that removes the effect along
    with the noise.
-   - **Filter probe.** For plans with only fixed linear steps (filters, resampling), the known
-     waveform passes through the same EEGLAB filter calls.
-   - **Matched-decision injection.** For plans with data-driven steps (bad channels, ICA, IC removal,
-     rejection), a copy containing only a known signal is carried through every candidate. That copy
-     receives the same channel, ICA, component and epoch decisions as the real data. ASR and native
-     non-filter commands are re-run on the copy and flagged.
-   - Both report amplitude error, peak shift, artifactual deflection, and waveform and topography
-     correlation, each against a limit.
+   - A copy containing only a known signal is carried through every candidate with the same
+     operations and the same decisions as the real data (bad channels, ICA, removed components,
+     rejected epochs, ASR reconstructions). Native commands that decide from the data on their own
+     are re-run on the copy and flagged.
+   - Amplitude error, peak shift, artifactual deflection, and waveform and topography correlation
+     are each checked against a limit.
 6. **Ranking.**
    - Failures are reported, never ranked. Constraint violations are listed with their reasons.
      If nothing is feasible, NeuroQC says so and relaxes nothing.
-   - Objectives: `'composite'` (only when every measure has the same unit), a priority list, or
-     `'pareto'`.
-   - A paired bootstrap over trials, matched by `urevent`, gives each candidate an interval for its
-     difference from the best. The intervals are simultaneous over all candidate pairs, so the
-     chance that any candidate is wrongly called worse stays bounded however many candidates are
-     searched (simulated: <= 5% for 2-24 candidates and 20-100 trials per condition at the default
-     `alpha = 0.02`; with per-comparison intervals it was 88% for 24 candidates).
-     - *Not distinguished* means the interval reaches zero. This is absence of evidence, not
-       equivalence.
-     - Equivalence is claimed only when you give `equivalenceMargin`.
-     - `probBest` shows the ranking uncertainty. `adjust = 'none'` or `'bonferroni'` gives the
-       older per-comparison intervals.
-   - A signal-preservation metric that applies but could not be computed (NaN) rejects the
-     candidate; it is never treated as a pass.
-   - Candidates that differ in measure-defining choices (the reference) are ranked in separate
-     strata, never against each other.
+   - Objective: the composite SME of all measures (when they share a unit), or the one measure you
+     choose; the others are reported.
+   - Paired bootstrap over trials (matched by `urevent`); intervals of the difference from the best
+     are simultaneous over all candidates, so a larger search does not produce more false "worse"
+     verdicts. *Not distinguished* is absence of evidence, not equivalence.
+   - Candidates that differ in the reference are ranked in separate strata, never against each other.
    - The recommendation is the least aggressive candidate among those not distinguished from the
      best: most trials kept, then least distortion.
-   - External QC values (CSV or table with a `key` column) can be imported as columns and limits.
 
 ## Limitations (read before trusting a result)
 

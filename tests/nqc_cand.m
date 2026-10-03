@@ -21,7 +21,7 @@ end
 first = X{1};
 kept = cellfun(@(x) sum(~isnan(x(:, 1))), first); n = cellfun(@(x) size(x, 1), first);
 m = struct('kept', kept, 'retention', kept ./ n, 'extraTrials', 0, 'objectives', objs, ...
-    'composite', sqrt(mean([objs.sme] .^ 2)), 'baselineSd', NaN, 'artifactPct', 0);
+    'composite', sqrt(mean([objs.sme] .^ 2)));
 sig = o.signal;
 if isempty(sig)
     sig = struct('source', 'test', 'amplitudeError', 0, 'latencyShiftMs', 0, 'artifactPct', 0, ...

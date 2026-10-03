@@ -21,14 +21,14 @@ classdef Measure
     %   SME falls when noise is removed and rises when trials are lost, so it
     %   prices the noise-vs-trial-count trade-off directly. It does NOT tell
     %   whether the signal survived; that is the job of
-    %   neuroqc.eval.FilterProbe / neuroqc.eval.Injection.
+    %   neuroqc.eval.Injection.
     %
     %   Trials are identified by the urevent index of their time-locking
     %   event, so the same physical trial is paired across candidates.
 
     methods (Static)
         function o = defaults()
-            o = struct('nBootPeak', 1000, 'seed', 1, 'artifactUv', 100);
+            o = struct('nBootPeak', 1000, 'seed', 1);
         end
 
         function ref = reference(EEG, contract)
@@ -51,7 +51,7 @@ classdef Measure
             T = neuroqc.eval.Measure.trials(EEG, contract);
             nC = numel(ref.ids); nO = numel(ref.objectives);
             m = struct('kept', zeros(1, nC), 'retention', zeros(1, nC), 'extraTrials', 0, ...
-                'objectives', [], 'composite', NaN, 'baselineSd', T.baselineSd, 'artifactPct', NaN);
+                'objectives', [], 'composite', NaN);
             % align rows of every condition to the reference trial ids
             rowOf = cell(1, nC);
             for c = 1:nC
@@ -64,8 +64,6 @@ classdef Measure
                 m.kept(c) = numel(loc);
                 m.retention(c) = m.kept(c) / ref.n(c);
             end
-            kept = vertcat(rowOf{cellfun(@(r) ~isempty(r.rows), rowOf)});
-            if ~isempty(kept), m.artifactPct = mean(T.maxAbs(vertcat(kept.rows)) > opts.artifactUv); end
             objs = repmat(struct('name', '', 'unit', '', 'kind', '', 'polarity', '', 'times', [], ...
                 'X', {{}}, 'estimate', [], 'sme', [], 'agg', NaN), 1, nO);
             for k = 1:nO
@@ -192,19 +190,11 @@ classdef Measure
             data = double(EEG.data(:, :, keep));
             bl = contract.effectiveBaseline();
             T = struct('id', id(keep), 'cond', cond(keep), 'data', {{}}, 'times', {{}}, ...
-                'baselineSd', NaN, 'maxAbs', [], 'labels', {labels});
+                'labels', {labels});
             if ~isempty(bl)
                 bsel = times >= bl(1) - 1e-9 & times <= bl(2) + 1e-9;
                 assert(any(bsel), 'NeuroQC:Measure', 'No samples in the baseline window.');
                 data = data - mean(data(:, bsel, :), 2);
-            end
-            roiAll = roiIndex(contract.allRoi(), labels);
-            if isempty(data)
-                T.maxAbs = zeros(0, 1);
-            else
-                T.maxAbs = squeeze(max(max(abs(data(roiAll, :, :)), [], 1), [], 2));
-                T.maxAbs = T.maxAbs(:);
-                if ~isempty(bl), T.baselineSd = std(reshape(data(roiAll, bsel, :), 1, []), 'omitnan'); end
             end
             for j = 1:numel(contract.components)
                 comp = contract.components(j);

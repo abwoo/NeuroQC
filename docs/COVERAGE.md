@@ -18,10 +18,10 @@ Each item has four status columns:
 
 | Step | EEGLAB call | Impl. | Auto | Real | Signal check | Notes |
 |---|---|---|---|---|---|---|
-| `resample` | `pop_resample` | ✓ | ✓ | ✓ real data | probe | downsampling only |
-| `linenoise` | `pop_eegfiltnew` (revfilt) | ✓ | ✓ | ✓ | probe | FIR band-stop at the mains frequency detected in the recording (50/60 Hz) unless set; CleanLine/Zapline only as native steps |
-| `highpass` | `pop_eegfiltnew` | ✓ | ✓ | ✓ real data | probe | |
-| `lowpass` | `pop_eegfiltnew` | ✓ | ✓ | ✓ real data | probe | |
+| `resample` | `pop_resample` | ✓ | ✓ | ✓ real data | injection | downsampling only |
+| `linenoise` | `pop_eegfiltnew` (revfilt) | ✓ | ✓ | ✓ | injection | FIR band-stop at the mains frequency detected in the recording (50/60 Hz) unless set; CleanLine/Zapline only as native steps |
+| `highpass` | `pop_eegfiltnew` | ✓ | ✓ | ✓ real data | injection | |
+| `lowpass` | `pop_eegfiltnew` | ✓ | ✓ | ✓ real data | injection | |
 | `asr` | `pop_clean_rawdata` | ✓ | ✓ | ✓ | injection, decision-matched: the window-by-window reconstructions ASR chose on the real data are recorded and applied (`neuroqc.run.AsrRecord`, checked to reproduce EEGLAB's output exactly; otherwise re-run and flagged) | needs clean_rawdata; Euclidean ASR, burst correction only |
 | `badchannels` | `pop_rejchan` (+ `pop_interp`) | ✓ | ✓ | ✓ | injection, matched | |
 | `channels` | `pop_select` / `pop_interp` | ✓ | ✓ | ✓ real data | injection, matched | interpolation needs channel locations |
@@ -34,7 +34,7 @@ Each item has four status columns:
 | `reject_threshold` | `pop_eegthresh` + `pop_rejepoch` | ✓ | ✓ | ✓ real data | injection, matched | rejecting every epoch = retention 0 |
 | `reject_jointprob` | `pop_jointprob` + `pop_rejepoch` | ✓ | ✓ | ✓ | injection, matched | |
 | `reject_kurtosis` | `pop_rejkurt` + `pop_rejepoch` | ✓ | ✓ | ✓ | injection, matched | |
-| `native` | any `pop_*` command, or a captured EEGLAB workflow (one statement per line) | ✓ | ✓ | ✓ | probe for `pop_eegfiltnew`/`pop_resample`; workflows of marks + removals (`pop_eegthresh`/`pop_jointprob`/`pop_rejkurt` → `pop_rejepoch`, `pop_iclabel` → `pop_icflag` → `pop_subcomp`): injection, decision-matched (the removed epochs/components are replayed); otherwise injection, re-run (flagged) | each configuration is fixed; several configurations of one step (and skipping it) can be searched as alternatives |
+| `native` | any `pop_*` command, or a captured EEGLAB workflow (one statement per line) | ✓ | ✓ | ✓ | fixed transforms (filters, resampling, reference, baseline, epoching, channel lists): injection, same operation; workflows of marks + removals (`pop_eegthresh`/`pop_jointprob`/`pop_rejkurt` → `pop_rejepoch`, `pop_iclabel` → `pop_icflag` → `pop_subcomp`): injection, decision-matched (the removed epochs/components are replayed); otherwise injection, re-run (flagged) | each configuration is fixed; several configurations of one step (and skipping it) can be searched as alternatives |
 
 ## History parsing (`neuroqc.live.History`)
 
@@ -53,13 +53,10 @@ Each item has four status columns:
 |---|---|---|---|
 | Mean amplitude, analytic SME | ✓ | ✓ (vs. empirical SD) | ✓ real data |
 | Peak amplitude / latency, bootstrapped SME | ✓ | ✓ (vs. replications) | ✓ synthetic |
-| Log band power (continuous segments or event-related) | ✓ | ✓ | ✓ synthetic |
-| Composite / priority / Pareto objectives; unit safety | ✓ | ✓ | ✓ |
-| Paired bootstrap, not-distinguished set, α = 0.02 calibration | ✓ | ✓ (simulation) | ✓ |
-| Equivalence with a margin (TOST, 90% interval) | ✓ | ✓ (simulation) | ✓ |
-| probBest, Bonferroni option, strata | ✓ | ✓ | ✓ |
+| Composite objective or one chosen measure; unit safety | ✓ | ✓ | ✓ |
+| Paired bootstrap, simultaneous not-distinguished set, α = 0.02 calibration (2-24 candidates) | ✓ | ✓ (simulation) | ✓ |
+| Strata (reference) | ✓ | ✓ | ✓ |
 | Constraints with reasons; "no feasible pipeline" with reason summary | ✓ | ✓ | ✓ real data |
-| External QC columns and limits | ✓ | ✓ | ✓ |
 | Trial rules (time ranges, marker ranges, urevents) | ✓ | ✓ (time ranges) | ✓ |
 
 ## Execution and integration

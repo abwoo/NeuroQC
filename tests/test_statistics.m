@@ -66,27 +66,21 @@ end
 
 function testManyCandidatesKeepTheFamilywiseErrorBounded(tc)
 % 24 candidates with the same true noise: the share of searches in which
-% ANY of them is declared worse must stay near 5%. Per-comparison
-% intervals against the selected best (adjust = 'none') fail this badly
-% (audit: 87/100 searches), the default simultaneous procedure must not.
+% ANY of them is declared worse must stay near 5% (per-comparison
+% intervals against the selected best did this in 87/100 searches).
 rs = RandStream('mt19937ar', 'Seed', 12);
 K = 24; sims = 80; o = neuroqc.eval.Rank.defaults(); o.nBoot = 600;
 for N = [30 100]
     ref = nqc_ref(N);
-    fwer = 0; fwerNone = 0; frac = 0;
+    fwer = 0; frac = 0;
     for k = 1:sims
         common = randn(rs, N, 1);
         cs = arrayfun(@(j) nqc_cand(common + randn(rs, N, 1)), 1:K);
         R = neuroqc.eval.Rank.run(cs, ref, o);
         fwer = fwer + any(~R.table.notDistinguished); frac = frac + mean(~R.table.notDistinguished);
-        oN = o; oN.adjust = 'none';
-        R = neuroqc.eval.Rank.run(cs, ref, oN);
-        fwerNone = fwerNone + any(~R.table.notDistinguished);
     end
-    fprintf('%d candidates, %d trials: any false "worse" %.3f (adjust none: %.3f), mean share %.4f\n', ...
-        K, N, fwer / sims, fwerNone / sims, frac / sims);
+    fprintf('%d candidates, %d trials: any false "worse" %.3f, mean share %.4f\n', K, N, fwer / sims, frac / sims);
     verifyLessThanOrEqual(tc, fwer / sims, 0.08);
-    verifyGreaterThan(tc, fwerNone / sims, 0.3);       % the problem the default avoids
 end
 end
 
@@ -150,49 +144,13 @@ fprintf('peak latency: SD of the difference across replications %.2f ms, paired 
 verifyEqual(tc, mean(sdBoot), std(dpt), 'RelTol', 0.25);
 end
 
-function testEquivalenceNeedsAMarginAndEvidence(tc)
-% "Not distinguished" is not equivalence. With a margin, equivalence is
-% claimed when the 90% CI of the difference lies within it: often for
-% equal noise and many trials, rarely when the true difference exceeds
-% the margin.
-rs = RandStream('mt19937ar', 'Seed', 8);
-N = 200; sims = 60; ref = nqc_ref(N);
-o = neuroqc.eval.Rank.defaults(); o.nBoot = 600;
-eqSame = 0; eqDiff = 0;
-for k = 1:sims
-    common = randn(rs, N, 1);
-    a = common + randn(rs, N, 1); b = common + randn(rs, N, 1); c = common + 2 * randn(rs, N, 1);
-    sa = std(a) / sqrt(N);
-    o.equivalenceMargin = 0.25 * sa;   % 25% of the SME
-    R = neuroqc.eval.Rank.run([nqc_cand(a) nqc_cand(b)], ref, o);
-    eqSame = eqSame + all(R.table.equivalent == 1);
-    R = neuroqc.eval.Rank.run([nqc_cand(a) nqc_cand(c)], ref, o);
-    eqDiff = eqDiff + all(R.table.equivalent == 1);
-end
-o.equivalenceMargin = [];
-R = neuroqc.eval.Rank.run([nqc_cand(a) nqc_cand(b)], ref, o);
-fprintf('equivalence claimed: equal noise %.2f, 1.6x noise %.2f\n', eqSame / sims, eqDiff / sims);
-verifyGreaterThan(tc, eqSame / sims, 0.5);
-verifyLessThan(tc, eqDiff / sims, 0.05);
-verifyTrue(tc, all(isnan(R.table.equivalent)));      % no margin -> no equivalence claim
-end
-
-function testProbabilityOfBeingBest(tc)
-rng(1); N = 150; ref = nqc_ref(N); base = randn(N, 1);
-o = neuroqc.eval.Rank.defaults(); o.nBoot = 500;
-R = neuroqc.eval.Rank.run([nqc_cand(base + 0.5 * randn(N, 1)) nqc_cand(base * 1.5 + randn(N, 1)) ...
-    nqc_cand(base + 0.5 * randn(N, 1))], ref, o);
-verifyEqual(tc, sum(R.table.probBest), 1, 'AbsTol', 1e-12);
-verifyLessThan(tc, R.table.probBest(2), 0.01);
-end
-
-function testIdenticalCandidatesShareProbabilityOfBeingBest(tc)
+function testIdenticalCandidatesAreNotDistinguished(tc)
 % Two pipelines that give identical data (e.g. removing vs interpolating a
-% channel outside the ROI) must not have probBest assigned to one of them.
+% channel outside the ROI) are both kept; a clearly noisier one is not.
 rng(7); N = 50; ref = nqc_ref(N); x = randn(N, 1);
 o = neuroqc.eval.Rank.defaults(); o.nBoot = 300;
 R = neuroqc.eval.Rank.run([nqc_cand(x) nqc_cand(x) nqc_cand(2 * x)], ref, o);
-verifyEqual(tc, R.table.probBest(1:2), [0.5; 0.5], 'AbsTol', 1e-12);
+verifyEqual(tc, R.table.notDistinguished, [true; true; false]);
 end
 
 function testRankingIndependentOfOtherCandidates(tc)
@@ -242,65 +200,24 @@ verifyEmpty(tc, R.recommended);                  % no cross-stratum winner
 verifyEqual(tc, sort([R.byStratum.recommended]), [1 2]);
 end
 
-function testPriorityObjectivesAreLexicographic(tc)
-% Two objectives: A and B are indistinguishable on the first, B is
-% clearly better on the second -> B. Units may differ (uV, ms).
-rng(4); N = 120; ref = nqc_ref(N, {'P3.mean', 'N2.mean'}, {'uV', 'uV'});
-base = randn(N, 1);
-A = nqc_cand({{base + 0.05 * randn(N, 1)}, {3 * randn(N, 1)}});
-B = nqc_cand({{base + 0.05 * randn(N, 1)}, {1 * randn(N, 1)}});
-C = nqc_cand({{2 * base}, {0.5 * randn(N, 1)}});
-o = neuroqc.eval.Rank.defaults(); o.nBoot = 400;
-o.objective = {'obj1', 'obj2'};
-ref.objectives = {'obj1', 'obj2'};
-R = neuroqc.eval.Rank.run([A B C], ref, o);
-verifyEqual(tc, R.recommended, 2);
-verifyFalse(tc, R.table.notDistinguished(3));     % C is worse on the first objective
-end
-
-function testParetoAndUnitSafety(tc)
+function testObjectiveAndUnitSafety(tc)
+% Measures in different units cannot be combined; the user chooses the
+% one to optimize, the others are reported (sme_ columns).
 rng(5); N = 80;
 ref = nqc_ref(N, {'obj1', 'obj2'}, {'uV', 'ms'});
 A = nqc_cand({{randn(N, 1)}, {5 * randn(N, 1)}}, 'units', {'uV', 'ms'});
 B = nqc_cand({{2 * randn(N, 1)}, {1 * randn(N, 1)}}, 'units', {'uV', 'ms'});
-C = nqc_cand({{3 * randn(N, 1)}, {6 * randn(N, 1)}}, 'units', {'uV', 'ms'});
 o = neuroqc.eval.Rank.defaults(); o.nBoot = 100;
-verifyError(tc, @() neuroqc.eval.Rank.run([A B C], ref, o), 'NeuroQC:Objective'); % composite of uV and ms
-o.objective = 'pareto';
-R = neuroqc.eval.Rank.run([A B C], ref, o);
-verifyEqual(tc, find(R.table.pareto)', [1 2]);
-verifyEmpty(tc, R.recommended);                   % two non-dominated: no single winner
+verifyError(tc, @() neuroqc.eval.Rank.run([A B], ref, o), 'NeuroQC:Objective');     % composite of uV and ms
+o.objective = 'obj2';
+R = neuroqc.eval.Rank.run([A B], ref, o);
+verifyEqual(tc, R.best, 2);
+verifyEqual(tc, R.objective, 'obj2');
+verifyTrue(tc, all(isfinite(R.table.sme_obj1)));                                    % still reported
+o.objective = {'obj1', 'obj2'};
+verifyError(tc, @() neuroqc.eval.Rank.run([A B], ref, o), 'NeuroQC:Objective');     % one objective, not a list
 end
 
-function testExternalQcColumnsAndLimits(tc)
-% Imported QC values are joined by pipeline key, shown as columns and can
-% exclude candidates; a candidate without a value is not given one.
-rng(9); N = 40; ref = nqc_ref(N);
-A = nqc_cand(randn(N, 1), 'key', 'hp=0.1'); B = nqc_cand(randn(N, 1), 'key', 'hp=1'); C = nqc_cand(randn(N, 1), 'key', 'hp=2');
-Q = table({'hp=0.1'; 'hp=1'}, [0.2; 0.9], 'VariableNames', {'key', 'icFraction'});
-o = neuroqc.eval.Rank.defaults(); o.nBoot = 100;
-o.externalQC = Q; o.externalLimits = struct('icFraction', [0 0.5]);
-R = neuroqc.eval.Rank.run([A B C], ref, o);
-verifyEqual(tc, R.table.ext_icFraction(1:2), [0.2; 0.9]);
-verifyTrue(tc, isnan(R.table.ext_icFraction(3)));
-verifyEqual(tc, R.table.status, {'feasible'; 'rejected'; 'rejected'});   % no value -> outside the limit
-verifyTrue(tc, contains(R.table.reason{2}, 'icFraction'));
-end
-
-function testBonferroniWidensIntervals(tc)
-rng(6); N = 60; ref = nqc_ref(N); base = randn(N, 1);
-cs = arrayfun(@(k) nqc_cand(base + 0.8 * randn(N, 1)), 1:6);
-o = neuroqc.eval.Rank.defaults(); o.nBoot = 2000; o.adjust = 'none';
-R1 = neuroqc.eval.Rank.run(cs, ref, o);
-o.adjust = 'bonferroni';
-R2 = neuroqc.eval.Rank.run(cs, ref, o);
-w1 = R1.table.diffHi - R1.table.diffLo; w2 = R2.table.diffHi - R2.table.diffLo;
-k = w1 > 0;
-verifyTrue(tc, all(w2(k) >= w1(k)));
-verifyGreaterThanOrEqual(tc, sum(R2.table.notDistinguished), sum(R1.table.notDistinguished));
-end
-
-% ---------------------------------------------------------------- helpers
 function tf = worse(a, b, ref, o)
 R = neuroqc.eval.Rank.run([nqc_cand(a) nqc_cand(b)], ref, o);
 tf = sum(R.table.notDistinguished) < 2;

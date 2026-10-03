@@ -242,7 +242,7 @@ app.run(false);
 r = app.Result;
 verifyEqual(tc, numel(r.leaves), 6);
 verifyTrue(tc, all(contains(r.labels, 'pop_eegfiltnew(locutoff=')));
-verifyEqual(tc, r.signalCheck, 'probe');                           % fixed filters: probed, not injected
+verifyTrue(tc, all(arrayfun(@(c) strcmp(c.signal.source, 'injection'), r.cands)));
 m = r.marginal;
 verifyEqual(tc, sort(unique(m.parameter))', {'lowpass_native.hicutoff', 'lowpass_native.locutoff'});
 verifyEqual(tc, sum(strcmp(m.parameter, 'lowpass_native.hicutoff')), 3);
@@ -312,7 +312,7 @@ app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
 app.addComponent('P3', [0.3 0.5], {'Pz', 'P3', 'P4'}, 'mean', 'positive');
-verifyEqual(tc, app.ObjectiveField.Items, {'composite', 'pareto', 'P3.mean'});
+verifyEqual(tc, app.ObjectiveField.Items, {'composite', 'P3.mean'});
 app.TypeDrop.Value = 'highpass'; app.addStep();
 app.planEdited(struct('Indices', [1 3], 'NewData', 'cutoff = {0.1, 0.3, 0.5}'));
 app.TypeDrop.Value = 'epoch'; app.addStep(); app.TypeDrop.Value = 'baseline'; app.addStep();
@@ -500,10 +500,11 @@ app.CompField.Value = 'P3: 0.3 0.5 @ Pz P3 P4';
 app.ObjectiveField.Value = 'composite';
 app.run(false);
 verifyEqual(tc, size(app.ResultTable.Data, 1), 2);
-verifyEqual(tc, size(app.ResultTable.Data, 2), 11);
+verifyEqual(tc, size(app.ResultTable.Data, 2), 10);
 verifyTrue(tc, evalin('base', 'exist(''neuroqc_result'', ''var'')') == 1);
 % a latency objective through the panel syntax
 app.CompField.Value = 'P3: 0.3 0.5 @ Pz # peakLatency positive';
+app.settingsChanged();                               % what editing the field triggers
 app.ObjectiveField.Value = 'P3.peakLatency';
 app.run(false);
 r = evalin('base', 'neuroqc_result');

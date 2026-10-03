@@ -24,7 +24,7 @@ classdef Panel < handle
         LimitFields = struct()
         ObjectiveField
         Options = struct('dataUnit', 'auto', 'checkpoint', '', ...
-            'parallel', false, 'externalQC', [])
+            'parallel', false)
         ResultTable; StatusLabel; DetailArea
     end
 
@@ -170,11 +170,11 @@ classdef Panel < handle
             ag = uigridlayout(rg, [2 6]); ag.Padding = [0 0 0 0]; ag.RowSpacing = 4;
             ag.ColumnWidth = {'fit', 170, 'fit', 'fit', 'fit', '1x'};
             uilabel(ag, 'Text', 'Objective', 'HorizontalAlignment', 'right');
-            obj.ObjectiveField = uidropdown(ag, 'Items', {'composite', 'pareto'}, 'Value', 'composite', 'Editable', 'on', 'Tooltip', ...
-                'composite | pareto | one objective (component.measure); a priority list can be typed, comma-separated');
+            obj.ObjectiveField = uidropdown(ag, 'Items', {'composite'}, 'Value', 'composite', 'Tooltip', ...
+                'composite = all measures together (same unit); or the one measure to optimize');
             uibutton(ag, 'Text', 'Preview count', 'ButtonPushedFcn', @(~, ~) obj.run(true));
             uibutton(ag, 'Text', 'Run search', 'FontWeight', 'bold', 'ButtonPushedFcn', @(~, ~) obj.run(false));
-            uibutton(ag, 'Text', 'Options...', 'Tooltip', 'Data unit, checkpoint folder, parallel, external QC table', ...
+            uibutton(ag, 'Text', 'Options...', 'Tooltip', 'Data unit, checkpoint folder, parallel', ...
                 'ButtonPushedFcn', @(~, ~) obj.optionsDialog());
             obj.StatusLabel = uilabel(ag, 'Text', '', 'FontColor', [0 0 0.5], 'WordWrap', 'on');
             obj.StatusLabel.Layout.Row = [1 2]; obj.StatusLabel.Layout.Column = 6;
@@ -189,8 +189,8 @@ classdef Panel < handle
             resP.Layout.Row = 3; resP.Layout.Column = 1;
             rgl = uigridlayout(resP, [2 1]); rgl.RowHeight = {'1x', 96};
             obj.ResultTable = uitable(rgl, 'RowName', {}, 'ColumnName', ...
-                {'id','status','objective','diff vs best','nd','P(best)','min ret.','interp.','amp. err.','artifact','pipeline / reason'}, ...
-                'ColumnWidth', {40, 70, 72, 128, 34, 62, 66, 60, 74, 66, 'auto'}, ...
+                {'id','status','objective','diff vs best','nd','min ret.','interp.','amp. err.','artifact','pipeline / reason'}, ...
+                'ColumnWidth', {40, 70, 72, 128, 34, 66, 60, 74, 66, 'auto'}, ...
                 'Tooltip', 'nd = not distinguished from the best by these data (not equivalence); * = recommended. Select a row for the full text below.', ...
                 'SelectionChangedFcn', @(t, ~) obj.showDetails('result', t));
             obj.DetailArea = uitextarea(rgl, 'Editable', 'off', 'WordWrap', 'on', 'FontSize', 11, ...
@@ -665,14 +665,15 @@ classdef Panel < handle
             % objective choices from the components defined above
             try, names = obj.contract().objectiveNames(); catch, names = {}; end
             v = obj.ObjectiveField.Value;
-            obj.ObjectiveField.Items = [{'composite', 'pareto'} names(:)'];
+            obj.ObjectiveField.Items = [{'composite'} names(:)'];
+            if ~any(strcmp(v, obj.ObjectiveField.Items)), v = 'composite'; end
             obj.ObjectiveField.Value = v;
         end
 
         function optionsDialog(obj)
             o = obj.Options;
             d = uifigure('Name', 'NeuroQC search options', 'Position', [240 240 520 300], 'WindowStyle', 'modal');
-            gl = uigridlayout(d, [6 3]); gl.ColumnWidth = {170, '1x', 110}; gl.RowHeight = repmat({26}, 1, 6);
+            gl = uigridlayout(d, [4 3]); gl.ColumnWidth = {170, '1x', 110}; gl.RowHeight = repmat({26}, 1, 4);
             uilabel(gl, 'Text', 'Data unit of the dataset');
             du = uidropdown(gl, 'Items', {'auto', 'uV', 'V'}, 'Value', o.dataUnit, 'Tooltip', ...
                 'auto: from the amplitude scale of the dataset; V: scaled to uV on NeuroQC''s copy (ICA weights too)');
@@ -683,20 +684,12 @@ classdef Panel < handle
             uilabel(gl, 'Text', 'Parallel (Parallel Computing Toolbox)');
             pa = uicheckbox(gl, 'Text', '', 'Value', o.parallel);
             uilabel(gl, 'Text', '');
-            uilabel(gl, 'Text', 'External QC table (key column)');
-            qc = uilabel(gl, 'Text', orDash(qcText(o.externalQC)));
-            uibutton(gl, 'Text', 'Import...', 'ButtonPushedFcn', @(~, ~) pickQc());
-            uilabel(gl, 'Text', ''); uilabel(gl, 'Text', ''); uilabel(gl, 'Text', '');
             uilabel(gl, 'Text', '');
             uibutton(gl, 'Text', 'Cancel', 'ButtonPushedFcn', @(~, ~) delete(d));
             uibutton(gl, 'Text', 'OK', 'ButtonPushedFcn', @(~, ~) apply());
             function pickDir()
                 p = uigetdir(pwd, 'Checkpoint folder (empty or of this same search)');
                 if ischar(p), o.checkpoint = p; ck.Text = p; end
-            end
-            function pickQc()
-                [f, p] = uigetfile({'*.csv;*.txt;*.xlsx', 'QC table'}, 'External QC table');
-                if ischar(f), o.externalQC = fullfile(p, f); qc.Text = o.externalQC; end
             end
             function apply()
                 o.dataUnit = du.Value; o.parallel = pa.Value;
@@ -706,8 +699,7 @@ classdef Panel < handle
 
         function setOptions(obj, o)
             obj.Options = o;
-            neuroqc.utils.log('Search options: unit %s, checkpoint %s, parallel %d, external QC %s', o.dataUnit, ...
-                orDash(o.checkpoint), o.parallel, orDash(qcText(o.externalQC)));
+            neuroqc.utils.log('Search options: unit %s, checkpoint %s, parallel %d', o.dataUnit, orDash(o.checkpoint), o.parallel);
             obj.invalidate('Options changed');
         end
 
@@ -1039,8 +1031,7 @@ classdef Panel < handle
                 c = obj.contract();
                 opts = struct('dryRun', dry);
                 ob = strtrim(obj.ObjectiveField.Value);
-                if any(strcmp(ob, {'composite','pareto'})), opts.objective = ob;
-                else, opts.objective = strtrim(strsplit(ob, ',')); end
+                opts.objective = ob;
                 for f = fieldnames(obj.LimitFields)'
                     opts.(f{1}) = obj.LimitFields.(f{1}).Value;
                 end
@@ -1080,7 +1071,7 @@ classdef Panel < handle
                 id = sprintf('%d', k); if any(recs == k), id = [id '*']; end
                 txt = r.labels{k}; if ~isempty(T.reason{k}), txt = [T.reason{k} ' | ' txt]; end
                 if ~isempty(T.stratum{k}), txt = ['[' T.stratum{k} '] ' txt]; end
-                data(end+1, :) = {id, T.status{k}, num(T.objective(k), '%.4g'), ci, T.notDistinguished(k), num(T.probBest(k), '%.3f'), ...
+                data(end+1, :) = {id, T.status{k}, num(T.objective(k), '%.4g'), ci, T.notDistinguished(k), ...
                     pctText(T.minRetention(k)), pctText(T.interpolated(k)), pctText(T.ampError(k)), pctText(T.artifactPct(k)), txt}; %#ok<AGROW>
             end
             obj.ResultTable.Data = data;
@@ -1112,10 +1103,10 @@ classdef Panel < handle
                             ['Pipeline: ' obj.Result.labels{k}]};
                         if ~isempty(T.reason{k}), v{end+1} = ['Reason: ' T.reason{k}]; end
                         if ~isempty(T.stratum{k}), v{end+1} = ['Stratum (what is measured): ' T.stratum{k}]; end
-                        v{end+1} = sprintf(['Objective %.4g; difference from the best [%.3g %.3g]; not distinguished %d; P(best) %.3f; ', ...
+                        v{end+1} = sprintf(['Objective %.4g; difference from the best [%.3g %.3g]; not distinguished %d; ', ...
                             'min retention %s; min trials %g; interpolated %s; amplitude error %s; latency shift %.3g ms; ', ...
                             'artifactual deflection %s; waveform r %.3f; topography r %.3f'], T.objective(k), T.diffLo(k), T.diffHi(k), ...
-                            T.notDistinguished(k), T.probBest(k), pctText(T.minRetention(k)), T.minTrials(k), pctText(T.interpolated(k)), ...
+                            T.notDistinguished(k), pctText(T.minRetention(k)), T.minTrials(k), pctText(T.interpolated(k)), ...
                             pctText(T.ampError(k)), T.latencyShiftMs(k), pctText(T.artifactPct(k)), T.waveformCorr(k), T.topoCorr(k));
                         c = obj.Result.cands(k);
                         if ~isempty(c.unmatched), v{end+1} = ['Signal check not decision-matched for: ' strjoin(c.unmatched, ', ')]; end
@@ -1244,10 +1235,6 @@ end
 
 function t = pctText(v)
 if isfinite(v), t = sprintf('%.1f%%', 100 * v); else, t = '-'; end
-end
-
-function t = qcText(q)
-if isempty(q), t = ''; elseif ischar(q) || isstring(q), t = char(q); else, t = sprintf('table (%d rows)', height(q)); end
 end
 
 function t = orDash(t)

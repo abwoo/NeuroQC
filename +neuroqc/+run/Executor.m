@@ -13,14 +13,11 @@ classdef Executor
     %   - Each EEGLAB command is printed and appended to the candidate's
     %     EEG.history.
     %   - Scores each finished pipeline (neuroqc.eval.Measure), checks that
-    %     the signal survives (neuroqc.eval.Injection or FilterProbe) and
+    %     the signal survives (neuroqc.eval.Injection) and
     %     ranks (neuroqc.eval.Rank).
     %
     %   opts (all optional; see also neuroqc.eval.Rank.defaults):
     %     maxLeaves     refuse above this many pipelines (default 500)
-    %     signalCheck   'auto' (injection when the plan contains data-driven
-    %                   spatial/temporal steps, else filter probe) |
-    %                   'injection' | 'probe'
     %     injectUv      injected amplitude (default 5 uV)
     %     dataUnit      'uV' (default) | 'V' (scaled to uV on the copy)
     %     checkpoint    folder: every finished candidate is saved there and
@@ -33,7 +30,7 @@ classdef Executor
     methods (Static)
         function result = run(plan, contract, opts)
             if nargin < 3, opts = struct(); end
-            opts = withDefaults(opts, struct('dryRun', false, 'signalCheck', 'auto', 'injectUv', 5, ...
+            opts = withDefaults(opts, struct('dryRun', false, 'injectUv', 5, ...
                 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal'));
             [EEG, live] = neuroqc.live.Session.current();
             assert(~isempty(EEG), 'NeuroQC:NoDataset', 'No dataset is loaded in EEGLAB.');
@@ -50,7 +47,7 @@ classdef Executor
             result = struct('plan', plan, 'contract', contract, 'options', opts, 'state', state, ...
                 'rootFingerprint', live.fingerprint, 'leaves', leaves, 'tree', tree, 'report', rep, ...
                 'labels', {labels}, 'cands', [], 'ranking', [], 'marginal', [], 'root', [], 'ref', [], ...
-                'rootComs', {{}}, 'versions', versions(), 'signalCheck', '', 'identity', '');
+                'rootComs', {{}}, 'versions', versions(), 'identity', '');
             if opts.dryRun, return; end
             [root, rootComs] = neuroqc.run.Executor.prepareRoot(EEG, contract, opts);
             result.root = root; result.rootComs = rootComs;
@@ -97,23 +94,14 @@ classdef Executor
             result.ref = ref;
             neuroqc.utils.log('Reference trials per condition: %s', ...
                 strjoin(arrayfun(@(c) sprintf('%s=%d', ref.names{c}, ref.n(c)), 1:numel(ref.n), 'UniformOutput', false), ', '));
-            mode = opts.signalCheck;
-            if strcmp(mode, 'auto')
-                anyDD = any(arrayfun(@(l) any(cellfun(@isDataDriven, l.path)), leaves));
-                if anyDD, mode = 'injection'; else, mode = 'probe'; end
-            end
-            result.signalCheck = mode;
             env = struct('tree', tree, 'leaves', leaves, 'contract', contract, 'ref', ref, 'opts', opts, ...
-                'mode', mode, 'nbchan', root.nbchan + numel(fieldOr(root.etc.neuroqc, 'preRemoved', [])), 'done', done, 'checkpoint', opts.checkpoint, 'tStart', tic, ...
+                'nbchan', root.nbchan + numel(fieldOr(root.etc.neuroqc, 'preRemoved', [])), 'done', done, 'checkpoint', opts.checkpoint, 'tStart', tic, ...
                 'truth', [], 'identity', '');
-            S = [];
-            if strcmp(mode, 'injection')
-                [S, env.truth] = neuroqc.eval.Injection.prepare(root, contract, ref, opts);
-                neuroqc.utils.log(['Signal check: a known %g uV signal is carried through every candidate with the ', ...
-                    'same decisions (matched-decision injection).'], opts.injectUv);
-            else
-                neuroqc.utils.log('Signal check: filter probe (no data-driven steps in the plan).');
-            end
+            % signal check: a copy holding only a known signal goes through every
+            % candidate with the same operations and decisions as the real data
+            [S, env.truth] = neuroqc.eval.Injection.prepare(root, contract, ref, opts);
+            neuroqc.utils.log(['Signal check: a known %g uV signal is carried through every candidate with the ', ...
+                'same decisions (matched-decision injection).'], opts.injectUv);
             if ~isempty(opts.checkpoint) && ~any(done)
                 result = neuroqc.run.Executor.writeManifest(result);
                 env.identity = result.identity;
@@ -138,18 +126,6 @@ classdef Executor
             allc = repmat(emptyCand(), numel(leaves), 1);
             if isfield(result, 'prevCands'), allc = result.prevCands; result = rmfield(result, 'prevCands'); end
             for k = 1:numel(cands), allc(cands(k).id) = cands(k); end
-            % filter probe (cheap, deterministic) when injection is off
-            if strcmp(mode, 'probe')
-                cache = containers.Map('KeyType', 'char', 'ValueType', 'any');
-                for li = 1:numel(allc)
-                    if ~strcmp(allc(li).status, 'ok'), continue; end
-                    pk = probeKey(leaves(li).path);
-                    if ~isKey(cache, pk)
-                        cache(pk) = neuroqc.eval.FilterProbe.run(leaves(li).path, result.state.srate, contract);
-                    end
-                    allc(li).signal = cache(pk);
-                end
-            end
             result.cands = allc;
             R = neuroqc.eval.Rank.run(allc, ref, opts);
             result.ranking = R;
@@ -496,21 +472,6 @@ function s = failStatus(ME)
 if strcmp(ME.identifier, 'NeuroQC:AllRejected'), s = 'rejected'; else, s = 'failed'; end
 end
 
-function tf = isDataDriven(in)
-% Steps whose effect depends on the data (decisions, adaptive cleaning) need
-% the injection check; fixed linear filters and resampling are fully
-% described by the filter probe. A native command counts as fixed only if
-% it is a pop_eegfiltnew or pop_resample call.
-dataDriven = {'badchannels','channels','restore','ica','icremove','asr', ...
-    'reject_threshold','reject_jointprob','reject_kurtosis'};
-if strcmp(in.type, 'native')
-    st = neuroqc.run.Native.statements(in.params.command);
-    tf = any(cellfun(@isempty, regexp(st, '^\s*\[?\s*EEG[^=]*=\s*pop_(eegfiltnew|resample)\s*\(', 'once')));
-else
-    tf = any(strcmp(in.type, dataDriven));
-end
-end
-
 function [ctx, acc] = advance(in, ctx, acc, info, coms, unmatched, secs)
 % State carried to the next step. One definition for the serial search,
 % the parallel trunk and replay, so all three run identical steps.
@@ -592,17 +553,6 @@ out = tree(node).leaves;
 for c = tree(node).children
     out = [out leavesUnder(tree, c)]; %#ok<AGROW>
 end
-end
-
-function k = probeKey(path)
-parts = {};
-for q = 1:numel(path)
-    if any(strcmp(path{q}.type, {'highpass','lowpass','linenoise','resample','native'}))
-        parts{end+1} = path{q}.key; %#ok<AGROW>
-    end
-end
-k = strjoin(parts, '>');
-if isempty(k), k = 'none'; end
 end
 
 function tf = canParallel()

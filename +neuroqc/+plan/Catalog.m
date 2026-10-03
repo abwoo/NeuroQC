@@ -28,25 +28,21 @@ classdef Catalog
             P = @(name, default, suggest, defines, doc) struct('name', name, 'default', {default}, ...
                 'suggest', {suggest}, 'defines', defines, 'doc', doc);
             none = P('', [], {}, false, ''); none(1) = [];
-            d = struct('type', type, 'label', '', 'params', none, 'dialog', '', 'probe', false, 'doc', '');
+            d = struct('type', type, 'label', '', 'params', none, 'dialog', '', 'doc', '');
             switch type
                 case 'resample'
                     d.label = 'Resample'; d.dialog = 'pop_resample';
                     d.params = P('fs', [], {}, false, 'new sampling rate (Hz), downsampling only; required (no default)');
-                    d.probe = true;
                 case 'linenoise'
                     d.label = 'Line-noise notch (FIR band-stop)'; d.dialog = 'pop_eegfiltnew';
                     d.params = [P('freq', 'auto', {}, false, 'line frequency (Hz); ''auto'' = 50 or 60 Hz detected from the dataset''s spectrum'), ...
                         P('halfwidth', 2, {}, false, 'stop band = freq +/- halfwidth (Hz)')];
-                    d.probe = true;
                 case 'highpass'
                     d.label = 'High-pass filter'; d.dialog = 'pop_eegfiltnew';
                     d.params = P('cutoff', 0.1, {0.1, 0.3, 0.5, 1}, false, 'pass-band edge (Hz)');
-                    d.probe = true;
                 case 'lowpass'
                     d.label = 'Low-pass filter'; d.dialog = 'pop_eegfiltnew';
                     d.params = P('cutoff', 30, {20, 30, 40}, false, 'pass-band edge (Hz)');
-                    d.probe = true;
                 case 'asr'
                     d.label = 'ASR burst correction (clean_rawdata)'; d.dialog = 'pop_clean_rawdata';
                     d.params = P('cutoff', 20, {10, 20, 30}, false, 'burst criterion (SD)');

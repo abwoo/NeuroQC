@@ -8,43 +8,25 @@ classdef Rank
     %        trials per condition    >= minTrials
     %        retention per condition >= minRetention
     %        interpolated channels   <= maxInterpolated (fraction)
-    %        signal preservation (FilterProbe or Injection):
-    %          amplitude error <= maxAmplitudeError, peak shift <=
-    %          maxLatencyShiftMs, artifactual deflection <= maxArtifactPct,
-    %          waveform correlation >= minWaveformCorr, topography
-    %          correlation >= minTopoCorr (injection only)
-    %        optional limits on imported external QC columns
-    %   3. Objective (opts.objective):
-    %        'composite'  RMS of all objective SMEs (only when every
-    %                     objective has the same unit)
-    %        {'P3.mean','N2.peakLatency'}  priority order: candidates the
-    %                     first objective cannot distinguish from its best
-    %                     are compared on the second, and so on
-    %        'pareto'     the non-dominated set over all objectives (point
-    %                     estimates); no single winner unless it is unique
+    %        signal preservation (neuroqc.eval.Injection): amplitude error
+    %          <= maxAmplitudeError, peak shift <= maxLatencyShiftMs,
+    %          artifactual deflection <= maxArtifactPct, waveform
+    %          correlation >= minWaveformCorr, topography correlation >=
+    %          minTopoCorr. A metric that was not computed fails.
+    %   3. Objective (opts.objective): 'composite' = RMS of the SMEs of all
+    %      measures (when they share a unit), or the name of one measure
+    %      (e.g. 'P3.peakLatency'), needed when the units differ. The other
+    %      measures are reported, not ranked.
     %   4. Uncertainty: a paired bootstrap over trials (the same resampled
     %      trials, by urevent, for every candidate). A candidate is "not
     %      distinguished from the best" unless the data show it is worse
-    %      than some other candidate. Default (opts.adjust =
-    %      'simultaneous'): intervals for ALL pairwise differences are
-    %      simultaneous (bootstrap maximum over pairs), so the probability
-    %      that ANY candidate is wrongly declared worse stays bounded for
-    %      any number of candidates and after selecting the best. The
-    %      bootstrap is anti-conservative with few trials, so the default
-    %      alpha = 0.02 was chosen by simulation: probability of any false
-    %      "worse" <= 5% for 2-24 candidates, 20-100 trials per condition,
-    %      unequal condition sizes, independent or highly correlated
-    %      candidates (see test_statistics). diffLo/diffHi are these
-    %      simultaneous intervals of the difference from the best. If one
-    %      reaches 0 the data do NOT DISTINGUISH the candidate from the
-    %      best - absence of evidence, not equivalence. Equivalence is
-    %      claimed only with an explicit margin (opts.equivalenceMargin,
-    %      objective units): the 90% interval of the difference must lie
-    %      inside +/- margin (two one-sided tests at 5%). probBest = share
-    %      of bootstrap draws in which the candidate is best.
-    %      opts.adjust = 'none' (one percentile interval per comparison
-    %      with the selected best; NOT valid for many candidates) or
-    %      'bonferroni' (the same with alpha / number of comparisons).
+    %      than some other candidate, with intervals simultaneous over all
+    %      candidate pairs: the probability that ANY candidate is wrongly
+    %      declared worse stays <= ~5% for any number of candidates (alpha
+    %      = 0.02 chosen by simulation for 2-24 candidates, 20-100 trials,
+    %      unequal condition sizes, correlated candidates; see
+    %      test_statistics). Not distinguished = absence of evidence, not
+    %      equivalence.
     %   5. Among candidates the data do not distinguish from the best, the
     %      recommendation is the least aggressive: highest minimum trial
     %      retention, then smallest signal distortion, then best objective.
@@ -62,22 +44,20 @@ classdef Rank
                 'maxAmplitudeError', 0.10, 'maxLatencyShiftMs', 10, 'maxArtifactPct', 0.05, ...
                 'minWaveformCorr', 0.95, 'minTopoCorr', 0.90, ...
                 'objective', 'composite', 'nBoot', 2000, 'nBootPeakOuter', 200, 'nBootPeakInner', 100, ...
-                'nBootPeak', 1000, 'alpha', 0.02, 'adjust', 'simultaneous', 'equivalenceMargin', [], 'seed', 1, ...
-                'externalQC', [], 'externalLimits', struct());
+                'nBootPeak', 1000, 'alpha', 0.02, 'seed', 1);
         end
 
         function R = run(cands, ref, opts)
             if nargin < 3, opts = struct(); end
             opts = withDefaults(opts, neuroqc.eval.Rank.defaults());
             n = numel(cands);
-            [objNames, mode] = resolveObjective(opts.objective, ref);
+            objName = resolveObjective(opts.objective, ref);
             nO = numel(ref.objectives);
             status = repmat({''}, n, 1); reasons = repmat({''}, n, 1);
             stratum = repmat({''}, n, 1);
             primary = nan(n, 1); minRet = nan(n, 1); minKept = nan(n, 1); interp = nan(n, 1);
             ampErr = nan(n, 1); latSh = nan(n, 1); artPct = nan(n, 1); wCorr = nan(n, 1); tCorr = nan(n, 1);
-            resid = nan(n, 1); blsd = nan(n, 1); objAgg = nan(n, nO);
-            ext = externalColumns(opts.externalQC, cands);
+            objAgg = nan(n, nO);
             for i = 1:n
                 c = cands(i);
                 if isfield(c, 'stratum') && ~isempty(c.stratum), stratum{i} = c.stratum; end
@@ -88,7 +68,7 @@ classdef Rank
                 end
                 m = c.m;
                 objAgg(i, :) = [m.objectives.agg];
-                primary(i) = primaryPoint(m, objNames{1}, ref);
+                primary(i) = primaryPoint(m, objName, ref);
                 minRet(i) = min(m.retention); minKept(i) = min(m.kept);
                 interp(i) = c.interpolatedFraction;
                 sg = c.signal;
@@ -96,7 +76,6 @@ classdef Rank
                     ampErr(i) = sg.amplitudeError; latSh(i) = sg.latencyShiftMs; artPct(i) = sg.artifactPct;
                     wCorr(i) = sg.waveformCorr; tCorr(i) = sg.topoCorr;
                 end
-                resid(i) = m.artifactPct; blsd(i) = m.baselineSd;
                 why = {};
                 % every comparison is written so that a missing value (NaN) fails it:
                 % a check that was not computed is never a pass
@@ -122,83 +101,42 @@ classdef Rank
                         end
                     end
                 end
-                for f = fieldnames(opts.externalLimits)'
-                    lim = opts.externalLimits.(f{1}); v = ext.(f{1})(i);
-                    if ~(v >= lim(1) && v <= lim(2)), why{end+1} = sprintf('external %s = %g outside [%g %g]', f{1}, v, lim); end %#ok<AGROW>
-                end
                 if ~isfinite(primary(i)), why{end+1} = 'objective undefined'; end %#ok<AGROW>
                 if isempty(why), status{i} = 'feasible'; else, status{i} = 'rejected'; reasons{i} = strjoin(why, '; '); end
             end
 
-            lo = nan(n, 1); hi = nan(n, 1); notDist = false(n, 1); equiv = nan(n, 1); pBest = nan(n, 1);
-            pareto = false(n, 1); recommended = []; best = [];
+            lo = nan(n, 1); hi = nan(n, 1); notDist = false(n, 1);
+            recommended = []; best = [];
             byStratum = struct('stratum', {}, 'best', {}, 'recommended', {}, 'set', {});
             strata = unique(stratum(strcmp(status, 'feasible')), 'stable');
             for s = 1:numel(strata)
                 feas = find(strcmp(status, 'feasible') & strcmp(stratum, strata{s}));
-                if strcmp(mode, 'pareto')
-                    P = objAgg(feas, :);
-                    nd = true(numel(feas), 1);
-                    for a = 1:numel(feas)
-                        dom = all(P <= P(a, :), 2) & any(P < P(a, :), 2);
-                        nd(a) = ~any(dom);
-                    end
-                    pareto(feas(nd)) = true;
-                    set = feas(nd);
-                    rec = []; if isscalar(set), rec = set; end
-                    byStratum(end+1) = struct('stratum', strata{s}, 'best', set, 'recommended', rec, 'set', set); %#ok<AGROW>
-                    continue;
-                end
-                boot = neuroqc.eval.Rank.bootstrap(cands(feas), ref, opts, objNames);
-                alphaEff = opts.alpha;
-                if strcmp(opts.adjust, 'bonferroni'), alphaEff = opts.alpha / max(1, numel(feas) - 1); end
-                S = 1:numel(feas);
-                for q = 1:numel(objNames)
-                    pts = arrayfun(@(i) primaryPoint(cands(feas(i)).m, objNames{q}, ref), S);
-                    [~, ib] = min(pts); bq = S(ib);
-                    [keepS, l, h] = bestSet(pts(:), boot{q}(S, :), ib, alphaEff, opts.adjust);
-                    if q == 1
-                        lo(feas(S)) = l; hi(feas(S)) = h;
-                        if ~isempty(opts.equivalenceMargin)
-                            mrg = opts.equivalenceMargin;
-                            for k = 1:numel(S)
-                                d = boot{q}(S(k), :) - boot{q}(bq, :); d = d(isfinite(d));
-                                if ~isempty(d), equiv(feas(S(k))) = pct(d, 5) >= -mrg && pct(d, 95) <= mrg; end
-                            end
-                        end
-                        notDist(feas(S(keepS))) = true;
-                        Bm = boot{1}(S, :);
-                        isMin = Bm <= min(Bm, [], 1) + 1e-12 * max(1, abs(min(Bm, [], 1)));
-                        pBest(feas(S)) = mean(isMin ./ sum(isMin, 1), 2);   % exact ties share the draw
-                        bestS = feas(bq);
-                        lo(bestS) = 0; hi(bestS) = 0;
-                    end
-                    S = S(keepS);
-                end
-                t = feas(S);
+                boot = neuroqc.eval.Rank.bootstrap(cands(feas), ref, opts, {objName});
+                pts = primary(feas);
+                [~, ib] = min(pts);
+                [keep, l, h] = bestSet(pts(:), boot{1}, ib, opts.alpha);
+                lo(feas) = l; hi(feas) = h; notDist(feas(keep)) = true;
+                t = feas(keep);
+                % least aggressive among those not distinguished from the best
                 key = [-minRet(t), ampErr(t), primary(t)];
                 [~, o] = sortrows(round(key, 10));
-                byStratum(end+1) = struct('stratum', strata{s}, 'best', bestS, 'recommended', t(o(1)), 'set', t); %#ok<AGROW>
+                byStratum(end+1) = struct('stratum', strata{s}, 'best', feas(ib), 'recommended', t(o(1)), 'set', t); %#ok<AGROW>
             end
             if isscalar(byStratum)
                 recommended = byStratum.recommended; best = byStratum.best;
             end
             feasAll = find(strcmp(status, 'feasible'));
             order = [sortBy(feasAll, primary); find(strcmp(status, 'rejected')); find(strcmp(status, 'failed'))];
-            T = table((1:n)', stratum, status, primary, lo, hi, notDist, equiv, pBest, pareto, minRet, minKept, interp, ...
-                ampErr, latSh, artPct, wCorr, tCorr, resid, blsd, reasons, ...
+            T = table((1:n)', stratum, status, primary, lo, hi, notDist, minRet, minKept, interp, ...
+                ampErr, latSh, artPct, wCorr, tCorr, reasons, ...
                 'VariableNames', {'id','stratum','status','objective','diffLo','diffHi','notDistinguished', ...
-                'equivalent','probBest','pareto','minRetention','minTrials','interpolated','ampError', ...
-                'latencyShiftMs','artifactPct','waveformCorr','topoCorr','residualArtifactPct','baselineSd','reason'});
+                'minRetention','minTrials','interpolated','ampError', ...
+                'latencyShiftMs','artifactPct','waveformCorr','topoCorr','reason'});
             for k = 1:nO
                 T.(matlab.lang.makeValidName(['sme_' ref.objectives{k}])) = objAgg(:, k);
             end
-            for f = fieldnames(ext)'
-                T.(matlab.lang.makeValidName(['ext_' f{1}])) = ext.(f{1});
-            end
             R = struct('table', T, 'order', order, 'best', best, 'recommended', recommended, ...
-                'byStratum', byStratum, 'objective', {objNames}, 'mode', mode, 'options', opts, ...
-                'units', {ref.units});
+                'byStratum', byStratum, 'objective', objName, 'options', opts, 'units', {ref.units});
         end
 
         function boot = bootstrap(cands, ref, opts, objNames)
@@ -282,28 +220,19 @@ classdef Rank
 
         function print(R, labels)
             T = R.table; o = R.options;
-            if strcmp(R.mode, 'pareto')
-                neuroqc.utils.log('Ranking: Pareto set over objectives %s (point estimates).', strjoin(R.objective, ', '));
-            else
-                neuroqc.utils.log(['Ranking by %s (lower SME = more precise measure). diff = difference from the best ', ...
-                    'with %.0f%% interval (%s); "nd" = not distinguished from the best by these data (not equivalence).'], ...
-                    strjoin(R.objective, ' > '), 100 * (1 - o.alpha), ...
-                    ternary(strcmp(o.adjust, 'simultaneous'), 'simultaneous over all candidates', ['adjust = ' o.adjust]));
-            end
-            fprintf('   %-4s %-9s %9s %19s %3s %5s %6s %6s %6s %5s  %s\n', 'id', 'status', 'objective', 'diff vs best [CI]', 'nd', 'pBest', 'minRet', 'interp', 'ampErr', 'art', 'pipeline');
+            neuroqc.utils.log(['Ranking by %s SME (lower = more precise measure). diff = difference from the best, ', ...
+                '%.0f%% interval simultaneous over all candidates; "nd" = not distinguished from the best by these data ', ...
+                '(not equivalence).'], R.objective, 100 * (1 - o.alpha));
+            fprintf('   %-4s %-9s %9s %19s %3s %6s %6s %6s %5s  %s\n', 'id', 'status', 'objective', 'diff vs best [CI]', 'nd', 'minRet', 'interp', 'ampErr', 'art', 'pipeline');
             for k = R.order(:)'
                 mark = ' '; if any([R.byStratum.recommended] == k), mark = '*'; end
                 ci = ''; if isfinite(T.diffLo(k)), ci = sprintf('[%+.3f %+.3f]', T.diffLo(k), T.diffHi(k)); end
                 nd = ''; if T.notDistinguished(k), nd = 'nd'; end
-                if T.pareto(k), nd = 'P'; end
-                fprintf('  %s%-4d %-9s %9.4g %19s %3s %5.2f %5.0f%% %5.0f%% %5.0f%% %4.1f%%  %s\n', mark, k, T.status{k}, ...
-                    T.objective(k), ci, nd, T.probBest(k), 100*T.minRetention(k), 100*T.interpolated(k), ...
+                fprintf('  %s%-4d %-9s %9.4g %19s %3s %5.0f%% %5.0f%% %5.0f%% %4.1f%%  %s\n', mark, k, T.status{k}, ...
+                    T.objective(k), ci, nd, 100*T.minRetention(k), 100*T.interpolated(k), ...
                     100*T.ampError(k), 100*T.artifactPct(k), labels{k});
                 if ~isempty(T.stratum{k}), fprintf('        stratum: %s\n', T.stratum{k}); end
                 if ~isempty(T.reason{k}), fprintf('        -> %s\n', T.reason{k}); end
-                if isfinite(T.equivalent(k)) && T.equivalent(k)
-                    fprintf('        equivalent to the best within +/- %g\n', o.equivalenceMargin);
-                end
             end
             if isempty(R.byStratum)
                 neuroqc.utils.log('NO FEASIBLE PIPELINE: no candidate satisfies the constraints (none relaxed).');
@@ -321,13 +250,8 @@ classdef Rank
             for s = 1:numel(R.byStratum)
                 b = R.byStratum(s);
                 lab = ''; if ~isempty(b.stratum), lab = sprintf(' [stratum %s]', b.stratum); end
-                if strcmp(R.mode, 'pareto')
-                    neuroqc.utils.log('Pareto set%s: %s%s', lab, mat2str(b.set(:)'), ...
-                        ternary(isscalar(b.set), sprintf(' -> recommended %d', b.recommended), ' (no single winner; choose by your priorities)'));
-                else
-                    neuroqc.utils.log('Recommended (*)%s: candidate %d; best objective: candidate %d; %d candidate(s) not distinguished from the best.', ...
-                        lab, b.recommended, b.best, numel(b.set));
-                end
+                neuroqc.utils.log(['Recommended (*)%s: candidate %d (fewest trials lost, then least distortion, among the %d ', ...
+                    'not distinguished from the best); best objective: candidate %d.'], lab, b.recommended, numel(b.set), b.best);
             end
             if numel(R.byStratum) > 1
                 neuroqc.utils.log('Strata differ in what is measured; their results are not comparable with each other.');
@@ -343,28 +267,20 @@ for f = fieldnames(d)'
 end
 end
 
-function [names, mode] = resolveObjective(obj, ref)
-if ischar(obj) || isstring(obj)
-    obj = char(obj);
-    switch obj
-        case 'composite'
-            assert(numel(unique(ref.units)) == 1, 'NeuroQC:Objective', ...
-                ['Objectives have different units (%s); a composite would add incompatible quantities. ', ...
-                 'Set opts.objective to a priority list, e.g. {''%s''}, or ''pareto''.'], ...
-                strjoin(unique(ref.units), ', '), ref.objectives{1});
-            names = {'composite'}; mode = 'composite';
-        case 'pareto'
-            names = ref.objectives; mode = 'pareto';
-        otherwise
-            names = {obj}; mode = 'priority';
-    end
-else
-    names = cellstr(obj); mode = 'priority';
+function name = resolveObjective(obj, ref)
+% 'composite' (all measures share a unit) or the name of one measure.
+if iscell(obj)
+    assert(isscalar(obj), 'NeuroQC:Objective', 'Choose one objective (or ''composite''), not a list.');
+    obj = obj{1};
 end
-if strcmp(mode, 'priority')
-    bad = setdiff(names, ref.objectives);
-    assert(isempty(bad), 'NeuroQC:Objective', 'Unknown objective(s) %s; available: %s', ...
-        strjoin(bad, ', '), strjoin(ref.objectives, ', '));
+name = char(obj);
+if strcmp(name, 'composite')
+    assert(numel(unique(ref.units)) == 1, 'NeuroQC:Objective', ...
+        ['The measures have different units (%s); a composite would add incompatible quantities. ', ...
+         'Choose the measure to optimize, e.g. ''%s''.'], strjoin(unique(ref.units), ', '), ref.objectives{1});
+else
+    assert(any(strcmp(name, ref.objectives)), 'NeuroQC:Objective', 'Unknown objective %s; available: composite, %s', ...
+        name, strjoin(ref.objectives, ', '));
 end
 end
 
@@ -373,39 +289,13 @@ if strcmp(name, 'composite'), v = m.composite;
 else, v = m.objectives(strcmp(ref.objectives, name)).agg; end
 end
 
-function ext = externalColumns(Q, cands)
-ext = struct();
-if isempty(Q), return; end
-if ischar(Q) || isstring(Q), Q = readtable(char(Q), 'TextType', 'char'); end
-assert(istable(Q) && any(strcmp(Q.Properties.VariableNames, 'key')), 'NeuroQC:ExternalQC', ...
-    'External QC must be a table (or CSV) with a ''key'' column matching the candidate pipeline keys.');
-keys = arrayfun(@(c) c.key, cands, 'UniformOutput', false);
-[tf, loc] = ismember(keys, Q.key);
-for v = setdiff(Q.Properties.VariableNames, {'key'})
-    col = Q.(v{1});
-    if ~isnumeric(col) && ~islogical(col), continue; end
-    x = nan(numel(cands), 1); x(tf) = double(col(loc(tf)));
-    ext.(matlab.lang.makeValidName(v{1})) = x;
-end
-end
-
-function [keep, lo, hi] = bestSet(pts, Bq, ib, alpha, adjust)
+function [keep, lo, hi] = bestSet(pts, Bq, ib, alpha)
 % Which candidates the data do not show to be worse than another one.
 % pts: point objectives (K x 1); Bq: paired bootstrap replicates (K x B);
 % ib: index of the point-best. lo/hi: interval of each difference from
 % the best (0 for the best itself).
 K = numel(pts); keep = false(K, 1); lo = nan(K, 1); hi = nan(K, 1);
 keep(ib) = true;
-if ~strcmp(adjust, 'simultaneous')
-    % one percentile interval per comparison with the selected best
-    for k = 1:K
-        d = Bq(k, :) - Bq(ib, :); d = d(isfinite(d));
-        if isempty(d), continue; end
-        lo(k) = pct(d, 100 * alpha / 2); hi(k) = pct(d, 100 * (1 - alpha / 2));
-        keep(k) = keep(k) || lo(k) <= 0;
-    end
-    return;
-end
 % Simultaneous over ALL ordered pairs (bootstrap max statistic): with
 % probability ~>= 1-alpha no candidate is wrongly declared worse than any
 % other, however many candidates are compared and whichever one looks
@@ -448,8 +338,4 @@ elseif isnumeric(v) || islogical(v), t = mat2str(v);
 elseif iscell(v), t = strjoin(cellfun(@valText, v, 'UniformOutput', false), ',');
 else, t = class(v);
 end
-end
-
-function s = ternary(c, a, b)
-if c, s = a; else, s = b; end
 end

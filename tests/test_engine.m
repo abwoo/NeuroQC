@@ -44,7 +44,6 @@ verifyTrue(tc, contains(adopted.history, 'pop_eegthresh'));
 verifyTrue(tc, contains(adopted.history, 'pop_rejepoch'));
 m = neuroqc.eval.Measure.candidate(adopted, c, r.ref);
 verifyEqual(tc, m.composite, r.cands(rec).m.composite, 'RelTol', 1e-9);
-verifyEqual(tc, r.signalCheck, 'injection');   % rejection is data-driven -> injection check
 end
 
 function testIcaSharedAcrossThresholds(tc)
@@ -76,9 +75,8 @@ p = p.add('epoch'); p = p.add('baseline');
 r = neuroqc.NeuroQC.optimize(p, c);
 verifyEqual(tc, r.cands(1).status, 'ok');
 verifyTrue(tc, contains(r.cands(1).coms{1}, '''plotfreqz'',0'));
-verifyEqual(tc, r.signalCheck, 'probe');                     % a native fixed filter needs no injection
-verifyEqual(tc, r.cands(1).signal.source, 'filter probe');
-verifyGreaterThan(tc, r.cands(1).signal.amplitudeError, 0); % filter recognised by the probe
+verifyEqual(tc, r.cands(1).signal.source, 'injection');
+verifyGreaterThan(tc, r.cands(1).signal.amplitudeError, 0); % the filter's effect on the known signal is measured
 end
 
 % ------------------------------------------------- numerical validation
@@ -200,7 +198,6 @@ c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0
 p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('epoch'); p = p.add('baseline');
 p = p.add('reject_threshold', 'uv', 1000);
 r = neuroqc.NeuroQC.optimize(p, c);
-verifyEqual(tc, r.signalCheck, 'injection');
 verifyLessThan(tc, r.cands(1).signal.amplitudeError, 0.05);
 verifyEqual(tc, r.ranking.table.status{1}, 'feasible');
 end
@@ -236,7 +233,6 @@ for f = {'pop_eegfiltnew', 'revfilt', 'pop_rejchan', 'pop_interp', 'pop_reref', 
     verifyTrue(tc, contains(coms, f{1}), f{1});
 end
 verifyTrue(tc, contains(strjoin(r.cands(2).coms, newline), 'pop_rejkurt'));
-verifyEqual(tc, r.signalCheck, 'injection');
 verifyEmpty(tc, [r.cands.unmatched]);          % every decision was replayed, none re-run
 end
 
@@ -450,7 +446,6 @@ c = r.cands(1);
 verifyEqual(tc, c.status, 'ok');
 verifyGreaterThan(tc, c.rejectedEpochs, 0);
 verifyEmpty(tc, c.unmatched);                                   % decision-matched
-verifyEqual(tc, r.signalCheck, 'injection');
 verifyLessThan(tc, c.signal.amplitudeError, 0.05);
 verifyTrue(tc, any(contains(c.coms, '-60,120')) && any(contains(c.coms, 'pop_rejepoch')));
 % the decision equals what the asymmetric limits mark on the processed data
@@ -511,7 +506,6 @@ p = p.add('epoch'); p = p.add('baseline');
 r = neuroqc.NeuroQC.optimize(p, nqc_c());
 verifyEqual(tc, numel(unique({r.leaves.stratum})), 2);          % never ranked against each other
 verifyEqual(tc, numel(r.ranking.byStratum), 2);
-verifyEqual(tc, r.signalCheck, 'injection');
 for k = 1:2
     verifyLessThan(tc, r.cands(k).signal.amplitudeError, 0.01);  % a change of reference is not distortion
     verifyGreaterThan(tc, r.cands(k).signal.waveformCorr, 0.999);
@@ -557,7 +551,6 @@ p = p.addEeglab('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',30,''pl
 p = p.addNative('EEG = pop_reref(EEG, []);', 'ref');
 p = p.add('epoch'); p = p.add('baseline'); p = p.add('reject_threshold', 'uv', 150);
 r = neuroqc.NeuroQC.optimize(p, nqc_c());
-verifyEqual(tc, r.signalCheck, 'injection');
 verifyEmpty(tc, r.cands(1).unmatched);
 q = neuroqc.plan.Plan();
 q = q.addNative('EEG = pop_rejchan(EEG, ''elec'',[1:32],''threshold'',5,''norm'',''on'',''measure'',''kurt'');', 'bad');
