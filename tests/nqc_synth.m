@@ -7,7 +7,8 @@ function [EEG, truth] = nqc_synth(opts)
 %   locations come from EEGLAB's sample 32-channel montage.
 if nargin < 1, opts = struct(); end
 d = struct('srate', 250, 'seconds', 400, 'nPerCond', 90, 'seed', 7, 'p3', 6, ...
-    'noise', 8, 'drift', 25, 'line', 4, 'blinkRate', 0.25, 'artifactTrials', 0.15);
+    'noise', 8, 'drift', 25, 'line', 4, 'blinkRate', 0.25, 'artifactTrials', 0.15, ...
+    'p3Jitter', 0, 'noisyChannels', {{}}, 'noisyUv', 60, 'alphaUv', 0);
 for f = fieldnames(d)', if ~isfield(opts, f{1}), opts.(f{1}) = d.(f{1}); end, end
 rng(opts.seed, 'twister');
 locfile = fullfile(fileparts(which('eeglab')), 'sample_data', 'eeglab_chan32.locs');
@@ -53,7 +54,12 @@ wave = exp(-0.5 * ((tt/fs - truth.p3Latency) / truth.p3Sigma).^2);
 art = false(1, nTrials);
 for k = 1:nTrials
     amp = opts.p3; if strcmp(types{k}, '31'), amp = opts.p3 / 3; end
-    data(:, lat(k) + tt) = data(:, lat(k) + tt) + p3Topo' * (amp * wave);
+    if opts.p3Jitter > 0
+        wk = exp(-0.5 * ((tt/fs - truth.p3Latency - opts.p3Jitter * randn) / truth.p3Sigma).^2);
+    else
+        wk = wave;
+    end
+    data(:, lat(k) + tt) = data(:, lat(k) + tt) + p3Topo' * (amp * wk);
     if rand < opts.artifactTrials
         art(k) = true; % movement artifact: large, broad, all channels
         seg = round(fs * (0.1 + 0.5*rand)) + (0:round(0.3*fs));
@@ -61,6 +67,15 @@ for k = 1:nTrials
         data(:, lat(k) + seg) = data(:, lat(k) + seg) + (0.5 + rand(nch, 1)) * bump;
     end
 end
+if opts.alphaUv > 0   % occipital 10 Hz rhythm with slow amplitude modulation
+    a = opts.alphaUv * (1 + 0.3 * sin(2*pi*0.1*t)) .* sin(2*pi*10*t);
+    data = data + topo('OZ', 0.5)' * a;
+end
+for k = 1:numel(opts.noisyChannels)   % broken electrodes: large broadband noise
+    ch = strcmpi(lab, opts.noisyChannels{k});
+    data(ch, :) = data(ch, :) + opts.noisyUv * randn(1, n);
+end
+truth.alphaUv = opts.alphaUv;
 EEG = eeg_emptyset();
 EEG.setname = 'nqc_synth'; EEG.srate = fs; EEG.data = single(data);
 EEG.nbchan = nch; EEG.pnts = n; EEG.trials = 1; EEG.xmin = 0; EEG.xmax = (n-1)/fs;

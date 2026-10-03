@@ -3,11 +3,19 @@ classdef Steps
     %
     %   [EEG, coms, info] = neuroqc.run.Steps.run(inst, EEG, ctx)
     %
-    %   coms is the list of EEGLAB commands that reproduce the step; the
-    %   executor appends them to EEG.history, so every candidate (and the
-    %   dataset you adopt) carries a history that re-runs exactly what was
-    %   done. info carries counts used by the evaluation (interpolated
-    %   channels, removed ICs, rejected epochs).
+    %   coms are the EEGLAB commands that reproduce the step; the executor
+    %   appends them to the candidate's EEG.history. info carries the
+    %   data-dependent decisions the step took (bad channels, ICA matrices,
+    %   removed components, rejected epochs) and counts for the evaluation.
+    %
+    %   EEG = neuroqc.run.Steps.replayDecision(inst, EEG, info, ctx)
+    %
+    %   Applies the SAME decisions to another dataset with the same
+    %   structure (used by neuroqc.eval.Injection to measure how a known
+    %   signal is transferred by exactly the operations applied to the
+    %   real data). Steps whose output is not a fixed linear function of
+    %   their decisions (asr, native) are re-run instead and reported as
+    %   not decision-matched.
 
     methods (Static)
         function [EEG, coms, info] = run(inst, EEG, ctx)
@@ -18,9 +26,10 @@ classdef Steps
                 case 'resample'
                     [EEG, com] = pop_resample(EEG, p.fs);
                     coms = {com};
-                    if EEG.srate ~= p.fs && abs(EEG.srate - p.fs) < 1e-6
-                        % pop_resample can leave e.g. 250.00000000000003 when the
-                        % original rate was not exactly integer; ICLabel rejects that.
+                    if EEG.srate ~= p.fs && abs(EEG.srate - p.fs) <= 1e-9 * p.fs
+                        % pop_resample leaves e.g. 250.00000000000003 when the
+                        % original rate was not exactly representable; only a
+                        % floating-point residue is corrected (ICLabel needs it).
                         EEG.srate = p.fs; EEG = eeg_checkset(EEG);
                         coms{end+1} = sprintf('EEG.srate = %g; EEG = eeg_checkset(EEG); %% NeuroQC: exact rate after resampling', p.fs);
                     end
@@ -42,10 +51,10 @@ classdef Steps
                     coms = {com};
                 case 'badchannels'
                     [EEG, coms, info] = neuroqc.run.Steps.badChannels(EEG, p);
+                case 'channels'
+                    [EEG, coms, info] = neuroqc.run.Steps.listedChannels(EEG, p);
                 case 'restore'
-                    assert(isfield(EEG, 'etc') && isfield(EEG.etc, 'neuroqc') && isfield(EEG.etc.neuroqc, 'rootChanlocs'), ...
-                        'NeuroQC:Restore', 'Root channel montage not recorded');
-                    target = EEG.etc.neuroqc.rootChanlocs;
+                    target = rootChanlocs(EEG);
                     missing = setdiff(lower({target.labels}), lower({EEG.chanlocs.labels}));
                     EEG = pop_interp(EEG, target, 'spherical');
                     coms = {'EEG = pop_interp(EEG, EEG.etc.neuroqc.rootChanlocs, ''spherical'');'};
@@ -59,16 +68,19 @@ classdef Steps
                         [EEG, com] = pop_reref(EEG, ch);
                     end
                     coms = {com};
+                    info.reref = p;
                 case 'ica'
                     [EEG, coms] = neuroqc.run.Steps.ica(EEG, p, ctx);
+                    info.ica = struct('icaweights', EEG.icaweights, 'icasphere', EEG.icasphere, 'icachansind', EEG.icachansind);
                 case 'icremove'
                     [EEG, coms, info] = neuroqc.run.Steps.icRemove(EEG, p);
                 case 'epoch'
                     c = ctx.contract;
-                    [EEG, ~, com] = pop_epoch(EEG, c.allEvents(), c.epoch, 'epochinfo', 'yes');
+                    [EEG, ~, com] = pop_epoch(EEG, c.allEvents(), c.effectiveEpoch(), 'epochinfo', 'yes');
                     coms = {com};
                 case 'baseline'
                     c = ctx.contract;
+                    assert(~isempty(c.effectiveBaseline()), 'NeuroQC:Baseline', 'The contract defines no baseline window.');
                     % clamp to the epoch limits (they can differ from the
                     % contract by less than one sample after resampling)
                     b = 1000 * c.baseline;
@@ -87,28 +99,76 @@ classdef Steps
             coms = coms(~cellfun(@isempty, coms));
         end
 
+        function [EEG, matched] = replayDecision(inst, EEG, info, ctx)
+            % Same decisions on a structurally identical dataset.
+            matched = true;
+            switch inst.type
+                case 'badchannels'
+                    if strcmp(inst.params.action, 'remove')
+                        if ~isempty(info.badIdx), EEG = pop_select(EEG, 'nochannel', info.badIdx); end
+                    elseif ~isempty(info.badIdx)
+                        EEG = pop_interp(EEG, info.badIdx, 'spherical');
+                    end
+                case 'channels'
+                    if ~isempty(info.listedIdx)
+                        if strcmp(inst.params.action, 'remove'), EEG = pop_select(EEG, 'nochannel', info.listedIdx);
+                        else, EEG = pop_interp(EEG, info.listedIdx, 'spherical'); end
+                    end
+                case 'ica'
+                    EEG.icaweights = info.ica.icaweights; EEG.icasphere = info.ica.icasphere;
+                    EEG.icachansind = info.ica.icachansind; EEG.icawinv = []; EEG.icaact = [];
+                    EEG = eeg_checkset(EEG);
+                case 'icremove'
+                    if ~isempty(info.comps), EEG = pop_subcomp(EEG, info.comps, 0); end
+                case {'reject_threshold','reject_jointprob','reject_kurtosis'}
+                    if ~isempty(info.rejIdx), EEG = pop_rejepoch(EEG, info.rejIdx, 0); end
+                case {'asr','native'}
+                    matched = false;
+                    EEG = neuroqc.run.Steps.run(inst, EEG, ctx);
+                otherwise
+                    EEG = neuroqc.run.Steps.run(inst, EEG, ctx);
+            end
+        end
+
         function [EEG, coms, info] = badChannels(EEG, p)
             args = {'elec', 1:EEG.nbchan, 'threshold', p.threshold, 'norm', 'on', 'measure', p.measure};
             if strcmp(p.measure, 'spec'), args = [args {'freqrange', [1 min(50, EEG.srate/2 - 1)]}]; end
-            [EEGrem, bad, ~, com] = pop_rejchan(EEG, args{:}); %#ok<ASGLU>
+            [EEGrem, bad, ~, com] = pop_rejchan(EEG, args{:});
             bad = bad(:)';
             labels = {EEG.chanlocs(bad).labels};
-            info.badChannels = labels;
+            info.badChannels = labels; info.badIdx = bad;
             if strcmp(p.action, 'remove')
                 EEG = EEGrem;
                 coms = {com};
                 info.removed = labels;
                 return;
             end
-            % interpolate in place: detection result + explicit interpolation
             coms = {sprintf('%% NeuroQC: pop_rejchan(measure %s, threshold %g, norm on) -> bad channels [%s] interpolated in place', ...
                 p.measure, p.threshold, strjoin(labels, ' '))};
             info.interpolated = labels;
             if ~isempty(bad)
-                hasXYZ = isfield(EEG.chanlocs, 'X') && all(arrayfun(@(c) ~isempty(c.X), EEG.chanlocs));
-                assert(hasXYZ, 'NeuroQC:Chanlocs', 'Spherical interpolation needs channel locations (Edit > Channel locations).');
+                requireLocations(EEG);
                 [EEG, com2] = pop_interp(EEG, bad, 'spherical');
                 coms{end+1} = com2;
+            end
+        end
+
+        function [EEG, coms, info] = listedChannels(EEG, p)
+            % Channels you name (e.g. known-bad O1/O2): remove or interpolate.
+            labels = cellstr(p.labels);
+            [ok, idx] = ismember(lower(labels), lower({EEG.chanlocs.labels}));
+            assert(all(ok), 'NeuroQC:Channels', 'Channel(s) not in the data: %s', strjoin(labels(~ok), ', '));
+            info.listedIdx = idx(:)';
+            switch p.action
+                case 'remove'
+                    [EEG, com] = pop_select(EEG, 'rmchannel', labels);
+                    coms = {com}; info.removed = labels;
+                case 'interpolate'
+                    requireLocations(EEG);
+                    [EEG, com] = pop_interp(EEG, idx(:)', 'spherical');
+                    coms = {com}; info.interpolated = labels;
+                otherwise
+                    error('NeuroQC:Channels', 'channels action must be remove or interpolate');
             end
         end
 
@@ -118,7 +178,7 @@ classdef Steps
             if p.fitHighpass > 0 && p.fitHighpass > applied
                 % Fit on a high-passed copy (stable decomposition), apply
                 % the weights to the data as they are (ERP signal kept).
-                [tmp, c1] = pop_eegfiltnew(EEG, 'locutoff', p.fitHighpass, 'plotfreqz', 0); %#ok<ASGLU>
+                [tmp, ~] = pop_eegfiltnew(EEG, 'locutoff', p.fitHighpass, 'plotfreqz', 0);
                 [tmp, c2] = pop_runica(tmp, opts{:});
                 EEG.icaweights = tmp.icaweights; EEG.icasphere = tmp.icasphere;
                 EEG.icachansind = tmp.icachansind; EEG.icawinv = []; EEG.icaact = [];
@@ -148,6 +208,7 @@ classdef Steps
             comps = find(EEG.reject.gcompreject(:)');
             info.icsTotal = size(EEG.icaweights, 1);
             info.icsRemoved = numel(comps);
+            info.comps = comps;
             coms = {c1, c2};
             if ~isempty(comps)
                 [EEG, c3] = pop_subcomp(EEG, comps, 0);
@@ -164,22 +225,16 @@ classdef Steps
             switch type
                 case 'reject_threshold'
                     [EEG, ~, c1] = pop_eegthresh(EEG, 1, chans, -p.uv, p.uv, EEG.xmin, EEG.xmax, 0, 0);
-                    marks = EEG.reject.rejthresh;
+                    marks = EEG.reject.rejthresh; E = fieldOr(EEG.reject, 'rejthreshE');
                 case 'reject_jointprob'
                     [EEG, ~, ~, ~, c1] = pop_jointprob(EEG, 1, chans, p.sd, p.sd, 0, 0, 0, [], 0);
-                    marks = EEG.reject.rejjp;
+                    marks = EEG.reject.rejjp; E = fieldOr(EEG.reject, 'rejjpE');
                 case 'reject_kurtosis'
                     [EEG, ~, ~, ~, c1] = pop_rejkurt(EEG, 1, chans, p.sd, p.sd, 0, 0, 0, [], 0);
-                    marks = EEG.reject.rejkurt;
+                    marks = EEG.reject.rejkurt; E = fieldOr(EEG.reject, 'rejkurtE');
             end
             idx = find(marks);
             % which channels drive the rejections (a hint for bad channels)
-            E = [];
-            switch type
-                case 'reject_threshold', if isfield(EEG.reject, 'rejthreshE'), E = EEG.reject.rejthreshE; end
-                case 'reject_jointprob', if isfield(EEG.reject, 'rejjpE'), E = EEG.reject.rejjpE; end
-                case 'reject_kurtosis', if isfield(EEG.reject, 'rejkurtE'), E = EEG.reject.rejkurtE; end
-            end
             info.topChannels = '';
             if ~isempty(E) && size(E, 1) == EEG.nbchan && ~isempty(idx)
                 [cnt, order] = sort(sum(E(:, idx) ~= 0, 2), 'descend');
@@ -195,7 +250,7 @@ classdef Steps
                 [EEG, c2] = pop_rejepoch(EEG, idx, 0);
                 coms{end+1} = c2;
             end
-            info.rejected = numel(idx);
+            info.rejected = numel(idx); info.rejIdx = idx;
         end
 
         function [EEG, coms] = native(EEG, command)
@@ -215,4 +270,19 @@ end
 
 function EEG = evalWithEEG(EEG, NEUROQC_CMD__)
 eval(NEUROQC_CMD__);
+end
+
+function v = fieldOr(s, f)
+v = []; if isfield(s, f), v = s.(f); end
+end
+
+function requireLocations(EEG)
+hasXYZ = isfield(EEG.chanlocs, 'X') && all(arrayfun(@(c) ~isempty(c.X), EEG.chanlocs));
+assert(hasXYZ, 'NeuroQC:Chanlocs', 'Spherical interpolation needs channel locations (Edit > Channel locations).');
+end
+
+function target = rootChanlocs(EEG)
+assert(isfield(EEG, 'etc') && isfield(EEG.etc, 'neuroqc') && isfield(EEG.etc.neuroqc, 'rootChanlocs'), ...
+    'NeuroQC:Restore', 'Root channel montage not recorded');
+target = EEG.etc.neuroqc.rootChanlocs;
 end

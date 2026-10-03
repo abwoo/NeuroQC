@@ -50,7 +50,23 @@ classdef History
             end
             history = strrep(char(history), sprintf('\r\n'), newline);
             history = strrep(history, sprintf('\r'), newline);
-            lines = strsplit(history, newline, 'CollapseDelimiters', false);
+            raw = strsplit(history, newline, 'CollapseDelimiters', false);
+            % MATLAB line continuation: "..." outside strings and comments
+            % joins a command with the next line (one entry, first line no.).
+            lines = cell(size(raw)); k = 1;
+            while k <= numel(raw)
+                line = raw{k}; j = k;
+                while j < numel(raw)
+                    code = neuroqc.live.History.stripComment(line);
+                    pos = neuroqc.live.History.continuationAt(code);
+                    if pos == 0, break; end
+                    line = [code(1:pos-1) ' ' strtrim(raw{j+1})];
+                    j = j + 1;
+                end
+                lines{k} = line;
+                for q = k+1:j, lines{q} = ''; end
+                k = j + 1;
+            end
         end
 
         function stmts = splitStatements(line)
@@ -84,6 +100,26 @@ classdef History
             end
             stmts{end+1} = code(first:end);
             stmts = stmts(~cellfun(@(s) isempty(strtrim(s)), stmts));
+        end
+
+        function pos = continuationAt(code)
+            % Index of the first '...' outside quotes (0 = none). In MATLAB
+            % everything after it on the line is ignored.
+            pos = 0; inQ = false; qc = ''; k = 1; n = numel(code);
+            while k <= n
+                ch = code(k);
+                if inQ
+                    if ch == qc
+                        if k < n && code(k+1) == qc, k = k + 2; continue; end
+                        inQ = false;
+                    end
+                elseif neuroqc.live.History.opensString(code, k)
+                    inQ = true; qc = ch;
+                elseif k + 2 <= n && strcmp(code(k:k+2), '...')
+                    pos = k; return;
+                end
+                k = k + 1;
+            end
         end
 
         function [code, comment] = stripComment(line)

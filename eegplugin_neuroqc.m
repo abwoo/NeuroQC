@@ -16,6 +16,4 @@ uimenu(m, 'Label', 'Optimize from current dataset...', 'userdata', 'startup:on;s
     'Callback', 'neuroqc.NeuroQC.app();');
 uimenu(m, 'Label', 'Show dataset state and history', 'userdata', 'startup:off;study:off', ...
     'Callback', 'neuroqc.NeuroQC.state();');
-uimenu(m, 'Label', 'Data inspector', 'userdata', 'startup:off;study:off', ...
-    'Callback', 'neuroqc.inspect.DatasetInspector.inspect(EEG); neuroqc.inspect.EventInspector.inspect(EEG);');
 end

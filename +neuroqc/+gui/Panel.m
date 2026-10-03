@@ -20,6 +20,7 @@ classdef Panel < handle
         PlanTable; TypeDrop; OrderDrop
         CondField; EpochField; BaseField; CompField; EventsLabel
         LimitFields = struct()
+        ObjectiveField
         ResultTable; StatusLabel
     end
 
@@ -92,25 +93,29 @@ classdef Panel < handle
             uilabel(cg, 'Text', 'Baseline (s)'); obj.BaseField = uieditfield(cg, 'Value', '-0.2 0');
             obj.EventsLabel = uilabel(cg, 'Text', 'Event types: -', 'FontColor', [0.3 0.3 0.3]);
             obj.EventsLabel.Layout.Column = [1 4];
-            lg = uigridlayout(rg, [1 14]); lg.Padding = [0 0 0 0];
+            lg = uigridlayout(rg, [1 18]); lg.Padding = [0 0 0 0];
             d = neuroqc.eval.Rank.defaults();
-            names = {'minTrials','minRetention','maxInterpolated','maxAmplitudeError','maxLatencyShiftMs','maxArtifactPct'};
-            short = {'min trials','min retention','max interp','max amp err','max lat ms','max artifact'};
+            names = {'minTrials','minRetention','maxInterpolated','maxAmplitudeError','maxLatencyShiftMs', ...
+                'maxArtifactPct','minWaveformCorr','minTopoCorr'};
+            short = {'min trials','min retention','max interp','max amp err','max lat ms','max artifact','min wave r','min topo r'};
             for k = 1:numel(names)
                 uilabel(lg, 'Text', short{k}, 'HorizontalAlignment', 'right');
                 obj.LimitFields.(names{k}) = uieditfield(lg, 'numeric', 'Value', d.(names{k}));
             end
             uilabel(lg, 'Text', 'max pipelines', 'HorizontalAlignment', 'right');
             obj.LimitFields.maxLeaves = uieditfield(lg, 'numeric', 'Value', 500);
-            ag = uigridlayout(rg, [1 5]); ag.Padding = [0 0 0 0];
+            ag = uigridlayout(rg, [1 7]); ag.Padding = [0 0 0 0];
+            uilabel(ag, 'Text', 'Objective', 'HorizontalAlignment', 'right');
+            obj.ObjectiveField = uieditfield(ag, 'Value', 'composite', 'Tooltip', ...
+                'composite | pareto | priority list, e.g. P3.mean, N2.peakLatency');
             uibutton(ag, 'Text', 'Preview count', 'ButtonPushedFcn', @(~, ~) obj.run(true));
             uibutton(ag, 'Text', 'Run search', 'FontWeight', 'bold', 'ButtonPushedFcn', @(~, ~) obj.run(false));
             uibutton(ag, 'Text', 'Adopt selected as new dataset', 'ButtonPushedFcn', @(~, ~) obj.adopt());
             uibutton(ag, 'Text', 'Print script of selected', 'ButtonPushedFcn', @(~, ~) obj.printScript());
             obj.StatusLabel = uilabel(ag, 'Text', '', 'FontColor', [0 0 0.5]);
             obj.ResultTable = uitable(rg, 'RowName', {}, 'ColumnName', ...
-                {'id','status','SME','diff CI','tied','min ret','interp','amp err','art','pipeline / reason'}, ...
-                'ColumnWidth', {35, 70, 55, 120, 35, 55, 50, 55, 45, 'auto'});
+                {'id','status','objective','diff CI','not distinguished','P(best)','min ret','interp','amp err','art','pipeline / reason'}, ...
+                'ColumnWidth', {35, 70, 65, 120, 45, 50, 55, 50, 55, 45, 'auto'});
         end
 
         % ------------------------------------------------------------- live
@@ -261,9 +266,11 @@ classdef Panel < handle
             comps = {};
             for part = strsplit(strtrim(obj.CompField.Value), ';')
                 p = strtrim(part{1}); if isempty(p), continue; end
-                tok = regexp(p, '^([^:]+):\s*([-\d\.eE]+)\s+([-\d\.eE]+)\s*@\s*(.+)$', 'tokens', 'once');
-                assert(~isempty(tok), 'NeuroQC:Contract', 'Components: name: start end @ ch1 ch2; ...');
-                comps(end+1, :) = {strtrim(tok{1}), [str2double(tok{2}) str2double(tok{3})], strsplit(strtrim(tok{4}))}; %#ok<AGROW>
+                tok = regexp(p, '^([^:]+):\s*([-\d\.eE]+)\s+([-\d\.eE]+)\s*@\s*([^#]+)(.*)$', 'tokens', 'once');
+                assert(~isempty(tok), 'NeuroQC:Contract', 'Components: name: start end @ ch1 ch2 [# measure polarity]; ...');
+                meas = strsplit(strtrim(strrep(tok{5}, '#', '')));
+                meas = meas(~cellfun(@isempty, meas)); if isempty(meas), meas = {'mean'}; end
+                comps(end+1, :) = {strtrim(tok{1}), [str2double(tok{2}) str2double(tok{3})], strsplit(strtrim(tok{4})), meas}; %#ok<AGROW>
             end
             c = neuroqc.eval.Contract('conditions', conds, 'components', comps, ...
                 'epoch', str2num(obj.EpochField.Value), 'baseline', str2num(obj.BaseField.Value)); %#ok<ST2NM>
@@ -273,6 +280,9 @@ classdef Panel < handle
             try
                 c = obj.contract();
                 opts = struct('dryRun', dry);
+                ob = strtrim(obj.ObjectiveField.Value);
+                if any(strcmp(ob, {'composite','pareto'})), opts.objective = ob;
+                else, opts.objective = strtrim(strsplit(ob, ',')); end
                 for f = fieldnames(obj.LimitFields)'
                     opts.(f{1}) = obj.LimitFields.(f{1}).Value;
                 end
@@ -298,11 +308,13 @@ classdef Panel < handle
 
         function showResults(obj)
             r = obj.Result; T = r.ranking.table; data = {};
+            recs = [r.ranking.byStratum.recommended];
             for k = r.ranking.order(:)'
                 ci = ''; if isfinite(T.diffLo(k)), ci = sprintf('[%+.3f %+.3f]', T.diffLo(k), T.diffHi(k)); end
-                id = sprintf('%d', k); if isequal(k, r.ranking.recommended), id = [id '*']; end
+                id = sprintf('%d', k); if any(recs == k), id = [id '*']; end
                 txt = r.labels{k}; if ~isempty(T.reason{k}), txt = [T.reason{k} ' | ' txt]; end
-                data(end+1, :) = {id, T.status{k}, T.smeComposite(k), ci, T.tiedWithBest(k), ...
+                if ~isempty(T.stratum{k}), txt = ['[' T.stratum{k} '] ' txt]; end
+                data(end+1, :) = {id, T.status{k}, T.objective(k), ci, T.notDistinguished(k), T.probBest(k), ...
                     T.minRetention(k), T.interpolated(k), T.ampError(k), T.artifactPct(k), txt}; %#ok<AGROW>
             end
             obj.ResultTable.Data = data;

@@ -10,6 +10,9 @@ classdef NeuroQC
     %   neuroqc.NeuroQC.adopt(r, id)            (or candidate id) as a new
     %                                           EEGLAB dataset, full history
     %   neuroqc.NeuroQC.script(r, id)           EEGLAB commands of a candidate
+    %   neuroqc.NeuroQC.writeScript(r, id, f)   ... as a runnable function file
+    %   r = neuroqc.NeuroQC.resume(folder)      continue an interrupted search
+    %                                           (opts.checkpoint = folder)
     %   neuroqc.NeuroQC.app()                   panel (also EEGLAB > Tools > NeuroQC)
     %
     %   See neuroqc.plan.Plan, neuroqc.eval.Contract, neuroqc.eval.Rank.
@@ -27,6 +30,10 @@ classdef NeuroQC
                 ternary(live.stored, '', ' (base EEG modified, not stored in ALLEEG)'));
             neuroqc.live.DataState.print(s);
             neuroqc.live.History.print(s.history);
+            P = s.provenance;
+            for k = 1:numel(P)
+                fprintf('  [%s] %s %s\n', P(k).category, P(k).item, P(k).detail);
+            end
         end
 
         function result = optimize(plan, contract, opts)
@@ -34,9 +41,27 @@ classdef NeuroQC
             result = neuroqc.run.Executor.run(plan, contract, opts);
         end
 
-        function adopt(result, idx)
+        function result = resume(checkpointDir)
+            result = neuroqc.run.Executor.resume(checkpointDir);
+        end
+
+        function adopt(result, idx, force)
             if nargin < 2, idx = []; end
-            neuroqc.run.Executor.adopt(result, idx);
+            if nargin < 3, force = false; end
+            neuroqc.run.Executor.adopt(result, idx, force);
+        end
+
+        function writeScript(result, idx, file)
+            % Write a runnable EEGLAB function that reproduces candidate idx
+            % from the starting dataset (NeuroQC preparation lines included).
+            if isempty(idx), idx = result.ranking.recommended; end
+            [~, name] = fileparts(file);
+            L = [{sprintf('function EEG = %s(EEG)', name), ...
+                sprintf('%% NeuroQC %s candidate %d: %s', neuroqc.NeuroQC.Version, idx, result.labels{idx})}, ...
+                result.rootComs, result.cands(idx).coms, {'end'}];
+            fid = fopen(file, 'w'); assert(fid > 0, 'NeuroQC:Export', 'Cannot write %s', file);
+            fprintf(fid, '%s\n', L{:}); fclose(fid);
+            neuroqc.utils.log('Wrote %s', file);
         end
 
         function txt = script(result, idx)

@@ -5,7 +5,7 @@ classdef Plan
     %   p = p.add('highpass');                        % cutoff unfixed -> searched
     %   p = p.add('lowpass', 'cutoff', 30);           % fixed
     %   p = p.add('badchannels', 'threshold', {3 5}); % searched over 3 and 5
-    %   p = p.add('reref', 'mode', 'average');        % must be fixed
+    %   p = p.add('reref', 'mode', 'average');        % defines the measure
     %   p = p.add('ica');  p = p.add('icremove');
     %   p = p.add('epoch'); p = p.add('baseline');
     %   p = p.add('reject_threshold', 'uv', {75 100 150});
@@ -21,9 +21,10 @@ classdef Plan
     %     catalog's suggestions when it has any, otherwise it takes the
     %     catalog default. (For list-valued parameters such as 'classes' a
     %     cell of cells is searched.)
-    %   - Parameters that define the measured quantity (re-reference)
-    %     must be fixed by you; epoch and baseline windows come from the
-    %     analysis contract.
+    %   - Parameters that define the measured quantity (the reference) can
+    %     be searched, but candidates that differ in them are ranked in
+    %     separate strata, never against each other. Epoch and baseline
+    %     windows come from the analysis contract.
     %   - Everything already done to the dataset (EEG.history + data
     %     state) is the starting point; the plan only covers what follows.
 
@@ -103,11 +104,21 @@ classdef Plan
 
         function [leaves, tree, report] = enumerate(obj, state, contract, opts)
             % Every legal pipeline the plan allows, as a prefix tree.
-            %   leaves  struct array: path (cell of instances), key, order
+            %   leaves  struct array: path (cell of instances), key, order,
+            %           stratum (values of measure-defining parameters)
             %   tree    node array for prefix-sharing execution
-            %   report  counts, rejected-order reasons, searched parameters
+            %   report  counts, excluded combinations with reasons,
+            %           searched parameters, search mode
+            %
+            %   opts.searchMode 'exhaustive' (default): every legal pipeline;
+            %       refuses (does not truncate) above opts.maxLeaves.
+            %   opts.searchMode 'sample': opts.sampleSize distinct legal
+            %       pipelines drawn uniformly over (order, parameter values)
+            %       with opts.sampleSeed. The result is then explicitly an
+            %       approximate search and is never reported as an optimum.
             if nargin < 4, opts = struct(); end
-            opts = withDefaults(opts, struct('maxLeaves', 500, 'maxOrders', 5000));
+            opts = withDefaults(opts, struct('maxLeaves', 500, 'maxOrders', 5000, ...
+                'searchMode', 'exhaustive', 'sampleSize', 100, 'sampleSeed', 1));
             assert(~isempty(obj.Slots), 'NeuroQC:Plan', 'The plan is empty: add at least one step.');
             n = numel(obj.Slots);
             inst = cell(1, n);
@@ -115,25 +126,44 @@ classdef Plan
                 inst{k} = obj.expandSlot(k, contract);
             end
             orders = obj.orders(opts.maxOrders);
-            upper = numel(orders) * prod(cellfun(@numel, inst));
-            assert(upper <= 1e7, 'NeuroQC:SearchTooLarge', ...
-                ['The plan allows up to %g pipelines (%d orders x %s instances per step). ', ...
-                 'Fix more parameters or the order.'], upper, numel(orders), mat2str(cellfun(@numel, inst)));
-
+            counts = cellfun(@numel, inst);
+            upper = numel(orders) * prod(counts);
             st0 = rootState(state);
-            leaves = struct('path', {}, 'key', {}, 'order', {});
+            leaves = struct('path', {}, 'key', {}, 'order', {}, 'stratum', {});
             seen = containers.Map('KeyType', 'char', 'ValueType', 'logical');
             reasons = containers.Map('KeyType', 'char', 'ValueType', 'double');
-            for oi = 1:numel(orders)
-                walk(orders{oi}, 1, {}, st0);
+            report = struct('searchMode', opts.searchMode, 'upperBound', upper);
+            switch opts.searchMode
+                case 'exhaustive'
+                    assert(upper <= 1e7, 'NeuroQC:SearchTooLarge', ...
+                        ['The plan allows up to %g pipelines (%d orders x %s values per step). Fix more ', ...
+                         'parameters or the order, or use searchMode ''sample''.'], upper, numel(orders), mat2str(counts));
+                    for oi = 1:numel(orders)
+                        walk(orders{oi}, 1, {}, st0);
+                    end
+                    explainIfEmpty();
+                    assert(numel(leaves) <= opts.maxLeaves, 'NeuroQC:SearchTooLarge', ...
+                        ['%d legal pipelines exceed maxLeaves = %d. Nothing was run or truncated. Fix more ', ...
+                         'parameters/order, raise opts.maxLeaves deliberately, or use searchMode ''sample'' ', ...
+                         '(approximate).'], numel(leaves), opts.maxLeaves);
+                case 'sample'
+                    rs = RandStream('mt19937ar', 'Seed', opts.sampleSeed);
+                    attempts = 0; maxAttempts = 50 * opts.sampleSize; legal = 0;
+                    while numel(leaves) < opts.sampleSize && attempts < maxAttempts
+                        attempts = attempts + 1;
+                        order = orders{randi(rs, numel(orders))};
+                        pick = arrayfun(@(k) randi(rs, counts(k)), 1:n);
+                        if drawPath(order, pick), legal = legal + 1; end
+                    end
+                    explainIfEmpty();
+                    report.attempts = attempts;
+                    report.legalFraction = legal / attempts;
+                    report.estimatedLegalPipelines = round(report.legalFraction * upper);
+                    report.sampleSize = numel(leaves);
+                otherwise
+                    error('NeuroQC:Plan', 'searchMode must be exhaustive or sample');
             end
-            assert(~isempty(leaves), 'NeuroQC:NoLegalPipeline', ...
-                'No legal pipeline: %s', describe(reasons));
-            assert(numel(leaves) <= opts.maxLeaves, 'NeuroQC:SearchTooLarge', ...
-                ['%d legal pipelines exceed maxLeaves = %d. Nothing was run or truncated. ', ...
-                 'Fix more parameters/order, or raise opts.maxLeaves deliberately.'], numel(leaves), opts.maxLeaves);
             tree = buildTree(leaves);
-            report = struct();
             report.nLeaves = numel(leaves);
             report.nOrders = numel(orders);
             report.nNodes = numel(tree) - 1;
@@ -143,11 +173,7 @@ classdef Plan
 
             function walk(order, pos, path, st)
                 if pos > numel(order)
-                    key = strjoin(cellfun(@(i) i.key, path, 'UniformOutput', false), ' > ');
-                    if isempty(key), key = '(no step)'; end
-                    if isKey(seen, key), return; end
-                    seen(key) = true;
-                    leaves(end+1) = struct('path', {path}, 'key', key, 'order', order); %#ok<AGROW>
+                    addLeaf(order, path);
                     return;
                 end
                 cands = inst{order(pos)};
@@ -159,12 +185,50 @@ classdef Plan
                     end
                     [why, st2] = neuroqc.plan.Catalog.apply(in.type, in.params, st);
                     if ~isempty(why)
-                        r = sprintf('%s: %s', in.label, why);
-                        if isKey(reasons, r), reasons(r) = reasons(r) + 1; else, reasons(r) = 1; end
+                        note(pos, in, why);
                         continue;
                     end
                     walk(order, pos + 1, [path {in}], st2);
                 end
+            end
+
+            function ok = drawPath(order, pick)
+                st = st0; path = {}; ok = false;
+                for pos = 1:numel(order)
+                    in = inst{order(pos)}{pick(order(pos))};
+                    if strcmp(in.type, 'none'), continue; end
+                    [why, st] = neuroqc.plan.Catalog.apply(in.type, in.params, st);
+                    if ~isempty(why), note(pos, in, why); return; end
+                    path{end+1} = in; %#ok<AGROW>
+                end
+                ok = true;
+                addLeaf(order, path);
+            end
+
+            function addLeaf(order, path)
+                key = strjoin(cellfun(@(i) i.key, path, 'UniformOutput', false), ' > ');
+                if isempty(key), key = '(no step)'; end
+                if isKey(seen, key), return; end
+                seen(key) = true;
+                leaves(end+1) = struct('path', {path}, 'key', key, 'order', order, 'stratum', stratumOf(path));
+            end
+
+            function note(pos, in, why)
+                if strcmp(obj.OrderMode, 'fixed')
+                    r = sprintf('step %d "%s" (%s): %s', pos, obj.Slots(pos).id, in.label, why);
+                else
+                    r = sprintf('%s: %s', in.label, why);
+                end
+                if isKey(reasons, r), reasons(r) = reasons(r) + 1; else, reasons(r) = 1; end
+            end
+
+            function explainIfEmpty()
+                if ~isempty(leaves), return; end
+                if strcmp(obj.OrderMode, 'fixed')
+                    error('NeuroQC:NoLegalPipeline', ['The steps cannot run in the order you fixed; nothing was ', ...
+                        'rearranged. Conflicts: %s'], describe(reasons));
+                end
+                error('NeuroQC:NoLegalPipeline', 'No legal pipeline: %s', describe(reasons));
             end
         end
 
@@ -175,15 +239,20 @@ classdef Plan
                 alt = slot.alternatives{a};
                 if strcmp(alt.type, 'none')
                     list{end+1} = struct('slot', slot.id, 'type', 'none', 'params', struct(), ...
-                        'key', 'none', 'label', 'none', 'searched', {{}}); %#ok<AGROW>
+                        'key', 'none', 'label', 'none', 'searched', {{}}, 'defining', ''); %#ok<AGROW>
                     continue;
                 end
-                [grid, searched] = paramGrid(alt.type, alt.params, contract);
+                [grid, searched, defining] = paramGrid(alt.type, alt.params, contract);
                 for g = 1:numel(grid)
                     p = grid{g};
+                    dtxt = '';
+                    if ~isempty(defining)
+                        dtxt = strjoin(cellfun(@(f) sprintf('%s.%s=%s', alt.type, f, valText(p.(f))), defining, ...
+                            'UniformOutput', false), ',');
+                    end
                     list{end+1} = struct('slot', slot.id, 'type', alt.type, 'params', p, ...
                         'key', instKey(alt.type, p), 'label', instLabel(alt.type, p), ...
-                        'searched', {searched}); %#ok<AGROW>
+                        'searched', {searched}, 'defining', dtxt); %#ok<AGROW>
                 end
             end
         end
@@ -262,14 +331,14 @@ for f = fieldnames(d)'
 end
 end
 
-function [grid, searched] = paramGrid(type, given, contract)
+function [grid, searched, defining] = paramGrid(type, given, contract)
 d = neuroqc.plan.Catalog.get(type);
 names = {d.params.name};
 unknown = setdiff(fieldnames(given), names);
 assert(isempty(unknown), 'NeuroQC:Plan', 'Step %s has no parameter(s): %s (known: %s)', ...
     type, strjoin(unknown, ', '), strjoin(names, ', '));
 values = cell(1, numel(names));
-searched = {};
+searched = {}; defining = {};
 for k = 1:numel(d.params)
     p = d.params(k);
     listValued = iscell(p.default);
@@ -283,19 +352,17 @@ for k = 1:numel(d.params)
         else
             vals = {v};
         end
-    elseif p.defines
-        assert(~(strcmp(type, 'reref') && strcmp(p.name, 'mode')) && ~strcmp(type, 'native'), ...
-            'NeuroQC:MustFix', '%s.%s defines the measured quantity; set it explicitly.', type, p.name);
-        vals = {p.default};
+    elseif strcmp(type, 'native')
+        error('NeuroQC:Plan', 'A native step needs its command.');
     elseif ~isempty(p.suggest)
         vals = p.suggest;
     else
         vals = {p.default};
     end
-    if p.defines && numel(vals) > 1
-        error('NeuroQC:MustFix', ['%s.%s changes what is measured, so data-quality scores cannot ', ...
-            'compare its values. Fix it to one value.'], type, p.name);
-    end
+    % Parameters that change the measured quantity (the reference) may be
+    % searched, but candidates that differ in them are ranked separately
+    % (strata) because their data-quality scores are not comparable.
+    if p.defines && ~strcmp(type, 'native'), defining{end+1} = p.name; end %#ok<AGROW>
     if numel(vals) > 1, searched{end+1} = p.name; end %#ok<AGROW>
     values{k} = vals;
 end
@@ -315,6 +382,14 @@ for k = 1:numel(names)
     grid = next;
 end
 if isempty(names), grid = {struct()}; end
+end
+
+function s = stratumOf(path)
+parts = {};
+for q = 1:numel(path)
+    if isfield(path{q}, 'defining') && ~isempty(path{q}.defining), parts{end+1} = path{q}.defining; end %#ok<AGROW>
+end
+s = strjoin(parts, ';');
 end
 
 function k = instKey(type, p)

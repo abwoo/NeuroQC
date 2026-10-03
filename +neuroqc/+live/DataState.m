@@ -36,6 +36,7 @@ classdef DataState
             s.filters = filterSummary(s.history);
             s.warnings = {};
             s = checkConsistency(s, EEG);
+            s.provenance = provenance(s, EEG);
         end
 
         function print(s)
@@ -53,6 +54,12 @@ classdef DataState
                 neuroqc.utils.log('Processing steps in history (in order): %s', strjoin(steps, ' > '));
             end
             for k = 1:numel(s.warnings), neuroqc.utils.log('WARNING: %s', s.warnings{k}); end
+            P = s.provenance;
+            cats = unique({P.category}, 'stable');
+            for c = 1:numel(cats)
+                n = sum(strcmp({P.category}, cats{c}));
+                neuroqc.utils.log('Provenance - %s: %d item(s)', cats{c}, n);
+            end
         end
     end
 end
@@ -210,4 +217,58 @@ if ~s.hasUrevent
     w{end+1} = 'EEG.urevent is empty; NeuroQC will rebuild it (eeg_checkset makeur) on its own copy to track trials.';
 end
 s.warnings = w;
+end
+
+function P = provenance(s, EEG)
+% Where each piece of knowledge about the dataset comes from:
+%   recorded in EEG.history | executed by NeuroQC (tagged lines) |
+%   session command (ALLCOM) not in this dataset's history |
+%   inferred from the data structure | cannot be verified
+P = struct('category', {}, 'item', {}, 'detail', {});
+h = s.history;
+for k = 1:numel(h)
+    if ~any(strcmp(h(k).kind, {'process','mark','load'})), continue; end
+    if contains(h(k).raw, '% NeuroQC') || startsWith(strtrim(h(k).statement), 'EEGica')
+        P(end+1) = row('executed by NeuroQC', h(k).step, h(k).statement); %#ok<AGROW>
+    else
+        P(end+1) = row('recorded in EEG.history', h(k).step, sprintf('line %d: %s', h(k).line, h(k).statement)); %#ok<AGROW>
+    end
+    if ~isempty(h(k).note) && (contains(h(k).note, 'not in the history') || contains(h(k).note, 'not reproducible'))
+        P(end+1) = row('cannot be verified', h(k).step, sprintf('line %d: %s', h(k).line, h(k).note)); %#ok<AGROW>
+    end
+end
+global ALLCOM %#ok<GVMIS>
+if iscell(ALLCOM)
+    histText = char(EEG.history); histText = histText(:)';
+    for k = numel(ALLCOM):-1:1
+        c = strtrim(char(ALLCOM{k}));
+        e = neuroqc.live.History.classify(c);
+        if ~strcmp(e.kind, 'process') || contains(histText, c), continue; end
+        P(end+1) = row('session command (ALLCOM) not in this dataset''s history', e.step, ...
+            [c ' (may concern another dataset)']); %#ok<AGROW>
+    end
+end
+steps = {s.process.step};
+if s.isEpoched && ~any(strcmp(steps, 'epoch'))
+    P(end+1) = row('inferred from the data', 'epoch', sprintf('%d epochs present; no pop_epoch in the history', s.trials));
+end
+if s.ica.present && ~any(strcmp(steps, 'ica'))
+    P(end+1) = row('inferred from the data', 'ica', 'ICA matrices present; no ICA call in the history');
+end
+if ~isempty(s.ica.flagged)
+    P(end+1) = row('inferred from the data', 'ic_flags', sprintf('ICs flagged in EEG.reject.gcompreject: %s', mat2str(s.ica.flagged)));
+end
+if ~isempty(s.removedChannels) && ~any(strcmp(steps, 'channels')) && ~any(strcmp(steps, 'badchannels'))
+    P(end+1) = row('inferred from the data', 'channels', ['removed (chaninfo.removedchans): ' strjoin(s.removedChannels, ', ')]);
+end
+if strcmpi(s.reference, 'average') && ~any(strcmp(steps, 'reref'))
+    P(end+1) = row('inferred from the data', 'reref', 'EEG.ref says average; no pop_reref in the history');
+end
+if isempty(h)
+    P(end+1) = row('cannot be verified', '', 'EEG.history is empty: earlier processing is unknown');
+end
+end
+
+function r = row(c, i, d)
+r = struct('category', c, 'item', i, 'detail', d);
 end

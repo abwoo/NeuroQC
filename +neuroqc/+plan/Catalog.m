@@ -9,16 +9,17 @@ classdef Catalog
     %     suggest  candidate values searched when you do NOT fix the
     %              parameter (empty = not searched by default)
     %     defines  true for parameters that change what is measured
-    %              (reference). These must be fixed by you; NeuroQC refuses
-    %              to search them, because a data-quality score cannot
-    %              fairly compare different measured quantities.
+    %              (reference). They may be searched, but candidates that
+    %              differ in them are ranked in separate strata: a
+    %              data-quality score cannot fairly compare different
+    %              measured quantities.
     %
     %   'native' wraps any EEGLAB command you configured in its own dialog;
     %   it is always fixed and is replayed verbatim.
 
     methods (Static)
         function names = types()
-            names = {'resample','linenoise','highpass','lowpass','asr','badchannels', ...
+            names = {'resample','linenoise','highpass','lowpass','asr','badchannels','channels', ...
                 'restore','reref','ica','icremove','epoch','baseline', ...
                 'reject_threshold','reject_jointprob','reject_kurtosis','native'};
         end
@@ -54,6 +55,10 @@ classdef Catalog
                     d.params = [P('measure', 'kurt', {'kurt','prob'}, false, 'pop_rejchan measure'), ...
                         P('threshold', 5, {3, 5}, false, 'z threshold'), ...
                         P('action', 'interpolate', {}, false, '''interpolate'' in place or ''remove'' (restore later)')];
+                case 'channels'
+                    d.label = 'Named channels: remove or interpolate'; d.dialog = 'pop_select';
+                    d.params = [P('labels', {}, {}, false, 'channel labels you name (e.g. known-bad O1, O2)'), ...
+                        P('action', 'interpolate', {}, false, '''remove'' or ''interpolate''')];
                 case 'restore'
                     d.label = 'Restore removed channels (spherical interpolation)'; d.dialog = 'pop_interp';
                 case 'reref'
@@ -115,6 +120,16 @@ classdef Catalog
                         st.removed = true;
                     elseif ~strcmp(p.action, 'interpolate')
                         reason = 'badchannels action must be interpolate or remove'; return;
+                    end
+                case 'channels'
+                    if isempty(p.labels), reason = 'channels step needs labels'; return; end
+                    if strcmp(p.action, 'remove')
+                        if st.hasICA && ~st.icRemoved
+                            reason = 'removing channels after ICA invalidates the decomposition'; return;
+                        end
+                        st.removed = true;
+                    elseif ~strcmp(p.action, 'interpolate')
+                        reason = 'channels action must be remove or interpolate'; return;
                     end
                 case 'restore'
                     if ~st.removed, reason = 'restore needs channels removed earlier in the plan'; return; end
