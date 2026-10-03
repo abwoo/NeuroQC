@@ -246,6 +246,92 @@ first = cellfun(@(c) c{1}, {r.cands.coms}, 'UniformOutput', false);
 verifyTrue(tc, all(contains(first, '''plotfreqz'',0')));           % no filter plot window during the search
 end
 
+function testCatalogValuesFromEeglabDialogCommands(tc)
+% Every catalog step with an EEGLAB dialog takes its values from what the
+% dialog returns; settings the step cannot express are reported.
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
+[~, Ep] = evalc('pop_epoch(EEG, {''11'',''31''}, [-0.2 1])');
+L = {EEG.chanlocs.labels};
+V = @(t, com, E) neuroqc.run.Native.catalogValues(t, com, E);
+[~, com] = pop_eegfiltnew(EEG, 'locutoff', 0.5, 'plotfreqz', 0);
+verifyEqual(tc, V('highpass', com, EEG), struct('cutoff', 0.5));
+[~, com] = pop_eegfiltnew(EEG, 'hicutoff', 30, 'plotfreqz', 0);
+verifyEqual(tc, V('lowpass', com, EEG), struct('cutoff', 30));
+[~, com] = pop_eegfiltnew(EEG, 'locutoff', 48, 'hicutoff', 52, 'revfilt', 1, 'plotfreqz', 0);
+verifyEqual(tc, V('linenoise', com, EEG), struct('freq', 50, 'halfwidth', 2));
+[v, notes] = V('lowpass', 'EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',30,''filtorder'',800);', EEG);
+verifyEqual(tc, v.cutoff, 30); verifyNumElements(tc, notes, 2);    % band edge and filtorder reported
+[~, com] = pop_resample(EEG, 125);
+verifyEqual(tc, V('resample', com, EEG), struct('fs', 125));
+[~, com] = pop_reref(EEG, [5 6], 'exclude', 1);
+verifyEqual(tc, V('reref', com, EEG), struct('mode', 'channels', 'channels', {L(5:6)}, 'exclude', {L(1)}));
+[~, com] = pop_reref(EEG, []);
+verifyEqual(tc, V('reref', com, EEG), struct('mode', 'average'));
+[~, com] = pop_select(EEG, 'rmchannel', {'O1', 'O2'});
+verifyEqual(tc, V('channels', com, EEG), struct('labels', {{'O1', 'O2'}}, 'action', 'remove'));
+[~, ~, com] = pop_eegthresh(Ep, 1, 1:30, -80, 80, -0.2, 0.996, 0, 0);
+verifyEqual(tc, V('reject_threshold', com, Ep), struct('exclude', {L(31:32)}, 'uv', 80));
+[v, notes] = V('reject_threshold', 'EEG = pop_eegthresh(EEG,1,[1:32],-60,120,-0.2,0.996,0,0);', Ep);
+verifyEqual(tc, v.uv, 120); verifyTrue(tc, contains(notes{1}, 'asymmetric'));
+[~, ~, ~, ~, com] = pop_jointprob(Ep, 1, 1:32, 4, 4, 0, 0, 0);
+verifyEqual(tc, V('reject_jointprob', com, Ep), struct('sd', 4));
+Eb = EEG; rng(1); Eb.data(30, :) = Eb.data(30, :) + 2000 * (rand(1, Eb.pnts) > 0.999);   % EEGLAB returns a command only when it flags a channel
+[~, ~, ~, com] = pop_rejchan(Eb, 'elec', 1:32, 'threshold', 4, 'norm', 'on', 'measure', 'prob');
+verifyEqual(tc, V('badchannels', com, EEG), struct('measure', 'prob', 'threshold', 4));
+verifyEqual(tc, V('icremove', 'EEG = pop_icflag(EEG, [NaN NaN;0.8 1;0.8 1;NaN NaN;NaN NaN;NaN NaN;NaN NaN]);', EEG), ...
+    struct('classes', {{'Muscle', 'Eye'}}, 'threshold', 0.8));
+v = V('asr', 'EEG = pop_clean_rawdata(EEG, ''FlatlineCriterion'',''off'',''ChannelCriterion'',''off'',''LineNoiseCriterion'',''off'',''Highpass'',''off'',''BurstCriterion'',15,''WindowCriterion'',''off'',''BurstRejection'',''off'',''Distance'',''Euclidian'');', EEG);
+verifyEqual(tc, v.cutoff, 15);
+% in the panel: each dialog adds its value to the catalog step's search
+nqc_setBase(EEG);
+app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.TypeDrop.Value = 'lowpass'; app.addStep(); app.PlanTable.Selection = [1 1];
+app.valuesFromDialog('EEG = pop_eegfiltnew(EEG, ''hicutoff'',30,''plotfreqz'',1);', EEG);
+verifyEqual(tc, app.Plan.Slots(1).alternatives{1}.params.cutoff, 30);
+app.valuesFromDialog('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''plotfreqz'',1);', EEG);
+app.valuesFromDialog('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''plotfreqz'',1);', EEG);   % already there
+verifyEqual(tc, app.Plan.Slots(1).alternatives{1}.params.cutoff, {30, 40});
+verifyEqual(tc, app.Plan.Slots(1).alternatives{1}.type, 'lowpass');   % still the catalog step
+app.TypeDrop.Value = 'reref'; app.addStep(); app.PlanTable.Selection = [2 1];
+[~, com] = pop_reref(EEG, {'P7', 'P8'});
+app.valuesFromDialog(com, EEG);
+verifyEqual(tc, app.Plan.Slots(2).alternatives{1}.params.channels, {'P7', 'P8'});
+end
+
+function testPanelOptionsResumeAndInspect(tc)
+% Options that used to need the command line (sampled search, checkpoint,
+% resume), the objective list, and EEGLAB viewers on a candidate.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+nqc_setBase(EEG);
+app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
+app.addComponent('P3', [0.3 0.5], {'Pz', 'P3', 'P4'}, 'mean', 'positive');
+verifyEqual(tc, app.ObjectiveField.Items, {'composite', 'pareto', 'P3.mean'});
+app.TypeDrop.Value = 'highpass'; app.addStep();
+app.planEdited(struct('Indices', [1 3], 'NewData', 'cutoff = {0.1, 0.3, 0.5}'));
+app.TypeDrop.Value = 'epoch'; app.addStep(); app.TypeDrop.Value = 'baseline'; app.addStep();
+o = app.Options; o.searchMode = 'sample'; o.sampleSize = 2;
+app.setOptions(o);
+app.run(false);
+verifyEqual(tc, app.Result.report.searchMode, 'sample');
+verifyEqual(tc, numel(app.Result.leaves), 2);
+% checkpoint + resume from the panel
+d = tempname; c2 = onCleanup(@() rmdir(d, 's')); %#ok<NASGU>
+o.searchMode = 'exhaustive'; o.checkpoint = d; app.setOptions(o);
+verifyError(tc, @() neuroqc.NeuroQC.optimize(app.Plan, app.contract(), struct('checkpoint', d, 'stopAfter', 1)), 'NeuroQC:Interrupted');
+app.resume(d);
+verifyEqual(tc, numel(app.Result.cands), 3);
+verifyTrue(tc, all(strcmp({app.Result.cands.status}, 'ok')));
+% a candidate in EEGLAB's data viewer, labelled as not adopted
+n0 = numel(findall(groot, 'Type', 'figure'));
+app.inspect(2, 1);
+new = findall(groot, 'Type', 'figure');
+verifyEqual(tc, numel(new), n0 + 1);
+verifyTrue(tc, any(contains(get(new, 'Name'), 'candidate 2 (not adopted)')));
+delete(new(contains(get(new, 'Name'), 'candidate 2')));
+verifyEqual(tc, evalin('base', 'numel(ALLEEG)'), 1);              % inspecting stores nothing
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');

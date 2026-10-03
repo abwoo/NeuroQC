@@ -33,7 +33,7 @@ classdef Native
                 case 'reject_threshold', call = '[EEG, ~, LASTCOM] = pop_eegthresh(EEG, 1);';
                 case 'reject_jointprob', call = '[EEG, ~, ~, ~, LASTCOM] = pop_jointprob(EEG, 1);';
                 case 'reject_kurtosis', call = '[EEG, ~, ~, ~, LASTCOM] = pop_rejkurt(EEG, 1);';
-                case 'select_data', call = '[EEG, LASTCOM] = pop_select(EEG);';
+                case {'select_data','channels'}, call = '[EEG, LASTCOM] = pop_select(EEG);';
                 case 'select_events', call = '[EEG, ~, LASTCOM] = pop_selectevent(EEG);';
                 case 'chanlocs', call = '[EEG, ~, ~, LASTCOM] = pop_chanedit(EEG);';
                 otherwise, error('NeuroQC:Native', 'No EEGLAB dialog for %s', type);
@@ -114,6 +114,105 @@ classdef Native
                 if args(i).key, parts{i} = sprintf('''%s'',%s', args(i).name, v); else, parts{i} = v; end
             end
             com = sprintf('EEG = %s(EEG, %s);', fn, strjoin(parts, ','));
+        end
+
+        function [vals, notes] = catalogValues(type, command, EEG)
+            % The values of a catalog step's parameters set in its EEGLAB
+            % dialog (command = what the dialog returned, EEG = the data
+            % it ran on, to turn channel indices into labels). Settings of
+            % the dialog that the catalog step cannot express are listed
+            % in notes, never dropped silently: use "Fix via EEGLAB dialog"
+            % to keep the whole command instead.
+            vals = struct(); notes = {};
+            st = neuroqc.run.Native.statements(command);
+            com = st{end};
+            if strcmp(type, 'icremove')
+                com = st{find(contains(st, 'pop_icflag'), 1)};
+            end
+            [fn] = neuroqc.live.History.callParts(com);
+            a = neuroqc.run.Native.argsOf(com, fn);
+            labs = {EEG.chanlocs.labels};
+            [nv, pos] = nameValues(a);
+            function chk(allowed)
+                extra = setdiff(fieldnames(nv), allowed);
+                if ~isempty(extra)
+                    notes{end+1} = sprintf('%s option(s) %s are not part of the %s step', fn, strjoin(extra, ', '), type);
+                end
+            end
+            switch type
+                case {'highpass','lowpass','linenoise'}
+                    assert(strcmp(fn, 'pop_eegfiltnew'), 'NeuroQC:Native', 'Expected pop_eegfiltnew, got %s', fn);
+                    lo = getOr(nv, 'locutoff', []); hi = getOr(nv, 'hicutoff', []); rev = getOr(nv, 'revfilt', 0);
+                    switch type
+                        case 'highpass'
+                            assert(~isempty(lo) && lo > 0 && ~rev, 'NeuroQC:Native', 'The dialog did not set a high-pass edge (lower edge).');
+                            vals.cutoff = lo;
+                            if ~isempty(hi) && hi > 0, notes{end+1} = sprintf('the low-pass edge %g Hz is not part of the highpass step', hi); end
+                        case 'lowpass'
+                            assert(~isempty(hi) && hi > 0 && ~rev, 'NeuroQC:Native', 'The dialog did not set a low-pass edge (higher edge).');
+                            vals.cutoff = hi;
+                            if ~isempty(lo) && lo > 0, notes{end+1} = sprintf('the high-pass edge %g Hz is not part of the lowpass step', lo); end
+                        case 'linenoise'
+                            assert(~isempty(lo) && ~isempty(hi) && rev, 'NeuroQC:Native', 'Set a notch: both edges and "notch filter the data instead of pass band".');
+                            vals.freq = (lo + hi) / 2; vals.halfwidth = (hi - lo) / 2;
+                    end
+                    chk({'locutoff','hicutoff','revfilt','plotfreqz'});
+                case 'resample'
+                    vals.fs = pos{1};
+                case 'asr'
+                    vals.cutoff = getOr(nv, 'BurstCriterion', 20);
+                    off = {'FlatlineCriterion','ChannelCriterion','LineNoiseCriterion','Highpass','WindowCriterion'};
+                    on = off(cellfun(@(f) isfield(nv, f) && ~(ischar(nv.(f)) && strcmpi(nv.(f), 'off')), off));
+                    if ~isempty(on), notes{end+1} = sprintf('the asr step only corrects bursts; %s not used', strjoin(on, ', ')); end
+                case 'badchannels'
+                    vals.measure = getOr(nv, 'measure', 'kurt'); vals.threshold = getOr(nv, 'threshold', 5);
+                    if numel(vals.threshold) > 1, notes{end+1} = 'only the upper threshold is used'; vals.threshold = max(vals.threshold); end
+                    chk({'elec','threshold','norm','measure','freqrange'});
+                case 'reref'
+                    ref = pos{1};
+                    if isempty(ref), vals.mode = 'average'; else, vals.mode = 'channels'; vals.channels = asLabels(ref, labs); end
+                    if isfield(nv, 'exclude'), vals.exclude = asLabels(nv.exclude, labs); end
+                    chk({'exclude'});
+                case 'channels'
+                    if isfield(nv, 'rmchannel'), vals.labels = asLabels(nv.rmchannel, labs);
+                    elseif isfield(nv, 'nochannel'), vals.labels = asLabels(nv.nochannel, labs);
+                    elseif isfield(nv, 'channel'), vals.labels = setdiff(labs, asLabels(nv.channel, labs), 'stable');
+                    else, error('NeuroQC:Native', 'The dialog selected no channels to remove.');
+                    end
+                    vals.action = 'remove';
+                    chk({'rmchannel','nochannel','channel'});
+                case {'reject_threshold','reject_jointprob','reject_kurtosis'}
+                    elec = pos{2};
+                    if numel(elec) < numel(labs), vals.exclude = labs(setdiff(1:numel(labs), elec)); end
+                    if strcmp(type, 'reject_threshold')
+                        lo = pos{3}; hi = pos{4};
+                        assert(isscalar(lo) && isscalar(hi), 'NeuroQC:Native', 'Per-channel limits: use Fix via EEGLAB dialog to keep them.');
+                        vals.uv = hi;
+                        if lo ~= -hi, notes{end+1} = sprintf('asymmetric limits [%g %g]: the step uses +/-%g (Fix via EEGLAB dialog keeps them)', lo, hi, hi); end
+                    else
+                        vals.sd = pos{3};
+                        if numel(pos) >= 4 && ~isequal(pos{4}, pos{3})
+                            notes{end+1} = sprintf('global limit %g differs from the local %g: the step uses %g for both', pos{4}, pos{3}, pos{3});
+                        end
+                    end
+                case 'ica'
+                    vals.extended = getOr(nv, 'extended', 1);
+                    chk({'icatype','extended','interrupt','rndreset','chanind','pca'});
+                case 'icremove'
+                    T = pos{1};
+                    cats = {'Brain','Muscle','Eye','Heart','Line Noise','Channel Noise','Other'};
+                    rows = find(all(isfinite(T), 2))';
+                    assert(~isempty(rows), 'NeuroQC:Native', 'No ICLabel class was flagged.');
+                    assert(~ismember(1, rows), 'NeuroQC:Native', 'Flagging Brain components is not an artifact-removal step.');
+                    vals.classes = cats(rows);
+                    th = T(rows, 1);
+                    vals.threshold = min(th);
+                    if any(th ~= th(1)) || any(T(rows, 2) ~= 1)
+                        notes{end+1} = 'different thresholds per class (or an upper limit < 1): the step uses one threshold; Fix via EEGLAB dialog keeps them';
+                    end
+                otherwise
+                    error('NeuroQC:Native', 'No EEGLAB dialog values for %s.', type);
+            end
         end
 
         function s = statements(command)
@@ -216,6 +315,13 @@ classdef Native
                 neuroqc.utils.log('Dialog runs on a shortened copy (only its parameters are kept).');
             end
             com = neuroqc.run.Native.captureCall(EEG, neuroqc.run.Native.menuCall(type));
+            if isempty(com) && strcmp(type, 'badchannels')
+                % EEGLAB's pop_rejchan returns no command when it flags no
+                % channel, so its settings cannot be told from a cancel
+                neuroqc.utils.log(['pop_rejchan returned no command: either the dialog was cancelled or it flagged ', ...
+                    'no channel on this copy (EEGLAB then returns nothing). Set measure/threshold in the settings ', ...
+                    'column, or retry on data with a bad channel.']);
+            end
         end
 
         function [com, EEGout] = captureCall(EEG, call)
@@ -263,6 +369,26 @@ end
 function [LASTCOM, EEG] = runCall(EEG, call)
 LASTCOM = '';
 eval(call);
+end
+
+function [nv, pos] = nameValues(a)
+% split evaluated arguments into leading positional ones and trailing
+% name-value pairs
+kv = numel(a) + 1;
+for i = numel(a)-1:-2:1
+    if ischar(a{i}) && isrow(a{i}) && ~isempty(regexp(a{i}, '^[A-Za-z]\w*$', 'once')), kv = i; else, break; end
+end
+pos = a(1:kv-1); nv = struct();
+for i = kv:2:numel(a), nv.(a{i}) = a{i+1}; end
+end
+
+function v = getOr(s, f, d)
+if isfield(s, f), v = s.(f); else, v = d; end
+end
+
+function L = asLabels(x, labs)
+if isnumeric(x), L = labs(x); else, L = cellstr(x); end
+L = L(:)';
 end
 
 function t = valueCode(v)

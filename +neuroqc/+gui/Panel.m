@@ -23,6 +23,8 @@ classdef Panel < handle
         TrialLabel; SummaryLabel
         LimitFields = struct()
         ObjectiveField
+        Options = struct('dataUnit', 'uV', 'checkpoint', '', 'searchMode', 'exhaustive', 'sampleSize', 100, ...
+            'parallel', false, 'externalQC', [])
         ResultTable; StatusLabel
     end
 
@@ -54,7 +56,7 @@ classdef Panel < handle
             obj.WarnArea = uitextarea(top, 'Editable', 'off', 'FontColor', [0.6 0.2 0], 'Value', {''});
 
             % history (left, rows 2-3)
-            hp = uipanel(g, 'Title', 'EEG.history of the current dataset (live)'); hp.Layout.Row = [2 3]; hp.Layout.Column = 1;
+            hp = uipanel(g, 'Title', 'EEG.history of the current dataset (live)'); hp.Layout.Row = 2; hp.Layout.Column = 1;
             hg = uigridlayout(hp, [1 1]);
             obj.HistTable = uitable(hg, 'ColumnName', {'line','kind','step','statement'}, ...
                 'ColumnWidth', {40, 60, 95, 'auto'}, 'RowName', {});
@@ -74,7 +76,11 @@ classdef Panel < handle
             uibutton(b1, 'Text', 'Down', 'ButtonPushedFcn', @(~, ~) obj.moveStep(1));
             uilabel(b1, 'Text', 'Order:', 'HorizontalAlignment', 'right');
             obj.OrderDrop = uidropdown(b1, 'Items', {'fixed','search'}, 'ValueChangedFcn', @(s, ~) obj.setOrder(s.Value));
-            b2 = uigridlayout(pg, [1 3]); b2.Padding = [0 0 0 0];
+            b2 = uigridlayout(pg, [1 4]); b2.Padding = [0 0 0 0];
+            uibutton(b2, 'Text', 'Values from EEGLAB dialog...', 'Tooltip', ...
+                ['Set the selected step''s values in its EEGLAB dialog; each time adds the values to the step''s ', ...
+                 'search (the step keeps NeuroQC''s decision-matched signal check)'], ...
+                'ButtonPushedFcn', @(~, ~) obj.valuesFromDialog());
             uibutton(b2, 'Text', 'Fix via EEGLAB dialog', 'Tooltip', ...
                 'Open the native EEGLAB dialog for the selected step; its command replaces the step as a fixed native step', ...
                 'ButtonPushedFcn', @(~, ~) obj.captureStep());
@@ -83,7 +89,7 @@ classdef Panel < handle
                 'ButtonPushedFcn', @(~, ~) obj.applyNow());
             uibutton(b2, 'Text', 'Catalog help', 'ButtonPushedFcn', @(~, ~) obj.catalogHelp());
             b3 = uigridlayout(pg, [1 5]); b3.Padding = [0 0 0 0];
-            uibutton(b3, 'Text', 'Add EEGLAB config as candidate', 'Tooltip', ...
+            uibutton(b3, 'Text', 'Add config (EEGLAB)...', 'Tooltip', ...
                 'Configure the selected step once more in its EEGLAB dialog; the search tries every configuration of the step', ...
                 'ButtonPushedFcn', @(~, ~) obj.addCandidateConfig());
             uibutton(b3, 'Text', 'Skipping allowed on/off', 'Tooltip', ...
@@ -99,8 +105,8 @@ classdef Panel < handle
             obj.ConstraintLabel = uilabel(pg, 'Text', 'Order rules: none', 'FontColor', [0.3 0.3 0.3]);
 
             % contract + run + results (right, row 3)
-            rp = uipanel(g, 'Title', 'Analysis contract, constraints, results'); rp.Layout.Row = 3; rp.Layout.Column = 2;
-            rg = uigridlayout(rp, [4 1]); rg.RowHeight = {196, 56, 28, '1x'};
+            rp = uipanel(g, 'Title', 'Analysis contract, constraints, search'); rp.Layout.Row = 3; rp.Layout.Column = 2;
+            rg = uigridlayout(rp, [3 1]); rg.RowHeight = {196, 56, 64};
             % Each item: label | its text (the one source of the setting, also
             % editable by hand) | buttons that fill it from EEGLAB's dialogs.
             cg = uigridlayout(rg, [7 4]); cg.Padding = [0 0 0 0]; cg.RowSpacing = 3;
@@ -137,7 +143,13 @@ classdef Panel < handle
             obj.SummaryLabel = uilabel(cg, 'Text', '', 'FontColor', [0 0.3 0.1], 'WordWrap', 'on');
             obj.SummaryLabel.Layout.Column = [1 4]; obj.SummaryLabel.Layout.Row = 6;
             obj.EventsLabel = uilabel(cg, 'Text', 'Event types: -', 'FontColor', [0.3 0.3 0.3], 'WordWrap', 'on');
-            obj.EventsLabel.Layout.Column = [1 4]; obj.EventsLabel.Layout.Row = 7;
+            obj.EventsLabel.Layout.Column = [1 2]; obj.EventsLabel.Layout.Row = 7;
+            uibutton(cg, 'Text', 'View ERP (EEGLAB)...', 'Tooltip', ...
+                'ERP and scalp maps of the conditions in EEGLAB (pop_timtopo on epoched preview data), to choose windows and ROIs', ...
+                'ButtonPushedFcn', @(~, ~) obj.viewErp());
+            uibutton(cg, 'Text', 'Chan. locations...', 'Tooltip', ...
+                'Edit channel locations of the current dataset in EEGLAB (pop_chanedit); needed for interpolation and topographies', ...
+                'ButtonPushedFcn', @(~, ~) obj.editChanlocs());
             lg = uigridlayout(rg, [2 10]); lg.Padding = [0 0 0 0]; lg.RowSpacing = 4;
             lg.ColumnWidth = {'fit', '1x', 'fit', '1x', 'fit', '1x', 'fit', '1x', 'fit', '1x'};
             d = neuroqc.eval.Rank.defaults();
@@ -150,17 +162,27 @@ classdef Panel < handle
             end
             uilabel(lg, 'Text', 'max pipelines', 'HorizontalAlignment', 'right');
             obj.LimitFields.maxLeaves = uieditfield(lg, 'numeric', 'Value', 500);
-            ag = uigridlayout(rg, [1 7]); ag.Padding = [0 0 0 0];
-            ag.ColumnWidth = {'fit', 110, 'fit', 'fit', 'fit', 'fit', '1x'};
+            ag = uigridlayout(rg, [2 6]); ag.Padding = [0 0 0 0]; ag.RowSpacing = 4;
+            ag.ColumnWidth = {'fit', 170, 'fit', 'fit', 'fit', '1x'};
             uilabel(ag, 'Text', 'Objective', 'HorizontalAlignment', 'right');
-            obj.ObjectiveField = uieditfield(ag, 'Value', 'composite', 'Tooltip', ...
-                'composite | pareto | priority list, e.g. P3.mean, N2.peakLatency');
+            obj.ObjectiveField = uidropdown(ag, 'Items', {'composite', 'pareto'}, 'Value', 'composite', 'Editable', 'on', 'Tooltip', ...
+                'composite | pareto | one objective; a priority list can be typed: P3.mean, N2.peakLatency');
             uibutton(ag, 'Text', 'Preview count', 'ButtonPushedFcn', @(~, ~) obj.run(true));
             uibutton(ag, 'Text', 'Run search', 'FontWeight', 'bold', 'ButtonPushedFcn', @(~, ~) obj.run(false));
-            uibutton(ag, 'Text', 'Adopt selected as new dataset', 'ButtonPushedFcn', @(~, ~) obj.adopt());
-            uibutton(ag, 'Text', 'Print script of selected', 'ButtonPushedFcn', @(~, ~) obj.printScript());
-            obj.StatusLabel = uilabel(ag, 'Text', '', 'FontColor', [0 0 0.5]);
-            obj.ResultTable = uitable(rg, 'RowName', {}, 'ColumnName', ...
+            uibutton(ag, 'Text', 'Options...', 'Tooltip', 'Data unit, checkpoint folder, sampled search, parallel, external QC table', ...
+                'ButtonPushedFcn', @(~, ~) obj.optionsDialog());
+            obj.StatusLabel = uilabel(ag, 'Text', '', 'FontColor', [0 0 0.5], 'WordWrap', 'on');
+            obj.StatusLabel.Layout.Row = [1 2]; obj.StatusLabel.Layout.Column = 6;
+            uibutton(ag, 'Text', 'Resume...', 'Tooltip', 'Continue an interrupted search from its checkpoint folder', ...
+                'ButtonPushedFcn', @(~, ~) obj.resume());
+            uibutton(ag, 'Text', 'Inspect selected (EEGLAB)...', 'Tooltip', ...
+                'Open the selected candidate (rebuilt, not adopted) or the source dataset in EEGLAB''s viewers', ...
+                'ButtonPushedFcn', @(~, ~) obj.inspect());
+            uibutton(ag, 'Text', 'Adopt selected', 'ButtonPushedFcn', @(~, ~) obj.adopt());
+            uibutton(ag, 'Text', 'Print script', 'ButtonPushedFcn', @(~, ~) obj.printScript());
+            resP = uipanel(g, 'Title', 'Results (select a row, then Inspect / Adopt / Print script)');
+            resP.Layout.Row = 3; resP.Layout.Column = 1;
+            obj.ResultTable = uitable(uigridlayout(resP, [1 1]), 'RowName', {}, 'ColumnName', ...
                 {'id','status','objective','diff CI','not distinguished','P(best)','min ret','interp','amp err','art','pipeline / reason'}, ...
                 'ColumnWidth', {35, 70, 65, 120, 45, 50, 55, 50, 55, 45, 'auto'});
             % any change to what the search depends on makes shown results stale
@@ -406,6 +428,67 @@ classdef Panel < handle
             end
         end
 
+        function valuesFromDialog(obj, com, EEG)
+            % Values of a catalog step from its EEGLAB dialog; a value that
+            % differs from those already set is added to the step's search.
+            k = obj.selected(); if isempty(k), return; end
+            slot = obj.Plan.Slots(k);
+            j = find(cellfun(@(a) ~any(strcmp(a.type, {'none','native','eeglab'})), slot.alternatives), 1);
+            if isempty(j)
+                uialert(obj.Fig, 'The selected step is already configured in EEGLAB; use Add EEGLAB config as candidate.', 'NeuroQC');
+                return;
+            end
+            alt = slot.alternatives{j};
+            try
+                if nargin < 2
+                    if any(strcmp(alt.type, {'reject_threshold','reject_jointprob','reject_kurtosis'}))
+                        EEG = obj.previewEpoched();
+                        com = neuroqc.run.Native.captureCall(EEG, neuroqc.run.Native.menuCall(alt.type));
+                    elseif strcmp(alt.type, 'icremove')
+                        EEG = neuroqc.live.Session.current();
+                        com = neuroqc.run.Native.captureWorkflow('icremove', EEG);
+                    else
+                        assert(~any(strcmp(alt.type, {'epoch','baseline','restore'})), 'NeuroQC:Native', ...
+                            '%s takes its settings from the analysis contract / the starting montage.', alt.type);
+                        EEG = neuroqc.live.Session.current();
+                        com = neuroqc.run.Native.capture(alt.type, EEG);
+                    end
+                    if isempty(com), return; end
+                end
+                [vals, notes] = neuroqc.run.Native.catalogValues(alt.type, com, EEG);
+                d = neuroqc.plan.Catalog.get(alt.type);
+                added = {};
+                for f = fieldnames(vals)'
+                    name = f{1}; v = vals.(name);
+                    listValued = iscell(d.params(strcmp({d.params.name}, name)).default);
+                    if ~isfield(alt.params, name), alt.params.(name) = v; added{end+1} = name; continue; end %#ok<AGROW>
+                    cur = alt.params.(name);
+                    if listValued
+                        if iscell(cur) && ~isempty(cur) && all(cellfun(@iscell, cur)), L = cur; else, L = {cur}; end
+                    else
+                        if iscell(cur), L = cur; else, L = {cur}; end
+                    end
+                    if any(cellfun(@(x) isequal(x, v), L)), continue; end
+                    L{end+1} = v; alt.params.(name) = L; added{end+1} = name; %#ok<AGROW>
+                end
+                obj.Plan.Slots(k).alternatives{j} = alt;
+                msg = sprintf('%s from the EEGLAB dialog: %s', slot.id, strjoin(arrayfun(@(f) sprintf('%s = %s', f{1}, ...
+                    valText(alt.params.(f{1}))), fieldnames(vals)', 'UniformOutput', false), '; '));
+                neuroqc.utils.log('%s', msg);
+                if ~isempty(notes)
+                    neuroqc.utils.log('Not used by the %s step: %s.', alt.type, strjoin(notes, '; '));
+                    if nargin < 2
+                        uialert(obj.Fig, sprintf(['%s\n\nNot used by the %s step: %s.\n\nTo keep every setting of ', ...
+                            'the dialog, use Fix via EEGLAB dialog instead.'], msg, alt.type, strjoin(notes, '; ')), 'NeuroQC', 'Icon', 'warning');
+                    end
+                end
+                if ~isempty(added), obj.invalidate('Plan changed'); end
+                obj.showPlan();
+            catch ME
+                uialert(obj.Fig, ME.message, 'NeuroQC');
+            end
+        end
+
         function toggleSkip(obj)
             k = obj.selected(); if isempty(k), return; end
             slot = obj.Plan.Slots(k);
@@ -546,6 +629,136 @@ classdef Panel < handle
         function settingsChanged(obj)
             obj.invalidate('Settings changed');
             obj.updateSummary();
+            obj.updateObjectives();
+        end
+
+        function updateObjectives(obj)
+            % objective choices from the components defined above
+            try, names = obj.contract().objectiveNames(); catch, names = {}; end
+            v = obj.ObjectiveField.Value;
+            obj.ObjectiveField.Items = [{'composite', 'pareto'} names(:)'];
+            obj.ObjectiveField.Value = v;
+        end
+
+        function optionsDialog(obj)
+            o = obj.Options;
+            d = uifigure('Name', 'NeuroQC search options', 'Position', [240 240 520 300], 'WindowStyle', 'modal');
+            gl = uigridlayout(d, [7 3]); gl.ColumnWidth = {170, '1x', 110}; gl.RowHeight = repmat({26}, 1, 7);
+            uilabel(gl, 'Text', 'Data unit of the dataset');
+            du = uidropdown(gl, 'Items', {'uV', 'V'}, 'Value', o.dataUnit, 'Tooltip', 'V: scaled to uV on NeuroQC''s copy (ICA weights too)');
+            uilabel(gl, 'Text', '');
+            uilabel(gl, 'Text', 'Checkpoint folder');
+            ck = uilabel(gl, 'Text', orDash(o.checkpoint));
+            uibutton(gl, 'Text', 'Choose...', 'ButtonPushedFcn', @(~, ~) pickDir());
+            uilabel(gl, 'Text', 'Search');
+            sm = uidropdown(gl, 'Items', {'exhaustive', 'sample'}, 'Value', o.searchMode);
+            ss = uispinner(gl, 'Limits', [1 1e5], 'Value', o.sampleSize, 'Tooltip', 'pipelines drawn when sampling');
+            uilabel(gl, 'Text', 'Parallel (Parallel Computing Toolbox)');
+            pa = uicheckbox(gl, 'Text', '', 'Value', o.parallel);
+            uilabel(gl, 'Text', '');
+            uilabel(gl, 'Text', 'External QC table (key column)');
+            qc = uilabel(gl, 'Text', orDash(qcText(o.externalQC)));
+            uibutton(gl, 'Text', 'Import...', 'ButtonPushedFcn', @(~, ~) pickQc());
+            uilabel(gl, 'Text', ''); uilabel(gl, 'Text', ''); uilabel(gl, 'Text', '');
+            uilabel(gl, 'Text', '');
+            uibutton(gl, 'Text', 'Cancel', 'ButtonPushedFcn', @(~, ~) delete(d));
+            uibutton(gl, 'Text', 'OK', 'ButtonPushedFcn', @(~, ~) apply());
+            function pickDir()
+                p = uigetdir(pwd, 'Checkpoint folder (empty or of this same search)');
+                if ischar(p), o.checkpoint = p; ck.Text = p; end
+            end
+            function pickQc()
+                [f, p] = uigetfile({'*.csv;*.txt;*.xlsx', 'QC table'}, 'External QC table');
+                if ischar(f), o.externalQC = fullfile(p, f); qc.Text = o.externalQC; end
+            end
+            function apply()
+                o.dataUnit = du.Value; o.searchMode = sm.Value; o.sampleSize = ss.Value; o.parallel = pa.Value;
+                obj.setOptions(o); delete(d);
+            end
+        end
+
+        function setOptions(obj, o)
+            obj.Options = o;
+            neuroqc.utils.log('Search options: unit %s, %s search%s, checkpoint %s, parallel %d, external QC %s', o.dataUnit, ...
+                o.searchMode, ternary(strcmp(o.searchMode, 'sample'), sprintf(' (%d)', o.sampleSize), ''), orDash(o.checkpoint), ...
+                o.parallel, orDash(qcText(o.externalQC)));
+            obj.invalidate('Options changed');
+        end
+
+        function resume(obj, folder)
+            if nargin < 2
+                folder = uigetdir(pwd, 'Checkpoint folder of the interrupted search');
+                if ~ischar(folder), return; end
+            end
+            try
+                stop(obj.Timer); cleanup = onCleanup(@() start(obj.Timer)); %#ok<NASGU>
+                obj.StatusLabel.Text = 'Resuming... progress in the Command Window'; drawnow;
+                r = neuroqc.NeuroQC.resume(folder);
+                obj.Result = r; assignin('base', 'neuroqc_result', r);
+                obj.showResults();
+                obj.StatusLabel.Text = 'Resumed search done. Result in variable neuroqc_result.';
+            catch ME
+                uialert(obj.Fig, ME.message, 'NeuroQC');
+            end
+        end
+
+        function editChanlocs(obj)
+            try
+                neuroqc.run.Native.applyNow('chanlocs');
+                obj.refreshLive(false);
+            catch ME
+                uialert(obj.Fig, ME.message, 'NeuroQC');
+            end
+        end
+
+        function viewErp(obj)
+            % EEGLAB's ERP + scalp map viewer on epoched preview data
+            try
+                EEG = obj.previewEpoched();
+                EEG.setname = sprintf('%s (NeuroQC preview, all conditions)', EEG.setname);
+                pop_timtopo(EEG);
+            catch ME
+                uialert(obj.Fig, ME.message, 'NeuroQC');
+            end
+        end
+
+        function inspect(obj, which, view)
+            % A candidate (rebuilt from the stored start, not adopted) or the
+            % source dataset in one of EEGLAB's own viewers.
+            if nargin < 2
+                k = obj.selectedResult(); if isempty(k), return; end
+                srcs = {sprintf('Candidate %d: %s', k, obj.Result.labels{k}), 'Source dataset (start of the search)'};
+                [w, ok] = listdlg('ListString', srcs, 'SelectionMode', 'single', 'Name', 'Inspect', 'ListSize', [420 60]);
+                if ~ok, return; end
+                which = k; if w == 2, which = 0; end
+                views = {'Scroll data (eegplot)', 'ERP and scalp maps (pop_timtopo)', 'ERPs at all channels (pop_plottopo)', ...
+                    'IC maps (pop_selectcomps)'};
+                [view, ok] = listdlg('ListString', views, 'SelectionMode', 'single', 'Name', 'EEGLAB viewer', 'ListSize', [300 80]);
+                if ~ok, return; end
+            end
+            r = obj.Result;
+            try
+                if which == 0
+                    E = r.root; E.setname = sprintf('%s (NeuroQC source, start of the search)', r.state.setname);
+                else
+                    [~, E] = evalc('neuroqc.run.Executor.replay(r, which)');
+                    E.setname = sprintf('NeuroQC candidate %d (not adopted): %s', which, r.labels{which});
+                end
+                if E.trials == 1 && view > 1
+                    codes = r.contract.allEvents();
+                    [~, E] = evalc('pop_epoch(E, codes, r.contract.effectiveEpoch())');
+                end
+                switch view
+                    case 1, pop_eegplot(E, 1, 1, 0);
+                    case 2, pop_timtopo(E);
+                    case 3, pop_plottopo(E);
+                    case 4
+                        assert(~isempty(E.icaweights), 'NeuroQC:Inspect', 'This dataset has no ICA decomposition.');
+                        pop_selectcomps(E, 1:min(35, size(E.icaweights, 1)));
+                end
+            catch ME
+                uialert(obj.Fig, ME.message, 'NeuroQC');
+            end
         end
 
         function addCondition(obj, name, codes)
@@ -792,6 +1005,9 @@ classdef Panel < handle
                 for f = fieldnames(obj.LimitFields)'
                     opts.(f{1}) = obj.LimitFields.(f{1}).Value;
                 end
+                for f = fieldnames(obj.Options)'
+                    if ~isempty(obj.Options.(f{1})) || islogical(obj.Options.(f{1})), opts.(f{1}) = obj.Options.(f{1}); end
+                end
                 obj.StatusLabel.Text = 'Running... progress in the Command Window'; drawnow;
                 stop(obj.Timer);
                 cleanup = onCleanup(@() start(obj.Timer));
@@ -926,6 +1142,10 @@ switch r.mode
         if isfield(r, 'source'), t = [t ' (' r.source ')']; end
     otherwise, t = r.mode;
 end
+end
+
+function t = qcText(q)
+if isempty(q), t = ''; elseif ischar(q) || isstring(q), t = char(q); else, t = sprintf('table (%d rows)', height(q)); end
 end
 
 function t = orDash(t)
