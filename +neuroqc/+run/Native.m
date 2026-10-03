@@ -59,6 +59,63 @@ classdef Native
             neuroqc.run.Native.applyCall(call, 'native');
         end
 
+        function alt = eeglabAlt(command)
+            % A single EEGLAB call as a parameterised plan alternative:
+            % 'EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',30);'
+            %   -> type 'eeglab', params.fn = 'pop_eegfiltnew', params.args
+            %      = struct array (name, key, values); every argument is
+            %      kept, each value list starts with the dialog's value.
+            % Returns [] when the command is not one EEG = pop_x(EEG, ...)
+            % call (e.g. a captured multi-step workflow).
+            alt = [];
+            st = neuroqc.run.Native.statements(command);
+            if ~isscalar(st), return; end
+            [fn, ~, lhs] = neuroqc.live.History.callParts(st{1});
+            if isempty(fn) || ~startsWith(fn, 'pop_') || isempty(regexp(lhs, '^\[?\s*EEG\>', 'once')), return; end
+            a = neuroqc.run.Native.argsOf(st{1}, fn);
+            % trailing name-value pairs: char keys at every other position
+            kv = numel(a) + 1;
+            for i = numel(a)-1:-2:1
+                if ischar(a{i}) && isrow(a{i}) && ~isempty(regexp(a{i}, '^[A-Za-z]\w*$', 'once')), kv = i; else, break; end
+            end
+            args = struct('name', {}, 'key', {}, 'values', {});
+            for i = 1:kv-1
+                args(end+1) = struct('name', sprintf('arg%d', i + 1), 'key', false, 'values', {a(i)}); %#ok<AGROW>
+            end
+            for i = kv:2:numel(a)
+                args(end+1) = struct('name', a{i}, 'key', true, 'values', {a(i+1)}); %#ok<AGROW>
+            end
+            alt = struct('type', 'eeglab', 'params', struct('fn', fn, 'args', args));
+        end
+
+        function [alt, changed] = mergeEeglab(alt, other)
+            % Add another configuration of the same EEGLAB call: each
+            % argument whose value differs becomes searched over the
+            % values seen. changed lists those arguments ({} if the other
+            % configuration is a different call or layout).
+            changed = {};
+            if isempty(other) || ~strcmp(alt.params.fn, other.params.fn), return; end
+            A = alt.params.args; B = other.params.args;
+            if ~isequal({A.name}, {B.name}), return; end
+            for i = 1:numel(A)
+                v = B(i).values{1};
+                if ~any(cellfun(@(x) isequal(x, v), A(i).values))
+                    A(i).values{end+1} = v; changed{end+1} = A(i).name; %#ok<AGROW>
+                end
+            end
+            alt.params.args = A;
+        end
+
+        function com = eeglabCommand(fn, args, values)
+            % The EEGLAB command for one choice of argument values.
+            parts = cell(1, numel(args));
+            for i = 1:numel(args)
+                v = valueCode(values{i});
+                if args(i).key, parts{i} = sprintf('''%s'',%s', args(i).name, v); else, parts{i} = v; end
+            end
+            com = sprintf('EEG = %s(EEG, %s);', fn, strjoin(parts, ','));
+        end
+
         function s = statements(command)
             % The EEGLAB statements of a native step, one per line (a
             % captured workflow such as mark -> reject has several).
@@ -206,6 +263,31 @@ end
 function [LASTCOM, EEG] = runCall(EEG, call)
 LASTCOM = '';
 eval(call);
+end
+
+function t = valueCode(v)
+% MATLAB code for a value, at full precision.
+if ischar(v)
+    t = ['''' strrep(v, '''', '''''') ''''];
+elseif isstring(v) && isscalar(v)
+    t = valueCode(char(v));
+elseif islogical(v) || isnumeric(v)
+    if isempty(v), t = '[]';
+    else
+        % the shortest text that gives back exactly the same value
+        for prec = 4:17
+            t = mat2str(double(v), prec);
+            if isequal(eval(t), double(v)), break; end
+        end
+        if islogical(v), t = mat2str(v); end
+    end
+elseif iscell(v)
+    inner = cellfun(@valueCode, v, 'UniformOutput', false);
+    t = ['{' strjoin(inner, ',') '}'];
+    if ~isrow(v) && ~isempty(v), t = ['{' strjoin(inner, ';') '}']; end
+else
+    error('NeuroQC:Native', 'Cannot write a %s argument back into an EEGLAB command.', class(v));
+end
 end
 
 function NQC_ARGS__ = evalArgs(NQC_BODY__)

@@ -195,14 +195,14 @@ app.TypeDrop.Value = 'lowpass'; app.addStep();
 app.TypeDrop.Value = 'highpass'; app.addStep();
 app.PlanTable.Selection = [1 1];
 app.captureStep('EEG = pop_eegfiltnew(EEG, ''hicutoff'',30,''plotfreqz'',0);');   % what the dialog returns
-verifyEqual(tc, app.Plan.Slots(1).alternatives{1}.type, 'native');
+verifyEqual(tc, app.Plan.Slots(1).alternatives{1}.type, 'eeglab');   % a single call: arguments searchable
 app.addCandidateConfig('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''filtorder'',200,''plotfreqz'',0);');
 app.addCandidateConfig('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''filtorder'',200,''plotfreqz'',0);');   % duplicate ignored
 verifyEqual(tc, numel(app.Plan.Slots(1).alternatives), 2);
 app.toggleSkip();
 verifyEqual(tc, numel(app.Plan.Slots(1).alternatives), 3);
 verifyTrue(tc, contains(app.PlanTable.Data{1, 3}, 'none (skip)'));
-verifyTrue(tc, contains(app.PlanTable.Data{1, 3}, 'EEGLAB: EEG = pop_eegfiltnew'));
+verifyTrue(tc, contains(app.PlanTable.Data{1, 3}, 'EEGLAB pop_eegfiltnew: hicutoff = 30'));
 app.PlanTable.Selection = [2 1];
 app.mustBefore('lowpass_native');
 verifyEqual(tc, app.Plan.Precedence, {'highpass', 'lowpass_native'});
@@ -210,6 +210,40 @@ verifyTrue(tc, contains(app.ConstraintLabel.Text, 'highpass before lowpass_nativ
 verifyEqual(tc, neuroqc.run.Native.typeOfCommand(sprintf('EEG = pop_eegthresh(EEG,1,[1:32],-60,120,-0.2,0.996,0,0);\nEEG = pop_rejepoch(EEG, EEG.reject.rejthresh, 0);')), 'reject_threshold');
 app.clearOrderRules();
 verifyEmpty(tc, app.Plan.Precedence);
+end
+
+function testDialogArgumentsAreSearchedOneByOne(tc)
+% Configure a step twice in its EEGLAB dialog: the arguments that differ
+% become searched lists (combined), the others stay as set in the dialog;
+% each argument appears in the per-parameter summary.
+nqc_setBase(nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0)));
+app = neuroqc.gui.Panel();
+cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
+app.addComponent('P3', [0.3 0.5], {'Pz', 'P3', 'P4'}, 'mean', 'positive');
+app.TypeDrop.Value = 'lowpass'; app.addStep();
+app.TypeDrop.Value = 'epoch'; app.addStep(); app.TypeDrop.Value = 'baseline'; app.addStep();
+app.PlanTable.Selection = [1 1];
+app.captureStep('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',30,''plotfreqz'',1);');
+app.addCandidateConfig('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',40,''plotfreqz'',1);');
+app.addCandidateConfig('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.3,''hicutoff'',40,''plotfreqz'',1);');
+alt = app.Plan.Slots(1).alternatives;
+verifyEqual(tc, numel(alt), 1);                                    % one step, searched arguments
+A = alt{1}.params.args;
+verifyEqual(tc, A(strcmp({A.name}, 'hicutoff')).values, {30, 40});
+verifyEqual(tc, A(strcmp({A.name}, 'locutoff')).values, {0.1, 0.3});
+verifyTrue(tc, contains(app.PlanTable.Data{1, 3}, '[4 combinations]'));
+app.editParams('hicutoff', {30, 40, 45});                          % the editor's effect
+app.run(false);
+r = app.Result;
+verifyEqual(tc, numel(r.leaves), 6);
+verifyTrue(tc, all(contains(r.labels, 'pop_eegfiltnew(locutoff=')));
+verifyEqual(tc, r.signalCheck, 'probe');                           % fixed filters: probed, not injected
+m = r.marginal;
+verifyEqual(tc, sort(unique(m.parameter))', {'lowpass_native.hicutoff', 'lowpass_native.locutoff'});
+verifyEqual(tc, sum(strcmp(m.parameter, 'lowpass_native.hicutoff')), 3);
+first = cellfun(@(c) c{1}, {r.cands.coms}, 'UniformOutput', false);
+verifyTrue(tc, all(contains(first, '''plotfreqz'',0')));           % no filter plot window during the search
 end
 
 function testCaptureReturnsCommandWithoutTouchingData(tc)

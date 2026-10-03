@@ -47,6 +47,26 @@ classdef Plan
             obj = obj.addSlot(id, {neuroqc.plan.Plan.nativeAlt(command)});
         end
 
+        function obj = addEeglab(obj, command, id, varargin)
+            % A step configured in an EEGLAB dialog whose arguments can be
+            % searched one by one:
+            %   p = p.addEeglab('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',30);', 'filter', ...
+            %                   'hicutoff', {20, 30, 40});
+            % Every argument of the command is kept; named ones (or
+            % 'arg2', 'arg3', ... for positional ones) take a search list.
+            alt = neuroqc.run.Native.eeglabAlt(command);
+            assert(~isempty(alt), 'NeuroQC:Native', 'Not a single EEG = pop_x(EEG, ...) command: %s', command);
+            if nargin < 3 || isempty(id), id = regexprep(alt.params.fn, '^pop_', ''); end
+            for k = 1:2:numel(varargin)
+                i = find(strcmp({alt.params.args.name}, varargin{k}), 1);
+                assert(~isempty(i), 'NeuroQC:Plan', '%s has no argument %s (has: %s)', alt.params.fn, varargin{k}, ...
+                    strjoin({alt.params.args.name}, ', '));
+                v = varargin{k+1}; if ~iscell(v), v = {v}; end
+                alt.params.args(i).values = v(:)';
+            end
+            obj = obj.addSlot(id, {alt});
+        end
+
         function obj = addAlternative(obj, id, alt)
             % One more alternative for a slot (e.g. another configuration
             % captured from an EEGLAB dialog); the search tries each.
@@ -281,6 +301,10 @@ classdef Plan
                         'key', 'none', 'label', 'none', 'searched', {{}}, 'defining', ''); %#ok<AGROW>
                     continue;
                 end
+                if strcmp(alt.type, 'eeglab')
+                    list = [list eeglabInstances(slot.id, alt.params)]; %#ok<AGROW>
+                    continue;
+                end
                 [grid, searched, defining] = paramGrid(alt.type, alt.params, contract);
                 for g = 1:numel(grid)
                     p = grid{g};
@@ -481,6 +505,38 @@ end
 if isempty(names), grid = {struct()}; end
 end
 
+function list = eeglabInstances(slotId, P)
+% One native instance per combination of the searched argument values.
+% The instance runs the full EEGLAB command; the argument values are kept
+% in its params for labels and for the per-parameter summary.
+args = P.args;
+searched = {args(cellfun(@numel, {args.values}) > 1).name};
+idx = {[]};
+for i = 1:numel(args)
+    next = {};
+    for g = 1:numel(idx)
+        for v = 1:numel(args(i).values), next{end+1} = [idx{g} v]; end %#ok<AGROW>
+    end
+    idx = next;
+end
+list = cell(1, numel(idx));
+for g = 1:numel(idx)
+    vals = arrayfun(@(i) args(i).values{idx{g}(i)}, 1:numel(args), 'UniformOutput', false);
+    com = neuroqc.run.Native.eeglabCommand(P.fn, args, vals);
+    p = struct('command', com);
+    shown = {};
+    for i = 1:numel(args)
+        if any(strcmp(args(i).name, searched))
+            p.(matlab.lang.makeValidName(args(i).name)) = vals{i};
+            shown{end+1} = sprintf('%s=%s', args(i).name, valText(vals{i})); %#ok<AGROW>
+        end
+    end
+    if isempty(shown), key = sprintf('%s: %s', P.fn, com); else, key = sprintf('%s(%s)', P.fn, strjoin(shown, ',')); end
+    list{g} = struct('slot', slotId, 'type', 'native', 'params', p, 'key', key, 'label', key, ...
+        'searched', {cellfun(@matlab.lang.makeValidName, searched, 'UniformOutput', false)}, 'defining', '');
+end
+end
+
 function s = stratumOf(path)
 parts = {};
 for q = 1:numel(path)
@@ -515,6 +571,12 @@ end
 
 function t = altText(a)
 if strcmp(a.type, 'none'), t = 'none'; return; end
+if strcmp(a.type, 'eeglab')
+    parts = arrayfun(@(x) sprintf('%s=%s', x.name, valText(x.values)), a.params.args, 'UniformOutput', false);
+    parts = regexprep(parts, '=\{([^;{}]*)\}$', '=$1');   % single values without braces
+    t = sprintf('%s(%s)', a.params.fn, strjoin(parts, ', '));
+    return;
+end
 f = fieldnames(a.params);
 if isempty(f), t = a.type; return; end
 parts = cellfun(@(n) sprintf('%s=%s', n, valText(a.params.(n))), f, 'UniformOutput', false);

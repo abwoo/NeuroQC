@@ -197,6 +197,34 @@ for k = 1:numel(l)
 end
 end
 
+function testEeglabCommandArgumentsAreSearchParameters(tc)
+% A command from an EEGLAB dialog keeps every argument; named and
+% positional arguments can be searched; values are written back exactly.
+p = neuroqc.plan.Plan();
+p = p.addEeglab('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',30,''filtorder'',3300,''plotfreqz'',0);', 'filter', ...
+    'hicutoff', {20, 30}, 'locutoff', {0.1, 1/3});
+p = p.add('epoch'); p = p.add('baseline');
+p = p.addEeglab('EEG = pop_eegthresh(EEG,1,[1:32],-60,120,-0.2,0.996,0,1);', 'reject', 'arg5', {100, 120});
+leaves = p.enumerate(nqc_fakeState(false, 500), nqc_contract());
+verifyEqual(tc, numel(leaves), 8);
+cmds = arrayfun(@(l) l.path{1}.params.command, leaves, 'UniformOutput', false);
+verifyTrue(tc, all(contains(cmds, '''filtorder'',3300')));          % unsearched dialog settings kept
+verifyTrue(tc, any(contains(cmds, '0.3333333333333333')));          % exact value written back
+e = neuroqc.run.Native.argsOf(cmds{find(contains(cmds, '0.33333'), 1)}, 'pop_eegfiltnew');
+verifyEqual(tc, e{2}, 1/3);                                         % bit-identical
+verifyTrue(tc, any(contains(cmds, '''locutoff'',0.1,')));           % and short when it can be
+rej = arrayfun(@(l) l.path{4}.params.command, leaves, 'UniformOutput', false);
+verifyEqual(tc, numel(unique(rej)), 2);
+verifyTrue(tc, all(contains(rej, ',-60,')));                        % the other positional limit kept
+a = neuroqc.run.Native.eeglabAlt('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',30);');
+[m, changed] = neuroqc.run.Native.mergeEeglab(a, neuroqc.run.Native.eeglabAlt('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.5,''hicutoff'',40);'));
+verifyEqual(tc, changed, {'locutoff', 'hicutoff'});
+verifyEqual(tc, m.params.args(1).values, {0.1, 0.5});
+[~, changed] = neuroqc.run.Native.mergeEeglab(a, neuroqc.run.Native.eeglabAlt('EEG = pop_reref(EEG, []);'));
+verifyEmpty(tc, changed);                                            % another call: not merged
+verifyEmpty(tc, neuroqc.run.Native.eeglabAlt(sprintf('EEG = pop_iclabel(EEG, ''default'');\nEEG = pop_subcomp(EEG, [], 0);')));
+end
+
 function testSampledSearchIsLabelledDistinctAndLegal(tc)
 p = neuroqc.plan.Plan();
 p = p.add('highpass', 'cutoff', num2cell(0.1:0.1:2));
