@@ -109,6 +109,7 @@ classdef Steps
         function [EEG, matched] = replayDecision(inst, EEG, info, ctx)
             % Same decisions on a structurally identical dataset.
             matched = true;
+            EEG = neuroqc.eval.Injection.noteReference(EEG, inst);
             switch inst.type
                 case 'badchannels'
                     if strcmp(inst.params.action, 'remove')

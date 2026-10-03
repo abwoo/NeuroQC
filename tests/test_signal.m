@@ -72,6 +72,25 @@ verifyLessThan(tc, r.amplitudeError, 0.02);
 verifyGreaterThan(tc, r.topoCorr, 0.99);
 end
 
+function testChannelsRemovedAfterAverageReferenceAreNotDistortion(tc)
+% Audit case: average reference, then P3/P4/POz removed. Removing channels
+% does not change Pz, so the expected field must keep the reference over
+% the channels present when it was applied (the old code re-averaged over
+% the final channels and reported ~4% amplitude error).
+c = neuroqc.eval.Contract('conditions', {'target', {'11'}; 'standard', {'31'}}, ...
+    'epoch', [-0.2 1.0], 'baseline', [-0.2 0], 'components', {'P3', [0.30 0.50], {'Pz'}});
+[S, truth] = neuroqc.eval.Injection.prepare(tc.TestData.EEG, c, tc.TestData.ref);
+x = struct('contract', c, 'highpass', 0);
+in1 = inst('reref', 'mode', 'average', 'channels', {});
+in2 = inst('channels', 'labels', {'P3', 'P4', 'POz'}, 'action', 'remove');
+S = neuroqc.run.Steps.replayDecision(in1, S, struct(), x);
+idx = find(ismember(lower({S.chanlocs.labels}), lower({'P3', 'P4', 'POz'})));
+S = neuroqc.run.Steps.replayDecision(in2, S, struct('listedIdx', idx), x);
+r = neuroqc.eval.Injection.compare(S, c, truth, {in1, in2});
+verifyLessThan(tc, r.amplitudeError, 0.005);
+verifyGreaterThan(tc, r.waveformCorr, 0.999);
+end
+
 function testOverlappingEpochsAreNotReadAsDistortion(tc)
 % Events 0.42 s apart with 1.2 s epochs: each epoch contains neighbouring
 % injected responses. The expectation must include them.

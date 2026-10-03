@@ -31,7 +31,9 @@ classdef Injection
     %   Limits: ASR and native commands are re-run on the copy instead of
     %   replayed (their output is not a fixed function of a decision); such
     %   candidates carry a note. The expected re-referenced field uses the
-    %   channels present at the end of the pipeline.
+    %   channels present WHEN each reference was applied (recorded on the
+    %   copy by noteReference), so channels removed afterwards do not
+    %   change the expected values of the channels that remain.
 
     methods (Static)
         function [S, truth] = prepare(root, contract, ref, opts)
@@ -89,11 +91,28 @@ classdef Injection
                 'onsets', onsets, 'urevents', urs);
         end
 
+        function S = noteReference(S, inst)
+            % Record the channel set a re-reference step is about to use
+            % (called on the injected copy before the step runs).
+            mode = ''; chans = {}; ex = {};
+            if strcmp(inst.type, 'reref')
+                mode = inst.params.mode; chans = cellstr(inst.params.channels);
+                if isfield(inst.params, 'exclude'), ex = cellstr(inst.params.exclude); end
+            elseif strcmp(inst.type, 'native')
+                e = neuroqc.live.History.classify(inst.params.command);
+                if strcmp(e.step, 'reref') && isfield(e.params, 'mode'), mode = e.params.mode; end
+            end
+            if isempty(mode), return; end
+            rec = struct('mode', mode, 'channels', {chans}, 'exclude', {ex}, 'labels', {{S.chanlocs.labels}});
+            if ~isfield(S.etc, 'neuroqc') || ~isfield(S.etc.neuroqc, 'refLog'), S.etc.neuroqc.refLog = {}; end
+            S.etc.neuroqc.refLog{end+1} = rec;
+        end
+
         function r = compare(S, contract, truth, path)
             r = struct('source', 'injection', 'amplitudeError', NaN, 'latencyShiftMs', NaN, ...
                 'artifactPct', NaN, 'waveformCorr', NaN, 'topoCorr', NaN, 'chain', '', 'note', '', ...
                 'notApplicable', {{}});   % NaN in an applicable metric = check failed (Rank rejects it)
-            Ew = expectedWeights(truth, {S.chanlocs.labels}, path);   % nch_leaf x nComp
+            Ew = expectedWeights(truth, S, path);                    % nch_leaf x nComp
             labs = lower({S.chanlocs.labels});
             if strcmp(truth.kind, 'spectral')
                 errs = zeros(1, numel(contract.bands)); tc = errs;
@@ -194,29 +213,40 @@ for j = 1:numel(contract.components)
 end
 end
 
-function E = expectedWeights(truth, leafLabels, path)
+function E = expectedWeights(truth, S, path)
 % True field at the channels present now, re-referenced like the candidate.
-[ok, loc] = ismember(lower(leafLabels), lower(truth.labels));
-E = zeros(numel(leafLabels), size(truth.weights, 2));
-E(ok, :) = truth.weights(loc(ok), :);
-for q = 1:numel(path)
-    in = path{q}; mode = ''; chans = {}; ex = false(numel(leafLabels), 1);
-    if strcmp(in.type, 'reref')
-        mode = in.params.mode; chans = cellstr(in.params.channels);
-        if isfield(in.params, 'exclude'), ex = ismember(lower(leafLabels(:)), lower(cellstr(in.params.exclude))); end
-    elseif strcmp(in.type, 'native')
-        e = neuroqc.live.History.classify(in.params.command);
-        if strcmp(e.step, 'reref') && isfield(e.params, 'mode'), mode = e.params.mode; end
-    end
-    switch mode
-        case 'average'   % excluded channels neither enter the average nor change
-            inc = ok(:) & ~ex;
-            E(~ex, :) = E(~ex, :) - mean(E(inc, :), 1);
-        case 'channels'
-            [rk, rl] = ismember(lower(chans), lower(truth.labels));
-            if any(rk), E(~ex, :) = E(~ex, :) - mean(truth.weights(rl(rk), :), 1); end
+% Each reference is applied over the channels present at that moment
+% (S.etc.neuroqc.refLog); channels absent then but restored later are
+% interpolated from re-referenced data and carry the same offset.
+leafLabels = {S.chanlocs.labels};
+log = {};
+if isfield(S, 'etc') && isfield(S.etc, 'neuroqc') && isfield(S.etc.neuroqc, 'refLog')
+    log = S.etc.neuroqc.refLog;
+else
+    % no record (copy not produced by the executor): assume the reference
+    % saw the final channel set
+    for q = 1:numel(path)
+        rec = neuroqc.eval.Injection.noteReference(struct('chanlocs', {S.chanlocs}, 'etc', struct()), path{q});
+        if isfield(rec.etc, 'neuroqc'), log = [log rec.etc.neuroqc.refLog]; end %#ok<AGROW>
     end
 end
+F = truth.weights;                              % all starting channels x nComp
+labs0 = lower(truth.labels(:));
+for q = 1:numel(log)
+    r = log{q};
+    ex = ismember(labs0, lower(r.exclude));
+    switch r.mode
+        case 'average'   % excluded channels neither enter the average nor change
+            inc = ismember(labs0, lower(r.labels)) & ~ex;
+            F(~ex, :) = F(~ex, :) - mean(F(inc, :), 1);
+        case 'channels'
+            rk = ismember(labs0, lower(r.channels));
+            if any(rk), F(~ex, :) = F(~ex, :) - mean(F(rk, :), 1); end
+    end
+end
+[ok, loc] = ismember(lower(leafLabels), labs0);
+E = zeros(numel(leafLabels), size(F, 2));
+E(ok, :) = F(loc(ok), :);
 end
 
 function amp = sineAmplitude(S, f0)
