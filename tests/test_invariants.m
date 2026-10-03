@@ -1,7 +1,7 @@
-function tests = test_legacy_invariants
-%TEST_LEGACY_INVARIANTS Invariants from the 0.6 suite (NeuroQC-gh-tests)
-%   that still apply to 0.7, ported to the current API. The mapping of
-%   every 0.6 test file is in tests/legacy_v06/MAPPING.md.
+function tests = test_invariants
+%TEST_INVARIANTS Behaviour that must hold whatever else changes: explicit
+%   values are never replaced by defaults, missing events fail before any
+%   processing, detection does not imply removal, and similar guarantees.
 tests = functiontests(localfunctions);
 end
 

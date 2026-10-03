@@ -31,7 +31,6 @@ jobs:
             --include-fragments=full
             './README.md'
             './docs/**/*.md'
-            './site/**/*.html'
           fail: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

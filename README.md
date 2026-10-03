@@ -18,8 +18,7 @@ NeuroQC then runs every legal combination of the parts you left open and reports
 Every candidate is checked against a known signal before it can be recommended, so stronger
 processing does not win merely by removing noise.
 
-> What changed from 0.6 and why: [REVIEW.md](REVIEW.md). What is and is not covered:
-> [docs/COVERAGE.md](docs/COVERAGE.md).
+> What is and is not covered: [docs/COVERAGE.md](docs/COVERAGE.md).
 
 ## Install
 
@@ -176,22 +175,6 @@ Options are listed in `help neuroqc.run.Executor` (search) and `help neuroqc.eva
    - The recommendation is the least aggressive candidate among those not distinguished from the
      best: most trials kept, then least distortion.
    - External QC values (CSV or table with a `key` column) can be imported as columns and limits.
-
-## One run, by the numbers
-
-Synthetic 32-channel oddball with known P3, blinks and movement artifacts
-(`tools/showcase_capture.m`); every number below is written by `tools/inject.py` from that run.
-
-<!-- sync:numbers:en -->
-| Stage | Result |
-|---|---|
-| **Plan** | 4 high-pass x 2 low-pass x 3 rejection thresholds → **24 pipelines**, 0 illegal combinations excluded |
-| **Execution** | prefix tree: **52 EEGLAB step runs** instead of 120 |
-| **Signal check** | matched-decision injection (a known signal carried through every candidate): **12 of 24** rejected for distorting the known signal |
-| **Constraints** | **12 of 24 feasible**, 12 rejected, 0 failed — every exclusion listed with its reason |
-| **Ranking** | best SME: candidate **#3**; **4 of 24** not distinguished from it by these data |
-| **Recommendation** | candidate **#6** (most trials kept among those): `highpass(cutoff=0.1) > lowpass(cutoff=30) > epoch > baseline > reject_threshold(exclude={},uv=150)` |
-<!-- /sync:numbers:en -->
 
 ## Limitations (read before trusting a result)
 

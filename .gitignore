@@ -36,7 +36,6 @@ __pycache__/
 .pytest_cache/
 
 # Local-only 0.6 reproductions and obsolete presentation assets
-/tests/v06_reproductions.m
 /docs/assets/demo-drift.gif
 /docs/assets/demo-goal.gif
 /docs/assets/demo-qc.gif
@@ -54,9 +53,4 @@ __pycache__/
 /docs/assets/tab7-results-drift.png
 /docs/assets/tab8-qc-imported.png
 /docs/assets/tab9-goal-reranked.png
-/site/assets/demo-drift.gif
-/site/assets/demo-goal.gif
-/site/assets/demo-qc.gif
-/site/assets/demo.gif
-/site/assets/logo.svg
-/site/assets/manual-vs-auto.gif
+/tests/v06_reproductions.m
