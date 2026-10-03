@@ -7,7 +7,7 @@ function results = run_all(names)
 here = fileparts(mfilename('fullpath'));
 addpath(here); addpath(fullfile(here, '..'));
 if nargin < 1
-    names = {'test_history', 'test_plan', 'test_statistics', 'test_signal', 'test_engine', 'test_eeglab'};
+    names = {'test_history', 'test_plan', 'test_statistics', 'test_signal', 'test_engine', 'test_eeglab', 'test_legacy_invariants'};
 end
 results = [];
 for k = 1:numel(names)
@@ -16,4 +16,7 @@ end
 disp(table(results));
 fprintf('\n%d passed, %d failed, %d incomplete (skipped) of %d\n', sum([results.Passed]), ...
     sum([results.Failed]), sum([results.Incomplete]), numel(results));
+% machine-readable line for tools/inject.py (skipped tests count as not passed)
+fprintf('TOTAL=%d PASSED=%d FAILED=%d\n', numel(results), sum([results.Passed]), ...
+    numel(results) - sum([results.Passed]));
 end

@@ -100,6 +100,8 @@ classdef Catalog
             % Check that a step is legal in abstract data state st and
             % return the state after it. reason is '' when legal.
             reason = '';
+            reason = invalidValue(type, p);   % explicit values are checked, never replaced by defaults
+            if ~isempty(reason), return; end
             switch type
                 case 'resample'
                     if ~(p.fs < st.srate), reason = sprintf('resample to %g Hz is not a downsampling of %g Hz', p.fs, st.srate); return; end
@@ -171,3 +173,24 @@ classdef Catalog
         end
     end
 end
+
+function reason = invalidValue(type, p)
+% Values outside the valid domain make the pipeline illegal (with the
+% reason), rather than failing inside EEGLAB or being silently defaulted.
+reason = '';
+pos = @(f) isfield(p, f) && ~(isnumeric(p.(f)) && isscalar(p.(f)) && isfinite(p.(f)) && p.(f) > 0);
+switch type
+    case 'resample', if pos('fs'), reason = 'resample fs must be a positive number'; end
+    case {'highpass','lowpass'}, if pos('cutoff'), reason = sprintf('%s cutoff must be a positive number (Hz)', type); end
+    case 'linenoise', if pos('freq') || pos('halfwidth'), reason = 'linenoise freq and halfwidth must be positive numbers (Hz)'; end
+    case 'asr', if pos('cutoff'), reason = 'asr cutoff must be a positive number (SD)'; end
+    case 'badchannels', if pos('threshold'), reason = 'badchannels threshold must be a positive number'; end
+    case 'reject_threshold', if pos('uv'), reason = 'reject_threshold uv must be a positive number'; end
+    case {'reject_jointprob','reject_kurtosis'}, if pos('sd'), reason = sprintf('%s sd must be a positive number', type); end
+    case 'icremove'
+        if pos('threshold') || p.threshold > 1, reason = 'icremove threshold must be a probability in (0, 1]'; end
+    case 'ica', if isfield(p, 'fitHighpass') && ~(isnumeric(p.fitHighpass) && isscalar(p.fitHighpass) && p.fitHighpass >= 0)
+            reason = 'ica fitHighpass must be >= 0 (0 = fit on the data as is)'; end
+end
+end
+

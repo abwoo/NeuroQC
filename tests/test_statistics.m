@@ -186,6 +186,21 @@ verifyEqual(tc, find(R.table.pareto)', [1 2]);
 verifyEmpty(tc, R.recommended);                   % two non-dominated: no single winner
 end
 
+function testExternalQcColumnsAndLimits(tc)
+% Imported QC values are joined by pipeline key, shown as columns and can
+% exclude candidates; a candidate without a value is not given one.
+rng(9); N = 40; ref = nqc_ref(N);
+A = nqc_cand(randn(N, 1), 'key', 'hp=0.1'); B = nqc_cand(randn(N, 1), 'key', 'hp=1'); C = nqc_cand(randn(N, 1), 'key', 'hp=2');
+Q = table({'hp=0.1'; 'hp=1'}, [0.2; 0.9], 'VariableNames', {'key', 'icFraction'});
+o = neuroqc.eval.Rank.defaults(); o.nBoot = 100;
+o.externalQC = Q; o.externalLimits = struct('icFraction', [0 0.5]);
+R = neuroqc.eval.Rank.run([A B C], ref, o);
+verifyEqual(tc, R.table.ext_icFraction(1:2), [0.2; 0.9]);
+verifyTrue(tc, isnan(R.table.ext_icFraction(3)));
+verifyEqual(tc, R.table.status, {'feasible'; 'rejected'; 'rejected'});   % no value -> outside the limit
+verifyTrue(tc, contains(R.table.reason{2}, 'icFraction'));
+end
+
 function testBonferroniWidensIntervals(tc)
 rng(6); N = 60; ref = nqc_ref(N); base = randn(N, 1);
 cs = arrayfun(@(k) nqc_cand(base + 0.8 * randn(N, 1)), 1:6);

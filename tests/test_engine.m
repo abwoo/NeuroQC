@@ -216,6 +216,43 @@ verifyEqual(tc, numel(r.leaves), 2);
 verifyTrue(tc, all(strcmp({r.cands.status}, 'ok')));
 end
 
+function testEveryCatalogStepRunsThroughEeglab(tc)
+% Each catalog step executes as a native EEGLAB call, is recorded in the
+% candidate's history, and its decisions replay on the injected copy.
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30, 'noisyChannels', {{'T7'}}, 'noisyUv', 200));
+nqc_setBase(EEG);
+p = neuroqc.plan.Plan();
+p = p.add('linenoise', 'freq', 50);
+p = p.add('highpass', 'cutoff', 0.5);
+p = p.add('badchannels', 'measure', 'kurt', 'threshold', 5, 'action', 'remove');
+p = p.add('restore');
+p = p.add('reref', 'mode', 'average');
+p = p.add('epoch'); p = p.add('baseline');
+p = p.addChoice('rej', {'reject_jointprob', 'sd', 5}, {'reject_kurtosis', 'sd', 5});
+r = neuroqc.NeuroQC.optimize(p, nqc_c());
+verifyEqual(tc, {r.cands.status}, {'ok', 'ok'});
+coms = strjoin(r.cands(1).coms, newline);
+for f = {'pop_eegfiltnew', 'revfilt', 'pop_rejchan', 'pop_interp', 'pop_reref', 'pop_epoch', 'pop_rmbase', 'pop_jointprob', 'pop_rejepoch'}
+    verifyTrue(tc, contains(coms, f{1}), f{1});
+end
+verifyTrue(tc, contains(strjoin(r.cands(2).coms, newline), 'pop_rejkurt'));
+verifyEqual(tc, r.signalCheck, 'injection');
+verifyEmpty(tc, [r.cands.unmatched]);          % every decision was replayed, none re-run
+end
+
+function testAsrRunsAndIsFlaggedAsNotDecisionMatched(tc)
+assumeTrue(tc, exist('pop_clean_rawdata', 'file') == 2, 'clean_rawdata plugin not installed');
+EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 20));
+nqc_setBase(EEG);
+p = neuroqc.plan.Plan();
+p = p.add('highpass', 'cutoff', 1); p = p.add('asr', 'cutoff', 20);
+p = p.add('epoch'); p = p.add('baseline');
+r = neuroqc.NeuroQC.optimize(p, nqc_c());
+verifyEqual(tc, r.cands(1).status, 'ok');
+verifyTrue(tc, any(contains(r.cands(1).coms, 'clean_rawdata')) || any(contains(r.cands(1).coms, 'clean_artifacts')));
+verifyEqual(tc, r.cands(1).unmatched, {'asr'});
+end
+
 function testSpectralObjectiveEndToEnd(tc)
 % Continuous alpha power: a 9 Hz low-pass destroys the band and must be
 % rejected by the signal check; 30 Hz is fine.
