@@ -3,12 +3,11 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>NeuroQC — Exhaustive search &amp; quality control for EEGLAB pipelines</title>
-<meta name="description" content="NeuroQC enumerates your discrete preprocessing search space exhaustively, ranks every candidate by Pareto front and your goal weights, and never recommends what it has not evaluated. 100% local MATLAB — no AI, no cloud."/>
-<meta property="og:title" content="NeuroQC — EEG Copilot for EEGLAB"/>
-<meta property="og:description" content="Exhaustive discrete search, Pareto + goal-weighted ranking, QC import, drift gate. 252 regression tests, 100% local."/>
-<meta property="og:image" content="assets/demo.gif"/>
-<link rel="icon" href="assets/logo.svg" type="image/svg+xml"/>
+<title>NeuroQC — an optimization layer for EEGLAB pipelines</title>
+<meta name="description" content="NeuroQC runs every legal combination of the EEGLAB preprocessing steps you leave open, on the dataset that is current in EEGLAB, checks each against a known signal, and reports which result measures your component most precisely. Local MATLAB, no cloud."/>
+<meta property="og:title" content="NeuroQC — an optimization layer for EEGLAB"/>
+<meta property="og:description" content="Exhaustive search over the steps you leave open, signal-preservation checks, SME-based ranking with honest uncertainty. 75 automated tests, 100% local."/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%276%27 fill=%27%23172048%27/%3E%3Cpath d=%27M4 18h5l3-8 4 14 3-10 2 4h7%27 fill=%27none%27 stroke=%27%232f6fed%27 stroke-width=%272.5%27/%3E%3C/svg%3E"/>
 <style>
   :root{
     --navy:#172048; --navy2:#0e1533; --blue:#2f6fed; --ink:#1d2433; --muted:#5b6474;
@@ -112,30 +111,29 @@
 <body>
 
 <header class="hero">
-  <img class="logo" src="assets/logo.svg" alt="NeuroQC logo"/>
   <h1>NeuroQC</h1>
-  <p class="tag">Exhaustive search and quality control for EEGLAB preprocessing pipelines —
-     every legal combination enumerated, ranked by Pareto front and <b>your</b> goal weights,
-     recommended <b>only</b> among candidates that were actually evaluated.</p>
+  <p class="tag">An optimization layer around EEGLAB. It works on the dataset that is current in
+     EEGLAB, reads its real <code>EEG.history</code>, runs every legal combination of the steps you
+     leave open, checks each against a known signal, and tells you which result measures your
+     component most precisely — and which ones the data cannot tell apart from it.</p>
   <div class="cta">
     <a class="btn btn-primary" href="https://github.com/abwoo/NeuroQC">⭐ Star on GitHub</a>
-    <a class="btn btn-ghost" href="https://github.com/abwoo/NeuroQC/tree/main/examples">🧪 See examples</a>
+    <a class="btn btn-ghost" href="https://github.com/abwoo/NeuroQC#readme">📖 Read the README</a>
   </div>
   <div class="badges" aria-hidden="true">
-    <img src="https://img.shields.io/badge/version-0.6.0-2f6fed?style=flat-square" alt="version"/>
+    <img src="https://img.shields.io/badge/version-0.7.0-2f6fed?style=flat-square" alt="version"/>
     <img src="https://img.shields.io/badge/MATLAB-R2026a-orange?style=flat-square" alt="MATLAB"/>
     <img src="https://img.shields.io/badge/EEGLAB-2026.0.0-blueviolet?style=flat-square" alt="EEGLAB"/>
     <img src="https://img.shields.io/github/stars/abwoo/NeuroQC?style=flat-square" alt="GitHub stars"/>
   </div>
-  <div class="ipnote">✅ Plugin source included — MIT license.
-     <a href="https://github.com/abwoo/NeuroQC#whats-included">What's included</a></div>
+  <div class="ipnote">✅ Source included — MIT license.</div>
 </header>
 
 <div class="stats">
   <div class="wrap">
-    <div class="stat"><b data-count="252">0</b><span>regression tests</span></div>
-    <div class="stat"><b data-count="5">0</b><span>ranking objectives</span></div>
-    <div class="stat"><b data-count="4">0</b><span>tab guided workflow</span></div>
+    <div class="stat"><b data-count="75">0</b><span>automated tests</span></div>
+    <div class="stat"><b data-count="2">0</b><span>signal-preservation checks</span></div>
+    <div class="stat"><b data-count="0">0</b><span>load steps — it uses your current dataset</span></div>
     <div class="stat"><b>0</b><span>network calls, by design</span></div>
   </div>
 </div>
@@ -143,115 +141,67 @@
 <section>
   <div class="wrap">
     <h2>Why NeuroQC?</h2>
-    <p class="lead">EEG preprocessing is a discrete combination problem: filters, epoch windows,
-      artifact rules, ICA policies, re-referencing — each with a handful of defensible values,
-      multiplying fast. Most workflows fix one pipeline by hand. NeuroQC searches the space
-      <b>exhaustively</b>, ranks it by <b>your</b> goal, and keeps every result reproducible.</p>
+    <p class="lead">Preprocessing choices multiply fast, and most labs fix one pipeline by hand. Ranking
+      pipelines by a noise metric alone rewards whatever removes the most — including the effect.
+      NeuroQC searches only what you leave open, prices every candidate by how precisely it measures
+      <b>your</b> component, and rejects candidates that distort a known signal.</p>
     <div class="grid c3">
-      <div class="card"><h3>🎯 Goal-driven ranking</h3><p>Pareto front plus a weighted GoalRanker.
-        Change the profile — <em>Balanced</em>, <em>Retain more trials</em>, <em>Lower filter distortion</em>,
-        <em>Stable topography</em> — and the ranking updates with no re-search.</p></div>
-      <div class="card"><h3>🔍 Exhaustive discrete search</h3><p>Full combination enumeration with
-        legality constraints, order search (fixed / free / slot-locked) and a budget guard that
-        refuses silently-truncated sampling.</p></div>
-      <div class="card"><h3>🩺 QC in the loop</h3><p>Import QC metrics (CSV/JSON) you already measure
-        in EEGLAB. GoalScore and labels only ever reflect <b>evaluated</b> candidates — nothing is invented.</p></div>
-      <div class="card"><h3>🛡️ Config-drift gate</h3><p>Edit any setting after generating recipes and
-        Results actions lock behind a red <code>Required: Settings changed…</code> hint. Stale recipes
-        can never meet new settings.</p></div>
-      <div class="card"><h3>📜 Reproducible recipes</h3><p>Every candidate becomes a standalone
-        <code>recipe_E000001.m</code> script with its exact parameters — rerun it or hand it to a collaborator.</p></div>
-      <div class="card"><h3>🧩 Contracts &amp; handoff</h3><p>Events, windows and components-of-interest
-        declared once and validated fail-closed; resume from checkpoints and lock step order absolutely.</p></div>
+      <div class="card"><h3>🔗 Bound to EEGLAB</h3><p>No load step. NeuroQC reads the current dataset and its
+        <code>EEG.history</code>, opens native EEGLAB dialogs, and records every command it runs. Adopted
+        candidates become EEGLAB datasets whose history reproduces them.</p></div>
+      <div class="card"><h3>🔍 Exhaustive where you want it</h3><p>Fix any step, order or value; everything
+        else is enumerated, with illegal orders explained rather than rearranged. Shared prefixes run once.
+        Large spaces can be sampled — and are then labelled approximate.</p></div>
+      <div class="card"><h3>🧪 Known-signal checks</h3><p>Filters are checked with a probe through the same
+        EEGLAB calls; data-driven steps with a known signal carried through every candidate under the same
+        channel, ICA and rejection decisions.</p></div>
+      <div class="card"><h3>📏 Your measure, your units</h3><p>Mean amplitude, peak amplitude, peak latency or
+        band power. Data quality is the standardized measurement error of that measure, so the trial-loss
+        trade-off is priced in.</p></div>
+      <div class="card"><h3>⚖️ Honest uncertainty</h3><p>A paired bootstrap over the same trials says which
+        candidates the data cannot distinguish from the best. That is not equivalence — equivalence needs a
+        margin you set.</p></div>
+      <div class="card"><h3>♻️ Reproducible and resumable</h3><p>Every candidate carries its EEGLAB commands;
+        searches checkpoint per candidate and resume to the same result. Independent branches can run in
+        parallel.</p></div>
     </div>
   </div>
 </section>
 
 <section class="alt">
-  <div class="wrap center">
-    <h2>See it in action</h2>
-    <p class="lead">A complete nine-step session on a synthetic 32-channel oddball dataset —
-      load → scope → params → space → preview → log → generate → evaluate → drift gate.
-      Every number shown was produced by the tool.</p>
-    <figure style="max-width:900px;margin:0 auto 34px">
-      <img src="assets/demo.gif" alt="Nine-step NeuroQC walkthrough: load dataset, choose steps and handoff, declare candidate values, search-space grid of 8, preview 8 legal, log enumeration, eight generated recipes, eight evaluated with Pareto front 6 of 8 and best E000003, then the config-drift gate" loading="lazy"/>
-      <figcaption><b>Full walkthrough</b> — from empty project to ranked, gated results</figcaption>
-    </figure>
-    <div class="grid c2">
-      <figure>
-        <img src="assets/demo-goal.gif" alt="Goal-switch demo: Balanced ranks E000008 first at GoalScore 0.5230; Lower filter distortion sets weights 2 0.5 0.5 3 0.5 and best flips to E000007 at 0.4190" loading="lazy"/>
-        <figcaption><b>Goal switch</b> — same QC data re-ranked, best flips E000008 → E000007</figcaption>
-      </figure>
-      <figure>
-        <img src="assets/demo-drift.gif" alt="Drift-gate demo: red Required gate appears after one settings edit and Compare disables" loading="lazy"/>
-        <figcaption><b>Drift gate</b> — one edit locks Compare/Retry</figcaption>
-      </figure>
-      <figure>
-        <img src="assets/demo-qc.gif" alt="QC-import demo: NEEDS_QC rows fill with metrics, Pareto front and bestEvaluated after import" loading="lazy"/>
-        <figcaption><b>QC import</b> — your measured metrics drive the ranking</figcaption>
-      </figure>
-      <figure>
-        <img src="assets/manual-vs-auto.gif" alt="Manual trial and error reaches 3 of 8 pipelines while NeuroQC enumerates and evaluates all 8" loading="lazy"/>
-        <figcaption><b>Manual vs NeuroQC</b> — 3 of 8 versus all 8, honestly</figcaption>
-      </figure>
-    </div>
-  </div>
-</section>
-
-<section>
   <div class="wrap">
-    <h2>One complete run, by the numbers</h2>
-    <p class="lead">Synthetic 32-channel oddball, 200 s, 60 target / 120 standard trials.
-      Nothing below is hand-typed.</p>
+    <h2>One run, by the numbers</h2>
+    <p class="lead">Synthetic 32-channel oddball with a known P3, blinks and movement artifacts
+      (<code>tools/showcase_capture.m</code>). Nothing below is hand-typed.</p>
     <!-- sync:numbers:site -->
     <div class="tblbox">
       <table>
-        <tr><th>Stage</th><th>What happened</th></tr>
-        <tr><td><b>Preview</b></td><td>4 highpass × 2 lowpass → <b>8 combinations; 8 legal; 0 rejected</b></td></tr>
-        <tr><td><b>Generate</b></td><td><b>8 standalone recipe scripts</b> written, zero signal processing</td></tr>
-        <tr><td><b>Compare all</b></td><td><b>8 / 8 evaluated (100%)</b>, 0 failures → status <code>REVIEW</code></td></tr>
-        <tr><td><b>Pareto front</b></td><td><b>6 of 8</b> survive the 5-objective front</td></tr>
-        <tr><td><b>Goal ranking</b></td><td>best <b>E000003</b> under app metrics; QC import ranks best <b>E000008</b> (0.5230)</td></tr>
-        <tr><td><b>Metrics</b></td><td>Rel 0.829–0.849 · Reten 1.00 · Dist 0.416–0.445 (hard gate ≤ 0.50)</td></tr>
-        <tr><td><b>Goal switch</b></td><td>Balanced → <b>E000008</b>; Lower filter distortion → best flips to <b>E000007</b> (0.4190) — same QC data</td></tr>
-        <tr><td><b>Drift gate</b></td><td>One edit after generation → red <code>Required: Settings changed…</code>, Compare/Retry disabled</td></tr>
+        <tr><th>Stage</th><th>Result</th></tr>
+        <tr><td><b>Plan</b></td><td>4 high-pass x 2 low-pass x 3 rejection thresholds → <b>24 pipelines</b>, 0 illegal combinations excluded</td></tr>
+        <tr><td><b>Execution</b></td><td>prefix tree: <b>52 EEGLAB step runs</b> instead of 120</td></tr>
+        <tr><td><b>Signal check</b></td><td>matched-decision injection (a known signal carried through every candidate): <b>12 of 24</b> rejected for distorting the known signal</td></tr>
+        <tr><td><b>Constraints</b></td><td><b>12 of 24 feasible</b>, 12 rejected, 0 failed — every exclusion listed with its reason</td></tr>
+        <tr><td><b>Ranking</b></td><td>best SME: candidate <b>#3</b>; <b>4 of 24</b> not distinguished from it by these data</td></tr>
+        <tr><td><b>Recommendation</b></td><td>candidate <b>#6</b> (most trials kept among those): <code>highpass(cutoff=0.1) > lowpass(cutoff=30) > epoch > baseline > reject_threshold(exclude={},uv=150)</code></td></tr>
       </table>
     </div>
-    <p class="lead" style="margin-top:26px"><b>Manual vs NeuroQC on this exact run:</b> by hand you would
-      settle on one filter pair, maybe try a second — 1–2 pipelines with no record of what was skipped.
-      NeuroQC enumerated <b>all 8</b>, executed <b>all 8 on copies</b>, kept the Pareto-optimal <b>6</b>,
-      and returned a ranked shortlist where every row is a reproducible script.</p>
     <!-- /sync:numbers:site -->
-  </div>
-</section>
-
-<section class="alt">
-  <div class="wrap">
-    <h2>Comparison</h2>
-    <p class="lead">Where the time actually goes.</p>
-    <div class="tblbox">
-      <table>
-        <tr><th></th><th class="c">Manual trial-and-error</th><th class="c">Fixed pipeline script</th><th class="c"><b>NeuroQC</b></th></tr>
-        <tr><td>Explores the combination space</td><td class="c">a few variants</td><td class="c">1</td><td class="c"><b>exhaustive (budget-guarded)</b></td></tr>
-        <tr><td>Ranks by <i>your</i> goal</td><td class="c">gut feeling</td><td class="c">maybe one metric</td><td class="c"><b>Pareto + weighted GoalRanker</b></td></tr>
-        <tr><td>Uses your QC metrics</td><td class="c">lab book</td><td class="c">ad hoc</td><td class="c"><b>first-class QC import, evaluated-only</b></td></tr>
-        <tr><td>Catches config/result mismatch</td><td class="c">—</td><td class="c">—</td><td class="c"><b>drift gate + gated retry</b></td></tr>
-        <tr><td>Reproducibility</td><td class="c">remembered steps</td><td class="c">the script</td><td class="c"><b>per-candidate recipes</b></td></tr>
-        <tr><td>LLM or cloud dependency</td><td class="c">—</td><td class="c">—</td><td class="c"><b>none, by design</b></td></tr>
-      </table>
-    </div>
   </div>
 </section>
 
 <section>
   <div class="wrap">
     <h2>How it works</h2>
-    <p class="lead">Four tabs, one contract, one search, one ranked shortlist.</p>
+    <p class="lead">From the dataset you have open to a recommendation you can adopt.</p>
     <div class="steps">
-      <div class="step"><em>1</em><h3>Data</h3><p>Load the EEG snapshot; set data unit, QC file path and trial rule.</p></div>
-      <div class="step"><em>2</em><h3>Scope</h3><p>Choose steps and their order, handoff stage, analysis contract and ranking profile.</p></div>
-      <div class="step"><em>3</em><h3>Params</h3><p>Declare discrete candidate values per step; preview the search-space grid before anything runs.</p></div>
-      <div class="step"><em>4</em><h3>Results</h3><p>Recipes, Pareto front, GoalScore, QC import, compare, gated retry — locked by the drift gate on any edit.</p></div>
+      <div class="step"><em>1</em><h3>State</h3><p>Current dataset and parsed history, each item labelled by
+        provenance; inconsistencies are reported, not guessed.</p></div>
+      <div class="step"><em>2</em><h3>Plan</h3><p>Steps in order; single values fixed, <code>{a, b}</code> searched,
+        alternatives or “none” per position, native EEGLAB commands as fixed steps.</p></div>
+      <div class="step"><em>3</em><h3>Search</h3><p>Every legal pipeline on copies, printed command by command,
+        with constraints and signal checks per candidate.</p></div>
+      <div class="step"><em>4</em><h3>Adopt</h3><p>The recommended (or any) candidate becomes a new EEGLAB
+        dataset, re-run and checked to give the same scores.</p></div>
     </div>
   </div>
 </section>
@@ -259,15 +209,14 @@
 <section class="alt">
   <div class="wrap">
     <h2>Getting started</h2>
-    <p class="lead">The repository ships the toolbox plugin source, documentation, reference
-      examples and the default search space.</p>
     <pre><code>git clone https://github.com/abwoo/NeuroQC.git
-cd NeuroQC</code></pre>
-    <div class="grid c3" style="margin-top:26px">
-      <div class="card"><h3>🧪 Examples</h3><p>Reference API flow (synthetic data → contract → search → rank):
-        <a href="https://github.com/abwoo/NeuroQC/tree/main/examples">examples/</a></p></div>
-      <div class="card"><h3>⚙️ Requirements</h3><p>MATLAB R2026a · EEGLAB 2026.0.0 · core path needs
-        MATLAB base only (parallel optional).</p></div>
+% in MATLAB, with EEGLAB on the path:
+addpath('NeuroQC'); neuroqc_setup     % EEGLAB &gt; Tools &gt; NeuroQC</code></pre>
+    <div class="grid c2" style="margin-top:26px">
+      <div class="card"><h3>⚙️ Requirements</h3><p>MATLAB R2021b or later, EEGLAB with firfilt. ICLabel for IC
+        removal, clean_rawdata for ASR, Parallel Computing Toolbox optional.</p></div>
+      <div class="card"><h3>⚠️ Limitations</h3><p>The analysis contract (events, windows, ROIs) is never searched.
+        A passed signal check is necessary, not sufficient. See the README before trusting a result.</p></div>
     </div>
   </div>
 </section>
@@ -276,37 +225,34 @@ cd NeuroQC</code></pre>
   <div class="wrap">
     <h2>Questions, answered</h2>
     <ul class="clean">
-      <li><b>Is this an AI / LLM tool?</b> No. Exhaustive enumeration, Pareto filtering, weighted ranking.
-        No model, no API key, no telemetry, no network access — “copilot” only means interactive goal refinement.</li>
-      <li><b>Where is my data sent?</b> Nowhere. Everything runs locally in MATLAB; recipes and reports land
-        in folders you choose.</li>
-      <li><b>Can I use it on my data today?</b> Yes — MIT licensed, no warranty. Copy the repo into
-        <code>eeglab/plugins/</code> and follow the Getting started section.</li>
-      <li><b>Do I need EEGLAB?</b> The wizard runs inside EEGLAB; the headless API path works in plain MATLAB
-        with EEGLAB on the path.</li>
+      <li><b>Is this an AI / LLM tool?</b> No. Enumeration, EEGLAB processing and resampling statistics.
+        No model, no API key, no telemetry, no network access.</li>
+      <li><b>Where is my data sent?</b> Nowhere. Everything runs locally in MATLAB, and the dataset you have
+        open is never modified during a search.</li>
+      <li><b>Does it pick my reference or my windows?</b> No. Those define what is measured. Different
+        references can be compared, but each is ranked in its own stratum.</li>
+      <li><b>Can I use it on my data today?</b> Yes — MIT licensed, no warranty.</li>
     </ul>
   </div>
 </section>
 
 <footer>
   <div class="wrap">
-    <div>NeuroQC — semi-automatic combination optimization &amp; quality control for EEGLAB preprocessing pipelines</div>
+    <div>NeuroQC — an optimization layer for EEGLAB preprocessing pipelines</div>
     <div><a href="https://github.com/abwoo/NeuroQC">GitHub</a> ·
          <a href="https://github.com/abwoo/NeuroQC/blob/main/README.md">README</a></div>
-    <div>✅ Plugin source included — MIT license.
-      Screenshots use <b>synthetic</b> data only.</div>
+    <div>Numbers on this page come from <b>synthetic</b> data only.</div>
     <details>
       <summary>Cite this work</summary>
       <pre><code>@software{neuroqc2026,
   author  = {abwoo},
-  title   = {NeuroQC: semi-automatic combination optimization and quality control
-             for EEGLAB preprocessing pipelines},
+  title   = {NeuroQC: an optimization layer for EEGLAB preprocessing pipelines},
   year    = {2026},
-  version = {0.6.0},
+  version = {0.7.0},
   url     = {https://github.com/abwoo/NeuroQC}
 }</code></pre>
     </details>
-    <div>© 2026 abwoo · If this resonates, a ⭐ helps others find it.</div>
+    <div>© 2026 abwoo</div>
   </div>
 </footer>
 

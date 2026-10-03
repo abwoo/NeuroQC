@@ -1,59 +1,24 @@
 {
-  "version": "0.6.0",
-  "test_count": 252,
+  "version": "0.7.0",
+  "test_count": 75,
   "capture": {
-    "grid": "Grid: 8",
-    "nPipelines": 8,
-    "nEvaluated": 8,
-    "trialFailures": 0,
-    "status": "REVIEW",
-    "nFront": 6,
-    "frontIdx": [
-      2,
-      3,
-      4,
-      6,
-      7,
-      8
-    ],
-    "relRange": [
-      0.8288221846236232,
-      0.8492027435471932
-    ],
-    "distRange": [
-      0.41592905995310003,
-      0.4445934261465781
-    ],
-    "bestBalancedId": "E000003",
-    "bestMinDistortionId": "E000007",
-    "balancedQcBestId": "E000008",
-    "balancedQcBestScore": 0.5229743992034623,
-    "minDistBestId": "E000007",
-    "minDistBestScore": 0.41895678336170444,
-    "retRange": [
-      1,
-      1
-    ],
-    "goalScoresBalanced": [
-      0.5074584520595191,
-      0.39975457751670745,
-      0.4472342543301331,
-      0.631942190631465,
-      0.5190826338494734,
-      0.40384200671213183
-    ],
-    "goalScoresMinDist": [
-      0.6416133584733941,
-      0.6392875113483999,
-      0.5534914466137489,
-      0.6740982951463667,
-      0.7117859920612808,
-      0.41895678336170444,
-      0.7009175915080675
-    ],
-    "balancedWeights": "1 1 1 1 1",
-    "minDistWeights": "2 0.5 0.5 3 0.5",
-    "capturedAt": "2026-09-29 02:40:12"
+    "dataset": "32 channels, 400 s, 90 target / 90 standard trials",
+    "grid": "4 high-pass x 2 low-pass x 3 rejection thresholds",
+    "nPipelines": 24,
+    "nIllegal": 0,
+    "nNodes": 52,
+    "nStepsUnshared": 120,
+    "signalCheck": "injection",
+    "nFeasible": 12,
+    "nRejected": 12,
+    "nRejectedDistortion": 12,
+    "nFailed": 0,
+    "bestId": 3,
+    "recommendedId": 6,
+    "nNotDistinguished": 4,
+    "recommendedLabel": "highpass(cutoff=0.1) > lowpass(cutoff=30) > epoch > baseline > reject_threshold(exclude={},uv=150)",
+    "version": "0.7.0",
+    "capturedAt": "2026-10-03 15:21:24"
   },
   "assets": {
     "docs/assets/demo-drift.gif": 460377,
@@ -72,13 +37,7 @@
     "docs/assets/tab6-results-evaluated.png": 144311,
     "docs/assets/tab7-results-drift.png": 154289,
     "docs/assets/tab8-qc-imported.png": 141031,
-    "docs/assets/tab9-goal-reranked.png": 146131,
-    "site/assets/demo-drift.gif": 460377,
-    "site/assets/demo-goal.gif": 637985,
-    "site/assets/demo-qc.gif": 804185,
-    "site/assets/demo.gif": 3560196,
-    "site/assets/logo.svg": 1170,
-    "site/assets/manual-vs-auto.gif": 249097
+    "docs/assets/tab9-goal-reranked.png": 146131
   },
-  "generated_at": "2026-10-02T06:57:32Z"
+  "generated_at": "2026-10-03T07:21:33Z"
 }

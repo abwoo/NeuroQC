@@ -4,15 +4,15 @@
 Subcommands (default: sync):
 
   sync      Compose showcase-metrics.json from the source repo (code version,
-            test log, capture metrics, asset sizes) and rewrite every tracked
-            spot: version badges/citations/tutorial headers, test counts, and
-            the marked numbers blocks (tables + manual paragraphs).
+            test log of tests/run_all.m, tools/showcase_capture.m output, asset
+            sizes) and rewrite every tracked spot: version badges/citations,
+            test counts, and the marked numbers blocks.
   --check   Read ONLY docs/assets/showcase-metrics.json (no source repo
             needed — runs in GitHub Actions) and verify:
               1. version spots (badges, bibtex) == metrics.version
               2. test-count spots (trust bars, og, stat) == metrics.test_count
               3. marked numbers blocks == template rendered from metrics
-              4. fact scan: pipeline ids / GoalScore decimals / ratios seen in
+              4. fact scan: candidate numbers and "x of n" ratios seen in
                  prose belong to the metrics fact set
               5. referenced assets exist, are non-empty, match metrics sizes
             Exit 0 = consistent, 1 = drift found (nothing is written).
@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-SOURCE_ROOT = SCRIPT_DIR.parent.parent  # <root>/tools/showcase
+SOURCE_ROOT = SCRIPT_DIR.parent  # <repo>/tools/inject.py
 
 
 # ----------------------------------------------------------------------------
@@ -51,7 +51,7 @@ def read_source_version(root: Path) -> str:
 
 
 def read_test_count(log: Path) -> int:
-    assert log.exists(), f'test log not found: {log} (run run_all_tests first)'
+    assert log.exists(), f'test log not found: {log} (run tests/run_all.m with a diary first)'
     m = re.search(r'TOTAL=(\d+)\s+PASSED=\d+\s+FAILED=(\d+)', log.read_text(encoding='utf-8'))
     assert m, f'TOTAL/PASSED/FAILED line not found in {log}'
     assert m.group(2) == '0', f'FAILED={m.group(2)} — showcase sync requires a green suite'
@@ -73,92 +73,57 @@ def scan_assets(staging: Path) -> dict:
 # ----------------------------------------------------------------------------
 # Rendering
 # ----------------------------------------------------------------------------
-def fmt_range3(r):
-    return f'{r[0]:.3f}–{r[1]:.3f}'
-
-
-def fmt_ret(r):
-    if abs(r[0] - r[1]) < 1e-9:
-        return f'{r[0]:.2f}'
-    return f'{r[0]:.2f}–{r[1]:.2f}'
-
-
 def render_context(metrics: dict) -> dict:
     cap = metrics['capture']
     n = int(cap['nPipelines'])
-    total = int(re.search(r'\d+', cap['grid']).group())
-    legal = n
-    rejected = total - n
-    n_eval = int(cap['nEvaluated'])
-    fails = int(cap['trialFailures'])
-    n_front = int(cap['nFront'])
-    pct = round(100 * n_eval / n) if n else 0
-    ctx = {
+    return {
         'version': metrics['version'],
         'tests': int(metrics['test_count']),
+        'dataset': cap['dataset'],
         'grid': cap['grid'],
         'n': n,
-        'total': total,
-        'legal': legal,
-        'rejected': rejected,
-        'n_eval': n_eval,
-        'fails': fails,
-        'status': cap['status'],
-        'n_front': n_front,
-        'dom': n - n_front,
-        'pct': pct,
-        'rel': fmt_range3(cap['relRange']),
-        'dist': fmt_range3(cap['distRange']),
-        'ret': fmt_ret(cap['retRange']) if cap.get('retRange') else '1.00',
-        'best_app': cap['bestBalancedId'],
-        'qc_best': cap['balancedQcBestId'],
-        'qc_score': f"{cap['balancedQcBestScore']:.4f}",
-        'md_best': cap['minDistBestId'],
-        'md_score': f"{cap['minDistBestScore']:.4f}",
-        'w_bal': cap['balancedWeights'],
-        'w_md': cap['minDistWeights'],
+        'illegal': int(cap['nIllegal']),
+        'nodes': int(cap['nNodes']),
+        'unshared': int(cap['nStepsUnshared']),
+        'signal': cap['signalCheck'],
+        'feasible': int(cap['nFeasible']),
+        'rejected': int(cap['nRejected']),
+        'rej_dist': int(cap['nRejectedDistortion']),
+        'failed': int(cap['nFailed']),
+        'best': int(cap['bestId']),
+        'rec': int(cap['recommendedId']),
+        'nd': int(cap['nNotDistinguished']),
+        'rec_label': cap['recommendedLabel'],
     }
-    return ctx
 
+
+SIGNAL_TEXT = {
+    'probe': 'filter probe (a known waveform through the same EEGLAB filter calls)',
+    'injection': 'matched-decision injection (a known signal carried through every candidate)',
+}
 
 TEMPLATE_EN = """\
-| Stage | What happened |
+| Stage | Result |
 |---|---|
-| **Preview** | 4 highpass × 2 lowpass → **{n} combinations; {legal} legal; {rejected} rejected** |
-| **Log** | `filter > epoch` enumerated for every combination — `valid={legal}; invalid={fails}; duplicate=0` |
-| **Generate** | **{n} standalone recipe scripts** written, zero signal processing |
-| **Compare all** | **{n_eval} / {n} evaluated ({pct}%)**, {fails} failures → status `{status}` |
-| **Pareto front** | **{n_front} of {n}** survive the 5-objective front; {dom} dominated candidates dropped |
-| **Goal ranking** | `bestEvaluated` on the recommended row (best **{best_app}**), plus per-objective labels (`reliability`, `retention`, `topoStability`, `waveformDistortion`, `interpRatio`) |
-| **Metrics** | Rel {rel} · Reten {ret} · Dist {dist} (hard gate ≤ 0.50) |
-| **QC import** | One click fills Rel / Reten / Dist / labels, Pareto front and `bestEvaluated` from your measured metrics — status `REVIEW` |
-| **Goal switch** | Balanced (`{w_bal}`) → best **{qc_best}** (GoalScore {qc_score}); Lower filter distortion (`{w_md}`) → best **flips to {md_best}** ({md_score}) — same QC data, no re-measurement |
-| **Drift gate** | One edit after generation → red `Required: Settings changed…`, Compare/Retry disabled |
-
-**Manual workflow vs. NeuroQC on this exact run:** by hand you would normally settle on one
-filter pair, run it, eyeball the ERP, maybe try one more — 1–2 pipelines at most, with no
-record of what was skipped. NeuroQC enumerated **all {n}**, executed **all {n} on copies**,
-enforced the hard constraints, kept the Pareto-optimal **{n_front}**, and returned a ranked shortlist
-in which every row is a reproducible script."""
+| **Plan** | {grid} → **{n} pipelines**, {illegal} illegal combinations excluded |
+| **Execution** | prefix tree: **{nodes} EEGLAB step runs** instead of {unshared} |
+| **Signal check** | {signal_text}: **{rej_dist} of {n}** rejected for distorting the known signal |
+| **Constraints** | **{feasible} of {n} feasible**, {rejected} rejected, {failed} failed — every exclusion listed with its reason |
+| **Ranking** | best SME: candidate **#{best}**; **{nd} of {n}** not distinguished from it by these data |
+| **Recommendation** | candidate **#{rec}** (most trials kept among those): `{rec_label}` |"""
 
 TEMPLATE_SITE = """\
     <div class="tblbox">
       <table>
-        <tr><th>Stage</th><th>What happened</th></tr>
-        <tr><td><b>Preview</b></td><td>4 highpass × 2 lowpass → <b>{n} combinations; {legal} legal; {rejected} rejected</b></td></tr>
-        <tr><td><b>Generate</b></td><td><b>{n} standalone recipe scripts</b> written, zero signal processing</td></tr>
-        <tr><td><b>Compare all</b></td><td><b>{n_eval} / {n} evaluated ({pct}%)</b>, {fails} failures → status <code>{status}</code></td></tr>
-        <tr><td><b>Pareto front</b></td><td><b>{n_front} of {n}</b> survive the 5-objective front</td></tr>
-        <tr><td><b>Goal ranking</b></td><td>best <b>{best_app}</b> under app metrics; QC import ranks best <b>{qc_best}</b> ({qc_score})</td></tr>
-        <tr><td><b>Metrics</b></td><td>Rel {rel} · Reten {ret} · Dist {dist} (hard gate ≤ 0.50)</td></tr>
-        <tr><td><b>Goal switch</b></td><td>Balanced → <b>{qc_best}</b>; Lower filter distortion → best flips to <b>{md_best}</b> ({md_score}) — same QC data</td></tr>
-        <tr><td><b>Drift gate</b></td><td>One edit after generation → red <code>Required: Settings changed…</code>, Compare/Retry disabled</td></tr>
+        <tr><th>Stage</th><th>Result</th></tr>
+        <tr><td><b>Plan</b></td><td>{grid} → <b>{n} pipelines</b>, {illegal} illegal combinations excluded</td></tr>
+        <tr><td><b>Execution</b></td><td>prefix tree: <b>{nodes} EEGLAB step runs</b> instead of {unshared}</td></tr>
+        <tr><td><b>Signal check</b></td><td>{signal_text}: <b>{rej_dist} of {n}</b> rejected for distorting the known signal</td></tr>
+        <tr><td><b>Constraints</b></td><td><b>{feasible} of {n} feasible</b>, {rejected} rejected, {failed} failed — every exclusion listed with its reason</td></tr>
+        <tr><td><b>Ranking</b></td><td>best SME: candidate <b>#{best}</b>; <b>{nd} of {n}</b> not distinguished from it by these data</td></tr>
+        <tr><td><b>Recommendation</b></td><td>candidate <b>#{rec}</b> (most trials kept among those): <code>{rec_label}</code></td></tr>
       </table>
-    </div>
-    <p class="lead" style="margin-top:26px"><b>Manual vs NeuroQC on this exact run:</b> by hand you would
-      settle on one filter pair, maybe try a second — 1–2 pipelines with no record of what was skipped.
-      NeuroQC enumerated <b>all {n}</b>, executed <b>all {n} on copies</b>, kept the Pareto-optimal <b>{n_front}</b>,
-      and returned a ranked shortlist where every row is a reproducible script.</p>"""
+    </div>"""
 
 BLOCKS = [
     ('README.md', 'en', TEMPLATE_EN),
@@ -173,9 +138,9 @@ BLOCKS = [
 RULES = [
     ('version-badge', r'(?P<pre>badge/version-)(?P<val>\d+\.\d+\.\d+)(?P<post>-)', 2),
     ('version-bibtex', r'(?P<pre>version = \{)(?P<val>\d+\.\d+\.\d+)(?P<post>\})', 2),
-    ('tests-count-en', r'(?P<pre>)(?P<val>\d+)(?P<post> regression tests)', 3),
+    ('tests-count-en', r'(?P<pre>)(?P<val>\d+)(?P<post> automated tests)', 3),
     ('tests-count-site-stat',
-     r'(?P<pre>data-count=")(?P<val>\d+)(?P<post>">0</b><span>regression tests)', 1),
+     r'(?P<pre>data-count=")(?P<val>\d+)(?P<post>">0</b><span>automated tests)', 1),
 ]
 
 
@@ -246,7 +211,7 @@ def apply_blocks(staging: Path, ctx: dict, mode, problems, fixed):
         if not m:
             problems.append(f'[block {tag}] markers not found in {rel}')
             continue
-        rendered = template.format(**ctx)
+        rendered = template.format(signal_text=SIGNAL_TEXT.get(ctx['signal'], ctx['signal']), **ctx)
         current = m.group(2)
         if current.strip() == rendered.strip():
             continue
@@ -269,39 +234,22 @@ def apply_blocks(staging: Path, ctx: dict, mode, problems, fixed):
 
 def fact_scan(files, ctx, metrics, problems):
     n = ctx['n']
-    allowed_ids = {f'E{i:06d}' for i in range(1, n + 1)} | {
-        ctx['best_app'], ctx['qc_best'], ctx['md_best']}
-    cap = metrics['capture']
-    allowed_scores = {f"{s:.4f}" for s in cap.get('goalScoresBalanced', [])}
-    allowed_scores |= {f"{s:.4f}" for s in cap.get('goalScoresMinDist', [])}
-    allowed_scores |= {ctx['qc_score'], ctx['md_score']}
-    ratio_nums = {n, ctx['legal'], ctx['n_eval'], ctx['n_front'], ctx['fails'], 3, 0}
-
-    id_pat = re.compile(r'\bE\d{6}\b')
-    score_pat = re.compile(r'(?<![\d.])0\.\d{4}(?![\d])')
-    ratio_pat = re.compile(r'(\d+)\s*/\s*(\d+)')
+    allowed_ids = {ctx['best'], ctx['rec']}
+    ratio_nums = {n, ctx['feasible'], ctx['rejected'], ctx['failed'], ctx['rej_dist'], ctx['nd']}
+    id_pat = re.compile(r'(?:candidate\s+(?:<b>)?\*{0,2}#|candidate\s+)(\d+)')
     of_pat = re.compile(r'(\d+)\s+of\s+(\d+)')
-
-    showcase = [f for f in files
-                if f.name in ('README.md', 'index.html')]
+    showcase = [f for f in files if f.name in ('README.md', 'index.html')]
     for f in showcase:
         text = f.read_text(encoding='utf-8')
-        rel = f.name
-        for m in id_pat.finditer(text):
-            if m.group(0) not in allowed_ids:
-                problems.append(f'[fact {rel}] unknown pipeline id {m.group(0)}')
-        for m in score_pat.finditer(text):
-            if m.group(0) not in allowed_scores:
-                problems.append(
-                    f'[fact {rel}] GoalScore-like {m.group(0)} not in metrics set '
-                    f'{sorted(allowed_scores)}')
-        for pat, label in ((ratio_pat, 'ratio'), (of_pat, 'of')):
-            for m in pat.finditer(text):
-                num, den = int(m.group(1)), int(m.group(2))
-                if den == n and num not in ratio_nums:
-                    problems.append(
-                        f'[fact {rel}] {label} {m.group(0)}: numerator {num} '
-                        f'not in {sorted(ratio_nums)}')
+        for m in re.finditer(r'<!-- sync:numbers:\w+ -->(.*?)<!-- /sync:numbers:\w+ -->', text, re.DOTALL):
+            block = m.group(1)
+            for i in id_pat.finditer(block):
+                if int(i.group(1)) not in allowed_ids:
+                    problems.append(f'[fact {f.name}] candidate {i.group(1)} not in metrics {sorted(allowed_ids)}')
+        for m in of_pat.finditer(text):
+            num, den = int(m.group(1)), int(m.group(2))
+            if den == n and num not in ratio_nums:
+                problems.append(f'[fact {f.name}] "{m.group(0)}": numerator {num} not in {sorted(ratio_nums)}')
 
 
 def asset_check(staging: Path, metrics, problems):
@@ -358,7 +306,8 @@ def main(argv):
                     help='verify consistency from showcase-metrics.json only')
     ap.add_argument('--staging', type=Path, default=None)
     ap.add_argument('--root', type=Path, default=SOURCE_ROOT)
-    ap.add_argument('--frames', type=Path, default=None)
+    ap.add_argument('--capture', type=Path, default=None,
+                    help='metrics_capture.json written by tools/showcase_capture.m')
     ap.add_argument('--test-log', type=Path, default='/tmp/neuroqc_test_latest.log')
     args = ap.parse_args(argv)
 
@@ -372,12 +321,9 @@ def main(argv):
         metrics = json.loads(mpath.read_text(encoding='utf-8'))
         mode = 'check'
     else:
-        frames = args.frames
-        if frames is None:
-            frames = Path(json.loads(
-                (SCRIPT_DIR / 'config.local.json').read_text(encoding='utf-8'))['frames'])
-        capture_path = frames / 'metrics_capture.json'
-        assert capture_path.exists(), f'{capture_path} not found — run make_shots first'
+        capture_path = args.capture
+        assert capture_path and capture_path.exists(), \
+            f'{capture_path} not found — run tools/showcase_capture.m first'
         version = read_source_version(args.root)
         tests = read_test_count(Path(args.test_log))
         capture = json.loads(capture_path.read_text(encoding='utf-8'))
@@ -414,7 +360,7 @@ def main(argv):
             print('  -', p)
         return 1
     print(f'CONSISTENCY_OK ({len(files)} files, version={ctx["version"]}, '
-          f'tests={ctx["tests"]}, block n={ctx["n"]} n_front={ctx["n_front"]})')
+          f'tests={ctx["tests"]}, block n={ctx["n"]} feasible={ctx["feasible"]})')
     return 0
 
 
