@@ -67,36 +67,32 @@ classdef Panel < handle
                 'SelectionChangedFcn', @(t, ~) obj.showDetails('history', t));
 
             % plan (right, row 2)
-            pp = uipanel(g, 'Title', 'Plan: steps after the current dataset (fixed = one value, search = {list})');
+            pp = uipanel(g, 'Title', 'Plan: steps after the current dataset (one value = fixed, several = searched)');
             pp.Layout.Row = 2; pp.Layout.Column = 2;
             pg = uigridlayout(pp, [5 1]); pg.RowHeight = {'1x', 28, 28, 28, 20};
-            obj.PlanTable = uitable(pg, 'ColumnName', {'#','step','your settings (editable)','effective (searched or fixed)','pin'}, ...
-                'ColumnEditable', [false false true false true], 'ColumnWidth', {30, 110, '2x', '3x', 55}, 'RowName', {}, ...
+            obj.PlanTable = uitable(pg, 'ColumnName', {'#','step','values (searched or fixed)','pin'}, ...
+                'ColumnEditable', [false false false true], 'ColumnWidth', {30, 120, 'auto', 45}, 'RowName', {}, ...
                 'CellEditCallback', @(~, e) obj.planEdited(e), 'SelectionChangedFcn', @(t, ~) obj.showDetails('plan', t));
             b1 = uigridlayout(pg, [1 7]); b1.Padding = [0 0 0 0];
-            obj.TypeDrop = uidropdown(b1, 'Items', neuroqc.plan.Catalog.types());
+            obj.TypeDrop = uidropdown(b1, 'Items', setdiff(neuroqc.plan.Catalog.types(), {'native'}, 'stable'));
             uibutton(b1, 'Text', 'Add', 'ButtonPushedFcn', @(~, ~) obj.addStep());
             uibutton(b1, 'Text', 'Remove', 'ButtonPushedFcn', @(~, ~) obj.removeStep());
             uibutton(b1, 'Text', 'Up', 'ButtonPushedFcn', @(~, ~) obj.moveStep(-1));
             uibutton(b1, 'Text', 'Down', 'ButtonPushedFcn', @(~, ~) obj.moveStep(1));
             uilabel(b1, 'Text', 'Order:', 'HorizontalAlignment', 'right');
             obj.OrderDrop = uidropdown(b1, 'Items', {'fixed','search'}, 'ValueChangedFcn', @(s, ~) obj.setOrder(s.Value));
-            b2 = uigridlayout(pg, [1 4]); b2.Padding = [0 0 0 0];
-            uibutton(b2, 'Text', 'Values from EEGLAB dialog...', 'Tooltip', ...
-                ['Set the selected step''s values in its EEGLAB dialog; each time adds the values to the step''s ', ...
-                 'search (the step keeps NeuroQC''s decision-matched signal check)'], ...
-                'ButtonPushedFcn', @(~, ~) obj.valuesFromDialog());
-            uibutton(b2, 'Text', 'Fix via EEGLAB dialog', 'Tooltip', ...
-                'Open the native EEGLAB dialog for the selected step; its command replaces the step as a fixed native step', ...
-                'ButtonPushedFcn', @(~, ~) obj.captureStep());
+            b2 = uigridlayout(pg, [1 3]); b2.Padding = [0 0 0 0];
+            uibutton(b2, 'Text', 'Configure in EEGLAB...', 'FontWeight', 'bold', 'Tooltip', ...
+                ['Open the selected step''s EEGLAB dialog; its values are added to the step (a value that differs ', ...
+                 'from those already there becomes a searched candidate)'], ...
+                'ButtonPushedFcn', @(~, ~) obj.configureStep());
+            uibutton(b2, 'Text', 'Edit values...', 'Tooltip', ...
+                'Every parameter of the selected step: one value = fixed, several = searched; channels from EEGLAB''s channel list', ...
+                'ButtonPushedFcn', @(~, ~) obj.valuesDialog());
             uibutton(b2, 'Text', 'Apply now in EEGLAB', 'Tooltip', ...
                 'Run the selected step on the current dataset through the EEGLAB dialog (recorded in EEG.history); the plan then starts after it', ...
                 'ButtonPushedFcn', @(~, ~) obj.applyNow());
-            uibutton(b2, 'Text', 'Catalog help', 'ButtonPushedFcn', @(~, ~) obj.catalogHelp());
-            b3 = uigridlayout(pg, [1 5]); b3.Padding = [0 0 0 0];
-            uibutton(b3, 'Text', 'Add config (EEGLAB)...', 'Tooltip', ...
-                'Configure the selected step once more in its EEGLAB dialog; the search tries every configuration of the step', ...
-                'ButtonPushedFcn', @(~, ~) obj.addCandidateConfig());
+            b3 = uigridlayout(pg, [1 3]); b3.Padding = [0 0 0 0];
             uibutton(b3, 'Text', 'Skipping allowed on/off', 'Tooltip', ...
                 'Whether leaving the selected step out is one of the searched options', ...
                 'ButtonPushedFcn', @(~, ~) obj.toggleSkip());
@@ -104,9 +100,6 @@ classdef Panel < handle
                 'With order = search: the selected step must run before the step you choose', ...
                 'ButtonPushedFcn', @(~, ~) obj.mustBefore());
             uibutton(b3, 'Text', 'Clear order rules', 'ButtonPushedFcn', @(~, ~) obj.clearOrderRules());
-            uibutton(b3, 'Text', 'Parameters...', 'Tooltip', ...
-                'Arguments of an EEGLAB-configured step and the values searched for each', ...
-                'ButtonPushedFcn', @(~, ~) obj.paramsDialog());
             obj.ConstraintLabel = uilabel(pg, 'Text', 'Order rules: none', 'FontColor', [0.3 0.3 0.3]);
 
             % contract + run + results (right, row 3)
@@ -249,11 +242,11 @@ classdef Panel < handle
         % ------------------------------------------------------------- plan
         function showPlan(obj)
             S = obj.Plan.Slots;
-            data = cell(numel(S), 5);
+            data = cell(numel(S), 4);
             ctxt = struct('epoch', obj.EpochField.Value, 'baseline', obj.BaseField.Value);
             for k = 1:numel(S)
                 data{k, 1} = k; data{k, 2} = S(k).id;
-                data{k, 3} = userText(S(k)); data{k, 4} = settingsText(S(k), ctxt); data{k, 5} = S(k).pinned;
+                data{k, 3} = settingsText(S(k), ctxt); data{k, 4} = S(k).pinned;
             end
             obj.PlanTable.Data = data;
             obj.OrderDrop.Value = obj.Plan.OrderMode;
@@ -278,9 +271,7 @@ classdef Panel < handle
             obj.Plan = obj.Plan.add(obj.TypeDrop.Value);
             obj.invalidate('Plan changed');
             obj.showPlan();
-            d = neuroqc.plan.Catalog.get(obj.TypeDrop.Value);
-            neuroqc.utils.log('Added %s. Unmentioned parameters are searched over their suggestions: %s', ...
-                d.type, suggestText(d));
+            neuroqc.utils.log('Added %s: %s', obj.Plan.Slots(end).id, settingsText(obj.Plan.Slots(end)));
         end
 
         function k = selected(obj)
@@ -306,203 +297,131 @@ classdef Panel < handle
         end
 
         function planEdited(obj, e)
+            % only the pin column is editable in the table
             k = e.Indices(1);
-            try
-                if e.Indices(2) == 5
-                    obj.Plan.Slots(k).pinned = logical(e.NewData);
-                else
-                    slot = obj.Plan.Slots(k);
-                    assert(numel(slot.alternatives) == 1, 'NeuroQC:Plan', ['A step with several candidate configurations ', ...
-                        'is edited through its EEGLAB dialog (Add EEGLAB config as candidate) or from the command line.']);
-                    assert(~any(strcmp(slot.alternatives{1}.type, {'native','eeglab'})), 'NeuroQC:Plan', ...
-                        ['An EEGLAB-configured step is edited in its dialog (Fix via EEGLAB dialog / Add EEGLAB config ', ...
-                         'as candidate) or with Parameters...']);
-                    p = parseSettings(e.NewData);
-                    obj.Plan.Slots(k).alternatives{1}.params = p;
-                end
+            if e.Indices(2) == 4
+                obj.Plan.Slots(k).pinned = logical(e.NewData);
                 obj.invalidate('Plan changed');
-                obj.showPlan();
-            catch ME
-                uialert(obj.Fig, ME.message, 'NeuroQC'); obj.showPlan();
             end
+            obj.showPlan();
         end
 
-        function captureStep(obj, com)
-            % Replace the selected step by its configuration in EEGLAB's
-            % own dialog(s) (a fixed native step; re-editable).
+        function configureStep(obj, com, EEG, keepWhole)
+            % The selected step's EEGLAB dialog. Its values join the step:
+            % a value that differs from those already there becomes a
+            % searched candidate. Settings the step cannot hold (e.g.
+            % asymmetric limits) are never dropped silently: the whole
+            % EEGLAB command is kept instead, if you choose so.
             k = obj.selected(); if isempty(k), return; end
             slot = obj.Plan.Slots(k);
-            id = slot.id; if ~endsWith(id, '_native'), id = [id '_native']; end
+            j = find(~cellfun(@(a) strcmp(a.type, 'none'), slot.alternatives), 1);
+            alt = slot.alternatives{j};
             try
                 if nargin < 2
-                    com = obj.captureFor(obj.dialogType(slot));
+                    type = obj.dialogType(slot);
+                    com = obj.captureFor(type);
                     if isempty(com), return; end
                 end
-                obj.Plan.Slots(k).alternatives = {stepAlt(com)};
-                obj.Plan.Slots(k).id = id;
-                obj.invalidate('Plan changed');
-                obj.showPlan();
-            catch ME
-                uialert(obj.Fig, ME.message, 'NeuroQC');
-            end
-        end
-
-        function addCandidateConfig(obj, com)
-            % One more configuration of the selected step, from its EEGLAB
-            % dialog; the search tries each configuration of the slot.
-            k = obj.selected(); if isempty(k), return; end
-            slot = obj.Plan.Slots(k);
-            try
-                if nargin < 2
-                    com = obj.captureFor(obj.dialogType(slot));
-                    if isempty(com), return; end
-                end
-                alt = stepAlt(com);
+                if nargin < 3 || isempty(EEG), EEG = neuroqc.live.Session.current(); end
                 alts = slot.alternatives;
-                % the same EEGLAB call with other values: the arguments that
-                % differ are searched one by one (combined with each other)
-                j = find(cellfun(@(a) strcmp(a.type, 'eeglab'), alts) & strcmp(alt.type, 'eeglab'), 1);
-                if isempty(j)
-                    j = find(cellfun(@(a) strcmp(a.type, 'native') && ~isempty(neuroqc.run.Native.eeglabAlt(a.params.command)), alts), 1);
-                    if ~isempty(j) && strcmp(alt.type, 'eeglab'), alts{j} = neuroqc.run.Native.eeglabAlt(alts{j}.params.command); end
-                end
-                merged = false;
-                if ~isempty(j) && strcmp(alt.type, 'eeglab') && strcmp(alts{j}.type, 'eeglab')
-                    [m, changed] = neuroqc.run.Native.mergeEeglab(alts{j}, alt);
-                    if isequal({m.params.args.name}, {alt.params.args.name}) && strcmp(m.params.fn, alt.params.fn)
-                        merged = true;
-                        if isempty(changed), neuroqc.utils.log('This configuration is already a candidate of %s.', slot.id); return; end
-                        alts{j} = m;
-                        neuroqc.utils.log('%s: searched argument(s) %s now take %s.', slot.id, strjoin(changed, ', '), ...
-                            strjoin(arrayfun(@(x) sprintf('%s %s', x.name, valuesText(x.values)), ...
-                            m.params.args(ismember({m.params.args.name}, changed)), 'UniformOutput', false), '; '));
+                if any(strcmp(alt.type, neuroqc.plan.Catalog.types())) && ~strcmp(alt.type, 'native')
+                    [vals, notes] = neuroqc.run.Native.catalogValues(alt.type, com, EEG);
+                    if ~isempty(notes)
+                        msg = sprintf('The dialog also set: %s.', strjoin(notes, '; '));
+                        if nargin < 4
+                            c = uiconfirm(obj.Fig, [msg ' Keep the whole EEGLAB command for this step, or only the values the step uses?'], ...
+                                'NeuroQC', 'Options', {'Keep whole command', 'Only the step''s values', 'Cancel'}, 'DefaultOption', 1, 'CancelOption', 3);
+                            if strcmp(c, 'Cancel'), return; end
+                            keepWhole = strcmp(c, 'Keep whole command');
+                        end
+                        if keepWhole
+                            alts{j} = stepAlt(com);
+                            obj.Plan.Slots(k).alternatives = alts;
+                            neuroqc.utils.log('%s: %s Kept the whole EEGLAB command.', slot.id, msg);
+                            obj.invalidate('Plan changed'); obj.showPlan();
+                            return;
+                        end
+                        neuroqc.utils.log('%s: %s Only the step''s values were used.', slot.id, msg);
+                    end
+                    alts{j} = addValues(alt, vals);
+                else
+                    new = stepAlt(com);
+                    if strcmp(alt.type, 'eeglab') && strcmp(new.type, 'eeglab')
+                        [m, changed] = neuroqc.run.Native.mergeEeglab(alt, new);
+                        if isequal({m.params.args.name}, {new.params.args.name}) && strcmp(m.params.fn, new.params.fn)
+                            if isempty(changed), neuroqc.utils.log('%s: this configuration is already there.', slot.id); return; end
+                            alts{j} = m;
+                            neuroqc.utils.log('%s: searched argument(s) %s.', slot.id, strjoin(changed, ', '));
+                        else
+                            alts{end+1} = new;
+                        end
+                    elseif ~any(cellfun(@(a) isequal(a, new), alts))
+                        alts{end+1} = new;           % another configuration of a workflow
+                    else
+                        neuroqc.utils.log('%s: this configuration is already there.', slot.id); return;
                     end
                 end
-                if ~merged
-                    same = cellfun(@(a) isequal(a, alt), alts);
-                    if any(same), neuroqc.utils.log('This configuration is already a candidate of %s.', slot.id); return; end
-                    alts{end+1} = alt;
-                    neuroqc.utils.log('%s now has %d candidate configuration(s).', slot.id, numel(alts));
-                end
                 obj.Plan.Slots(k).alternatives = alts;
-                obj.invalidate('Plan changed');
-                obj.showPlan();
+                neuroqc.utils.log('%s: %s', slot.id, settingsText(obj.Plan.Slots(k)));
+                obj.invalidate('Plan changed'); obj.showPlan();
             catch ME
                 uialert(obj.Fig, ME.message, 'NeuroQC');
             end
         end
 
-        function editParams(obj, name, values)
-            % Set the searched values of one argument of the selected
-            % EEGLAB-configured step (values: cell, one entry per value).
+        function setValues(obj, name, values)
+            % Values of one parameter of the selected step (cell: one entry
+            % per value; one entry = fixed, several = searched; {} = back to
+            % the default).
             k = obj.selected(); if isempty(k), return; end
             alts = obj.Plan.Slots(k).alternatives;
-            j = find(cellfun(@(a) strcmp(a.type, 'eeglab'), alts), 1);
-            assert(~isempty(j), 'NeuroQC:Plan', 'The selected step is not configured in an EEGLAB dialog.');
-            i = find(strcmp({alts{j}.params.args.name}, name), 1);
-            assert(~isempty(i), 'NeuroQC:Plan', '%s has no argument %s.', alts{j}.params.fn, name);
-            assert(iscell(values) && ~isempty(values), 'NeuroQC:Plan', 'Give at least one value.');
-            alts{j}.params.args(i).values = values(:)';
+            j = find(~cellfun(@(a) strcmp(a.type, 'none'), alts), 1);
+            alts{j} = setParam(alts{j}, name, values);
             obj.Plan.Slots(k).alternatives = alts;
             obj.invalidate('Plan changed'); obj.showPlan();
         end
 
-        function paramsDialog(obj)
-            % Table of the step's arguments: values separated by " | ".
+        function valuesDialog(obj)
+            % Every parameter of the selected step with its values; values
+            % separated by " | "; channel lists picked in EEGLAB.
             k = obj.selected(); if isempty(k), return; end
-            alts = obj.Plan.Slots(k).alternatives;
-            j = find(cellfun(@(a) strcmp(a.type, 'eeglab'), alts), 1);
-            if isempty(j)
-                uialert(obj.Fig, ['Configure the step in its EEGLAB dialog first (Fix via EEGLAB dialog). Each ', ...
-                    'further configuration (Add EEGLAB config as candidate) adds the values that differ.'], 'NeuroQC');
+            slot = obj.Plan.Slots(k);
+            j = find(~cellfun(@(a) strcmp(a.type, 'none'), slot.alternatives), 1);
+            alt = slot.alternatives{j};
+            rows = paramRows(alt);
+            if isempty(rows)
+                uialert(obj.Fig, sprintf('%s has no parameters of its own (settings come from the analysis contract or the workflow command).', slot.id), 'NeuroQC');
                 return;
             end
-            A = alts{j}.params.args;
-            d = uifigure('Name', sprintf('%s: searched values', alts{j}.params.fn), 'Position', [200 200 620 360], ...
-                'WindowStyle', 'modal');
-            gl = uigridlayout(d, [3 1]); gl.RowHeight = {36, '1x', 30};
-            uilabel(gl, 'WordWrap', 'on', 'Text', ['Each row is an argument of the EEGLAB command. One value = fixed; ', ...
-                'several values separated by " | " = searched (combined with the other searched arguments).']);
-            T = uitable(gl, 'Data', [{A.name}' arrayfun(@(x) strjoin(cellfun(@codeOf, x.values, 'UniformOutput', false), ' | '), A, ...
-                'UniformOutput', false)'], 'ColumnName', {'argument', 'values'}, 'ColumnEditable', [false true], ...
-                'ColumnWidth', {140, 'auto'}, 'RowName', {});
-            bg = uigridlayout(gl, [1 3]); bg.Padding = [0 0 0 0]; bg.ColumnWidth = {'1x', 90, 90};
+            d = uifigure('Name', sprintf('%s: values', slot.id), 'Position', [200 200 680 380], 'WindowStyle', 'modal');
+            gl = uigridlayout(d, [3 1]); gl.RowHeight = {40, '1x', 30};
+            uilabel(gl, 'WordWrap', 'on', 'Text', ['One value = fixed; several values separated by " | " = searched. ', ...
+                'Leave empty for the default. Channel lists: select the row and use Pick channels.']);
+            T = uitable(gl, 'Data', [rows(:, 1) rows(:, 2) rows(:, 3)], 'ColumnName', {'parameter', 'values', 'default'}, ...
+                'ColumnEditable', [false true false], 'ColumnWidth', {130, 'auto', 200}, 'RowName', {});
+            bg = uigridlayout(gl, [1 4]); bg.Padding = [0 0 0 0]; bg.ColumnWidth = {130, '1x', 90, 90};
+            uibutton(bg, 'Text', 'Pick channels...', 'ButtonPushedFcn', @(~, ~) pick());
             uilabel(bg, 'Text', '');
             uibutton(bg, 'Text', 'Cancel', 'ButtonPushedFcn', @(~, ~) delete(d));
             uibutton(bg, 'Text', 'OK', 'ButtonPushedFcn', @(~, ~) apply());
+            function pick()
+                sel = T.Selection; if isempty(sel), return; end
+                L = obj.pickChannels(tokens(T.Data{sel(1, 1), 2}));
+                if ~isempty(L), T.Data{sel(1, 1), 2} = strjoin(cellfun(@quoteItem, L, 'UniformOutput', false), ' '); end
+            end
             function apply()
                 try
-                    for r = 1:numel(A)
-                        parts = strtrim(regexp(T.Data{r, 2}, '\s\|\s', 'split'));
-                        parts = parts(~cellfun(@isempty, parts));
-                        vals = cellfun(@(c) eval(c), parts, 'UniformOutput', false);
-                        if ~isequal(vals, A(r).values), obj.editParams(A(r).name, vals); end
+                    a = alt;
+                    for r = 1:size(rows, 1)
+                        if strcmp(T.Data{r, 2}, rows{r, 2}), continue; end
+                        a = setParam(a, rows{r, 1}, parseValues(T.Data{r, 2}, rows{r, 4}));
                     end
+                    obj.Plan.Slots(k).alternatives{j} = a;
+                    obj.invalidate('Plan changed'); obj.showPlan();
                     delete(d);
                 catch ME
                     uialert(d, ME.message, 'NeuroQC');
                 end
-            end
-        end
-
-        function valuesFromDialog(obj, com, EEG)
-            % Values of a catalog step from its EEGLAB dialog; a value that
-            % differs from those already set is added to the step's search.
-            k = obj.selected(); if isempty(k), return; end
-            slot = obj.Plan.Slots(k);
-            j = find(cellfun(@(a) ~any(strcmp(a.type, {'none','native','eeglab'})), slot.alternatives), 1);
-            if isempty(j)
-                uialert(obj.Fig, 'The selected step is already configured in EEGLAB; use Add EEGLAB config as candidate.', 'NeuroQC');
-                return;
-            end
-            alt = slot.alternatives{j};
-            try
-                if nargin < 2
-                    if any(strcmp(alt.type, {'reject_threshold','reject_jointprob','reject_kurtosis'}))
-                        EEG = obj.previewEpoched();
-                        com = neuroqc.run.Native.captureCall(EEG, neuroqc.run.Native.menuCall(alt.type));
-                    elseif strcmp(alt.type, 'icremove')
-                        EEG = neuroqc.live.Session.current();
-                        com = neuroqc.run.Native.captureWorkflow('icremove', EEG);
-                    else
-                        assert(~any(strcmp(alt.type, {'epoch','baseline','restore'})), 'NeuroQC:Native', ...
-                            '%s takes its settings from the analysis contract / the starting montage.', alt.type);
-                        EEG = neuroqc.live.Session.current();
-                        com = neuroqc.run.Native.capture(alt.type, EEG);
-                    end
-                    if isempty(com), return; end
-                end
-                [vals, notes] = neuroqc.run.Native.catalogValues(alt.type, com, EEG);
-                d = neuroqc.plan.Catalog.get(alt.type);
-                added = {};
-                for f = fieldnames(vals)'
-                    name = f{1}; v = vals.(name);
-                    listValued = iscell(d.params(strcmp({d.params.name}, name)).default);
-                    if ~isfield(alt.params, name), alt.params.(name) = v; added{end+1} = name; continue; end %#ok<AGROW>
-                    cur = alt.params.(name);
-                    if listValued
-                        if iscell(cur) && ~isempty(cur) && all(cellfun(@iscell, cur)), L = cur; else, L = {cur}; end
-                    else
-                        if iscell(cur), L = cur; else, L = {cur}; end
-                    end
-                    if any(cellfun(@(x) isequal(x, v), L)), continue; end
-                    L{end+1} = v; alt.params.(name) = L; added{end+1} = name; %#ok<AGROW>
-                end
-                obj.Plan.Slots(k).alternatives{j} = alt;
-                msg = sprintf('%s from the EEGLAB dialog: %s', slot.id, strjoin(arrayfun(@(f) sprintf('%s = %s', f{1}, ...
-                    valText(alt.params.(f{1}))), fieldnames(vals)', 'UniformOutput', false), '; '));
-                neuroqc.utils.log('%s', msg);
-                if ~isempty(notes)
-                    neuroqc.utils.log('Not used by the %s step: %s.', alt.type, strjoin(notes, '; '));
-                    if nargin < 2
-                        uialert(obj.Fig, sprintf(['%s\n\nNot used by the %s step: %s.\n\nTo keep every setting of ', ...
-                            'the dialog, use Fix via EEGLAB dialog instead.'], msg, alt.type, strjoin(notes, '; ')), 'NeuroQC', 'Icon', 'warning');
-                    end
-                end
-                if ~isempty(added), obj.invalidate('Plan changed'); end
-                obj.showPlan();
-            catch ME
-                uialert(obj.Fig, ME.message, 'NeuroQC');
             end
         end
 
@@ -558,7 +477,7 @@ classdef Panel < handle
             ok = {'resample','highpass','lowpass','linenoise','filter','asr','badchannels','restore','reref','ica', ...
                 'icremove','reject_threshold','reject_jointprob','reject_kurtosis'};
             assert(any(strcmp(type, ok)), 'NeuroQC:Native', ['%s has no EEGLAB dialog here (epoch and baseline come ', ...
-                'from the analysis contract above; named channels from the settings column).'], type);
+                'from the analysis contract above; named channels from Edit values...).'], type);
         end
 
         function com = captureFor(obj, type)
@@ -617,16 +536,6 @@ classdef Panel < handle
                 if strcmp(choice, 'Remove from plan'), obj.removeStep(); end
             catch ME
                 uialert(obj.Fig, ME.message, 'NeuroQC');
-            end
-        end
-
-        function catalogHelp(~)
-            for t = neuroqc.plan.Catalog.types()
-                d = neuroqc.plan.Catalog.get(t{1});
-                fprintf('%-18s %s\n', d.type, d.label);
-                for p = d.params
-                    fprintf('    %-12s default %-10s search %-22s %s\n', p.name, valText(p.default), valText(p.suggest), p.doc);
-                end
             end
         end
 
@@ -1090,8 +999,8 @@ classdef Panel < handle
                         v = {sprintf('EEG.history line %d (%s, %s):', h{1}, h{2}, orDash(h{3})), h{4}};
                     case 'plan'
                         slot = obj.Plan.Slots(r);
-                        v = {sprintf('Step %d: %s', r, slot.id), ['Your settings: ' orDash(userText(slot))], ...
-                            ['Effective: ' settingsText(slot, struct('epoch', obj.EpochField.Value, 'baseline', obj.BaseField.Value))]};
+                        v = {sprintf('Step %d: %s', r, slot.id), ...
+                            ['Values: ' settingsText(slot, struct('epoch', obj.EpochField.Value, 'baseline', obj.BaseField.Value))]};
                         for a = 1:numel(slot.alternatives)
                             alt = slot.alternatives{a};
                             if strcmp(alt.type, 'native'), v = [v {'EEGLAB command(s):'} neuroqc.run.Native.statements(alt.params.command)]; end %#ok<AGROW>
@@ -1241,16 +1150,6 @@ function t = orDash(t)
 if isempty(t), t = '-'; end
 end
 
-function t = userText(slot)
-% what the user set (the editable column): explicit values only
-if numel(slot.alternatives) ~= 1 || any(strcmp(slot.alternatives{1}.type, {'native','eeglab','none'}))
-    t = '(see effective)'; return;
-end
-p = slot.alternatives{1}.params;
-f = fieldnames(p);
-t = strjoin(cellfun(@(n) sprintf('%s = %s', n, valText(p.(n))), f, 'UniformOutput', false), '; ');
-end
-
 function t = settingsText(slot, ctxt)
 % every parameter as it will run: given, default search or default
 if nargin < 2, ctxt = struct('epoch', '', 'baseline', ''); end
@@ -1292,6 +1191,122 @@ end
 t = strjoin(parts, ' | ');
 end
 
+function alt = addValues(alt, vals)
+% Values from an EEGLAB dialog join a catalog step: a value that differs
+% from those already set becomes a searched candidate.
+d = neuroqc.plan.Catalog.get(alt.type);
+for f = fieldnames(vals)'
+    name = f{1}; v = vals.(name);
+    listValued = iscell(d.params(strcmp({d.params.name}, name)).default);
+    if ~isfield(alt.params, name), alt.params.(name) = v; continue; end
+    L = asList(alt.params.(name), listValued);
+    if ~any(cellfun(@(x) isequal(x, v), L)), L{end+1} = v; end %#ok<AGROW>
+    alt.params.(name) = fromList(L, listValued);
+end
+end
+
+function L = asList(v, listValued)
+% a parameter's values as a list (one entry per value)
+if listValued
+    if iscell(v) && ~isempty(v) && all(cellfun(@iscell, v)), L = v; else, L = {v}; end
+elseif iscell(v), L = v;
+else, L = {v};
+end
+end
+
+function v = fromList(L, listValued)
+if isscalar(L), v = L{1}; else, v = L; end
+if listValued && isscalar(L) && ~iscell(v), v = {v}; end
+end
+
+function alt = setParam(alt, name, values)
+% values: cell, one entry per value; {} = back to the default
+if strcmp(alt.type, 'eeglab')
+    i = find(strcmp({alt.params.args.name}, name), 1);
+    assert(~isempty(i), 'NeuroQC:Plan', '%s has no argument %s.', alt.params.fn, name);
+    assert(~isempty(values), 'NeuroQC:Plan', 'An EEGLAB argument needs a value.');
+    alt.params.args(i).values = values(:)';
+    return;
+end
+d = neuroqc.plan.Catalog.get(alt.type);
+q = d.params(strcmp({d.params.name}, name));
+assert(~isempty(q), 'NeuroQC:Plan', 'Step %s has no parameter %s.', alt.type, name);
+if isempty(values)
+    if isfield(alt.params, name), alt.params = rmfield(alt.params, name); end
+else
+    alt.params.(name) = fromList(values(:)', iscell(q.default));
+end
+end
+
+function rows = paramRows(alt)
+% {name, values text, default text, kind} for the values dialog
+rows = cell(0, 4);
+if strcmp(alt.type, 'eeglab')
+    for a = alt.params.args
+        rows(end+1, :) = {a.name, valuesEditText(a.values), '', kindOf(a.values{1})}; %#ok<AGROW>
+    end
+    return;
+end
+if strcmp(alt.type, 'native'), return; end
+d = neuroqc.plan.Catalog.get(alt.type);
+for q = d.params
+    cur = '';
+    if isfield(alt.params, q.name), cur = valuesEditText(asList(alt.params.(q.name), iscell(q.default))); end
+    if ~isempty(q.suggest), def = ['search ' valuesEditText(q.suggest)]; else, def = valuesEditText({q.default}); end
+    if isempty(strtrim(def)), def = 'none'; end
+    k = kindOf(q.default); if iscell(q.default), k = 'labels'; end
+    rows(end+1, :) = {q.name, cur, def, k}; %#ok<AGROW>
+end
+end
+
+function k = kindOf(v)
+if iscellstr(v) || (iscell(v) && isempty(v)), k = 'labels';
+elseif ischar(v), k = 'text';
+elseif isnumeric(v) || islogical(v), k = 'number';
+else, k = 'other';
+end
+end
+
+function t = valuesEditText(L)
+% values as editable text: entries separated by " | "
+parts = cell(1, numel(L));
+for i = 1:numel(L)
+    v = L{i};
+    if iscellstr(v) || (iscell(v) && isempty(v)), parts{i} = strjoin(cellfun(@quoteItem, v, 'UniformOutput', false), ' ');
+    elseif ischar(v), parts{i} = v;
+    elseif isnumeric(v) && isscalar(v), parts{i} = num2str(v, 15);
+    elseif isnumeric(v), parts{i} = mat2str(v);
+    else, parts{i} = codeOf(v);
+    end
+end
+t = strjoin(parts, ' | ');
+end
+
+function vals = parseValues(txt, kind)
+% "a | b | c" -> {a, b, c}; numbers stay numbers, channel lists become
+% label lists; nothing is evaluated as MATLAB code.
+txt = strtrim(char(txt));
+if isempty(txt), vals = {}; return; end
+parts = strtrim(regexp(txt, '\s*\|\s*', 'split'));
+parts = parts(~cellfun(@isempty, parts));
+vals = cell(1, numel(parts));
+for i = 1:numel(parts)
+    p = parts{i};
+    switch kind
+        case 'labels'
+            vals{i} = tokens(p);
+        case 'number'
+            assert(~isempty(regexp(p, '^[\s\d\.eE+\-:\[\];,]+$', 'once')), 'NeuroQC:Plan', 'Not a number: %s', p);
+            vals{i} = str2num(p); %#ok<ST2NM> digits, signs and brackets only
+            assert(~isempty(vals{i}), 'NeuroQC:Plan', 'Not a number: %s', p);
+        case 'other'
+            error('NeuroQC:Plan', 'This argument (%s) is set in its EEGLAB dialog (Configure in EEGLAB...).', p);
+        otherwise
+            vals{i} = regexprep(p, '^[''"](.*)[''"]$', '$1');
+    end
+end
+end
+
 function alt = stepAlt(com)
 % A captured dialog command as a plan alternative: a single EEGLAB call
 % becomes parameterised (its arguments can be searched), a workflow stays
@@ -1311,34 +1326,12 @@ alt = neuroqc.run.Native.eeglabCommand('f', struct('name', 'x', 'key', false, 'v
 t = regexprep(alt, '^EEG = f\(EEG, (.*)\);$', '$1');
 end
 
-function p = parseSettings(txt)
-% 'cutoff = {0.1, 0.5}; measure = ''kurt''' -> struct. Values are MATLAB
-% expressions typed by the user in their own session.
-p = struct();
-txt = strtrim(char(txt));
-if isempty(txt), return; end
-for part = regexp(txt, ';(?=(?:[^'']*''[^'']*'')*[^'']*$)', 'split')
-    s = strtrim(part{1}); if isempty(s), continue; end
-    kv = regexp(s, '^\s*([A-Za-z]\w*)\s*=\s*(.+)$', 'tokens', 'once');
-    assert(~isempty(kv), 'NeuroQC:Plan', 'Write settings as name = value; name2 = {v1, v2}');
-    p.(kv{1}) = eval(kv{2});
-end
-end
-
 function t = valText(v)
 if ischar(v) || isstring(v), t = ['''' char(v) ''''];
 elseif isnumeric(v) || islogical(v), t = mat2str(v);
 elseif iscell(v), t = ['{' strjoin(cellfun(@valText, v, 'UniformOutput', false), ', ') '}'];
 else, t = class(v);
 end
-end
-
-function t = suggestText(d)
-parts = {};
-for p = d.params
-    if ~isempty(p.suggest), parts{end+1} = sprintf('%s %s', p.name, valText(p.suggest)); end %#ok<AGROW>
-end
-if isempty(parts), t = 'none (all parameters fixed by default)'; else, t = strjoin(parts, ', '); end
 end
 
 function s = ternary(c, a, b)

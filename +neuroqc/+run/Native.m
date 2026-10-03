@@ -121,13 +121,17 @@ classdef Native
             % dialog (command = what the dialog returned, EEG = the data
             % it ran on, to turn channel indices into labels). Settings of
             % the dialog that the catalog step cannot express are listed
-            % in notes, never dropped silently: use "Fix via EEGLAB dialog"
+            % in notes, never dropped silently: Configure in EEGLAB then offers
             % to keep the whole command instead.
             vals = struct(); notes = {};
             st = neuroqc.run.Native.statements(command);
             com = st{end};
-            if strcmp(type, 'icremove')
-                com = st{find(contains(st, 'pop_icflag'), 1)};
+            setter = struct('icremove', 'pop_icflag', 'reject_threshold', 'pop_eegthresh', ...
+                'reject_jointprob', 'pop_jointprob', 'reject_kurtosis', 'pop_rejkurt');
+            if isfield(setter, type)                % the statement that holds the settings
+                k = find(contains(st, setter.(type)), 1);
+                assert(~isempty(k), 'NeuroQC:Native', 'No %s in the dialog command.', setter.(type));
+                com = st{k};
             end
             [fn] = neuroqc.live.History.callParts(com);
             a = neuroqc.run.Native.argsOf(com, fn);
@@ -188,9 +192,9 @@ classdef Native
                     if numel(elec) < numel(labs), vals.exclude = labs(setdiff(1:numel(labs), elec)); end
                     if strcmp(type, 'reject_threshold')
                         lo = pos{3}; hi = pos{4};
-                        assert(isscalar(lo) && isscalar(hi), 'NeuroQC:Native', 'Per-channel limits: use Fix via EEGLAB dialog to keep them.');
+                        assert(isscalar(lo) && isscalar(hi), 'NeuroQC:Native', 'Per-channel limits: keep the whole EEGLAB command to use them.');
                         vals.uv = hi;
-                        if lo ~= -hi, notes{end+1} = sprintf('asymmetric limits [%g %g]: the step uses +/-%g (Fix via EEGLAB dialog keeps them)', lo, hi, hi); end
+                        if lo ~= -hi, notes{end+1} = sprintf('asymmetric limits [%g %g]: the step uses +/-%g', lo, hi, hi); end
                     else
                         vals.sd = pos{3};
                         if numel(pos) >= 4 && ~isequal(pos{4}, pos{3})
@@ -210,7 +214,7 @@ classdef Native
                     th = T(rows, 1);
                     vals.threshold = min(th);
                     if any(th ~= th(1)) || any(T(rows, 2) ~= 1)
-                        notes{end+1} = 'different thresholds per class (or an upper limit < 1): the step uses one threshold; Fix via EEGLAB dialog keeps them';
+                        notes{end+1} = 'different thresholds per class (or an upper limit < 1): the step uses one threshold';
                     end
                 otherwise
                     error('NeuroQC:Native', 'No EEGLAB dialog values for %s.', type);

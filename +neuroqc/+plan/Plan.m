@@ -44,7 +44,11 @@ classdef Plan
 
         function obj = addNative(obj, command, id)
             if nargin < 3, id = 'native'; end
-            obj = obj.addSlot(id, {neuroqc.plan.Plan.nativeAlt(command)});
+            % one EEGLAB call: its arguments become (fixed) step parameters;
+            % a multi-statement workflow stays one fixed command
+            alt = neuroqc.run.Native.eeglabAlt(command);
+            if isempty(alt), alt = neuroqc.plan.Plan.nativeAlt(command); end
+            obj = obj.addSlot(id, {alt});
         end
 
         function obj = addEeglab(obj, command, id, varargin)

@@ -74,7 +74,7 @@ Each item has four status columns:
 | Adopt: new dataset, history replays to identical scores; stale-start guard | ✓ | ✓ | ✓ |
 | `writeScript` reproduces a candidate | ✓ | ✓ | ✓ |
 | *Apply now* through EEGLAB's own code path (history, ALLCOM) | ✓ | ✓ | ✓ |
-| *Fix via EEGLAB dialog* (capture of the dialog's command) | ✓ | ✓ (command capture) | opening the dialog itself: manual check pending |
+| *Configure in EEGLAB* (capture of the dialog's command) | ✓ | ✓ (command capture) | opening the dialog itself: manual check pending |
 | Panel: live history, plan editing, run, results, latency objective | ✓ | ✓ | ✓ |
 | Command Window: commands shown, EEGLAB progress chatter filtered | ✓ | ✓ | ✓ |
 

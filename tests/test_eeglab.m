@@ -105,7 +105,7 @@ app = neuroqc.gui.Panel();
 app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.TypeDrop.Value = 'highpass'; app.addStep();
-app.planEdited(struct('Indices', [1 3], 'NewData', 'cutoff = 0.1'));
+app.PlanTable.Selection = [1 1]; app.setValues('cutoff', {0.1});
 app.TypeDrop.Value = 'epoch'; app.addStep();
 app.TypeDrop.Value = 'baseline'; app.addStep();
 app.CondField.Value = 'target: 11; standard: 31';
@@ -172,7 +172,7 @@ c = app.contract();
 verifyEqual(tc, c.epoch, [-0.3 0.9]); verifyEqual(tc, c.baseline, [-0.3 0]);
 verifyEqual(tc, c.components(1).roi, {'Pz', 'P3', 'P4'});
 app.TypeDrop.Value = 'highpass'; app.addStep();
-app.planEdited(struct('Indices', [1 3], 'NewData', 'cutoff = 0.1'));
+app.PlanTable.Selection = [1 1]; app.setValues('cutoff', {0.1});
 app.TypeDrop.Value = 'epoch'; app.addStep();
 app.TypeDrop.Value = 'baseline'; app.addStep();
 app.run(false);
@@ -188,37 +188,49 @@ c = app.contract(); verifyEqual(tc, c.conditions(1).events, {'S  1'});
 end
 
 function testPanelCandidateConfigsSkipAndOrderRules(tc)
-% Plan editing that used to need the command line: candidate
-% configurations from EEGLAB dialogs, "skip" as an option, order rules.
+% One way to configure a step: its EEGLAB dialog. Each configuration
+% adds the values that differ; settings the step cannot hold are kept as
+% the whole EEGLAB command when chosen; "skip" and order rules.
 nqc_setBase(nqc_synth(struct('seconds', 60, 'nPerCond', 10)));
 app = neuroqc.gui.Panel();
-app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.TypeDrop.Value = 'lowpass'; app.addStep();
 app.TypeDrop.Value = 'highpass'; app.addStep();
 app.PlanTable.Selection = [1 1];
-app.captureStep('EEG = pop_eegfiltnew(EEG, ''hicutoff'',30,''plotfreqz'',0);');   % what the dialog returns
-verifyEqual(tc, app.Plan.Slots(1).alternatives{1}.type, 'eeglab');   % a single call: arguments searchable
-app.addCandidateConfig('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''filtorder'',200,''plotfreqz'',0);');
-app.addCandidateConfig('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''filtorder'',200,''plotfreqz'',0);');   % duplicate ignored
-verifyEqual(tc, numel(app.Plan.Slots(1).alternatives), 2);
+app.configureStep('EEG = pop_eegfiltnew(EEG, ''hicutoff'',30,''plotfreqz'',1);');   % what the dialog returns
+verifyEqual(tc, app.Plan.Slots(1).alternatives{1}.params.cutoff, 30);
+app.configureStep('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''plotfreqz'',1);');
+app.configureStep('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''plotfreqz'',1);');   % already there
+verifyEqual(tc, app.Plan.Slots(1).alternatives{1}.params.cutoff, {30, 40});
+verifyEqual(tc, app.Plan.Slots(1).alternatives{1}.type, 'lowpass');                 % still one step, two values
+verifyTrue(tc, contains(app.PlanTable.Data{1, 3}, 'cutoff = {30, 40}'));
+app.configureStep('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''filtorder'',200,''plotfreqz'',0);', [], false);
+verifyEqual(tc, app.Plan.Slots(1).alternatives{1}.params.cutoff, {30, 40});         % only the step's values used
+app.configureStep('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''filtorder'',200,''plotfreqz'',0);', [], true);
+verifyEqual(tc, app.Plan.Slots(1).alternatives{1}.type, 'eeglab');                  % whole command kept
+verifyTrue(tc, contains(app.PlanTable.Data{1, 3}, 'filtorder = 200'));
 app.toggleSkip();
-verifyEqual(tc, numel(app.Plan.Slots(1).alternatives), 3);
-verifyTrue(tc, contains(app.PlanTable.Data{1, 4}, 'none (skip)'));
-verifyTrue(tc, contains(app.PlanTable.Data{1, 4}, 'EEGLAB pop_eegfiltnew: hicutoff = 30'));
+verifyEqual(tc, numel(app.Plan.Slots(1).alternatives), 2);
+verifyTrue(tc, contains(app.PlanTable.Data{1, 3}, 'none (skip)'));
 app.PlanTable.Selection = [2 1];
-app.mustBefore('lowpass_native');
-verifyEqual(tc, app.Plan.Precedence, {'highpass', 'lowpass_native'});
-verifyTrue(tc, contains(app.ConstraintLabel.Text, 'highpass before lowpass_native'));
+app.mustBefore('lowpass');
+verifyEqual(tc, app.Plan.Precedence, {'highpass', 'lowpass'});
+verifyTrue(tc, contains(app.ConstraintLabel.Text, 'highpass before lowpass'));
 verifyEqual(tc, neuroqc.run.Native.typeOfCommand(sprintf('EEG = pop_eegthresh(EEG,1,[1:32],-60,120,-0.2,0.996,0,0);\nEEG = pop_rejepoch(EEG, EEG.reject.rejthresh, 0);')), 'reject_threshold');
 app.clearOrderRules();
 verifyEmpty(tc, app.Plan.Precedence);
+% the values editor: numbers and channel lists, nothing evaluated as code
+app.PlanTable.Selection = [2 1];
+app.setValues('cutoff', {0.1, 0.5});
+verifyEqual(tc, app.Plan.Slots(2).alternatives{1}.params.cutoff, {0.1, 0.5});
+app.setValues('cutoff', {});
+verifyFalse(tc, isfield(app.Plan.Slots(2).alternatives{1}.params, 'cutoff'));       % back to the default search
 end
 
 function testDialogArgumentsAreSearchedOneByOne(tc)
-% Configure a step twice in its EEGLAB dialog: the arguments that differ
-% become searched lists (combined), the others stay as set in the dialog;
-% each argument appears in the per-parameter summary.
+% A step kept as its whole EEGLAB command: configuring it again in the
+% dialog turns the arguments that differ into searched lists (combined),
+% the others stay as set; each argument is in the per-parameter summary.
 nqc_setBase(nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0)));
 app = neuroqc.gui.Panel();
 app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
@@ -228,24 +240,24 @@ app.addComponent('P3', [0.3 0.5], {'Pz', 'P3', 'P4'}, 'mean', 'positive');
 app.TypeDrop.Value = 'lowpass'; app.addStep();
 app.TypeDrop.Value = 'epoch'; app.addStep(); app.TypeDrop.Value = 'baseline'; app.addStep();
 app.PlanTable.Selection = [1 1];
-app.captureStep('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',30,''plotfreqz'',1);');
-app.addCandidateConfig('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',40,''plotfreqz'',1);');
-app.addCandidateConfig('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.3,''hicutoff'',40,''plotfreqz'',1);');
+app.configureStep('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',30,''plotfreqz'',1);', [], true);   % a band-pass: keep it whole
+app.configureStep('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',40,''plotfreqz'',1);');
+app.configureStep('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.3,''hicutoff'',40,''plotfreqz'',1);');
 alt = app.Plan.Slots(1).alternatives;
 verifyEqual(tc, numel(alt), 1);                                    % one step, searched arguments
 A = alt{1}.params.args;
 verifyEqual(tc, A(strcmp({A.name}, 'hicutoff')).values, {30, 40});
 verifyEqual(tc, A(strcmp({A.name}, 'locutoff')).values, {0.1, 0.3});
-verifyTrue(tc, contains(app.PlanTable.Data{1, 4}, '[4 combinations]'));
-app.editParams('hicutoff', {30, 40, 45});                          % the editor's effect
+verifyTrue(tc, contains(app.PlanTable.Data{1, 3}, '[4 combinations]'));
+app.setValues('hicutoff', {30, 40, 45});                           % the values editor's effect
 app.run(false);
 r = app.Result;
 verifyEqual(tc, numel(r.leaves), 6);
 verifyTrue(tc, all(contains(r.labels, 'pop_eegfiltnew(locutoff=')));
 verifyTrue(tc, all(arrayfun(@(c) strcmp(c.signal.source, 'injection'), r.cands)));
 m = r.marginal;
-verifyEqual(tc, sort(unique(m.parameter))', {'lowpass_native.hicutoff', 'lowpass_native.locutoff'});
-verifyEqual(tc, sum(strcmp(m.parameter, 'lowpass_native.hicutoff')), 3);
+verifyEqual(tc, sort(unique(m.parameter))', {'lowpass.hicutoff', 'lowpass.locutoff'});
+verifyEqual(tc, sum(strcmp(m.parameter, 'lowpass.hicutoff')), 3);
 first = cellfun(@(c) c{1}, {r.cands.coms}, 'UniformOutput', false);
 verifyTrue(tc, all(contains(first, '''plotfreqz'',0')));           % no filter plot window during the search
 end
@@ -291,15 +303,15 @@ nqc_setBase(EEG);
 app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 app.TypeDrop.Value = 'lowpass'; app.addStep(); app.PlanTable.Selection = [1 1];
-app.valuesFromDialog('EEG = pop_eegfiltnew(EEG, ''hicutoff'',30,''plotfreqz'',1);', EEG);
+app.configureStep('EEG = pop_eegfiltnew(EEG, ''hicutoff'',30,''plotfreqz'',1);', EEG);
 verifyEqual(tc, app.Plan.Slots(1).alternatives{1}.params.cutoff, 30);
-app.valuesFromDialog('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''plotfreqz'',1);', EEG);
-app.valuesFromDialog('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''plotfreqz'',1);', EEG);   % already there
+app.configureStep('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''plotfreqz'',1);', EEG);
+app.configureStep('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''plotfreqz'',1);', EEG);   % already there
 verifyEqual(tc, app.Plan.Slots(1).alternatives{1}.params.cutoff, {30, 40});
 verifyEqual(tc, app.Plan.Slots(1).alternatives{1}.type, 'lowpass');   % still the catalog step
 app.TypeDrop.Value = 'reref'; app.addStep(); app.PlanTable.Selection = [2 1];
 [~, com] = pop_reref(EEG, {'P7', 'P8'});
-app.valuesFromDialog(com, EEG);
+app.configureStep(com, EEG);
 verifyEqual(tc, app.Plan.Slots(2).alternatives{1}.params.channels, {'P7', 'P8'});
 end
 
@@ -314,7 +326,7 @@ app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
 app.addComponent('P3', [0.3 0.5], {'Pz', 'P3', 'P4'}, 'mean', 'positive');
 verifyEqual(tc, app.ObjectiveField.Items, {'composite', 'P3.mean'});
 app.TypeDrop.Value = 'highpass'; app.addStep();
-app.planEdited(struct('Indices', [1 3], 'NewData', 'cutoff = {0.1, 0.3, 0.5}'));
+app.PlanTable.Selection = [1 1]; app.setValues('cutoff', {0.1, 0.3, 0.5});
 app.TypeDrop.Value = 'epoch'; app.addStep(); app.TypeDrop.Value = 'baseline'; app.addStep();
 % checkpoint + resume from the panel
 o = app.Options;
@@ -363,12 +375,11 @@ app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
 app.addComponent('P3', [0.3 0.5], {'Pz', 'P3', 'P4'}, 'mean', 'positive');
 app.TypeDrop.Value = 'highpass'; app.addStep();
 app.TypeDrop.Value = 'epoch'; app.addStep(); app.TypeDrop.Value = 'baseline'; app.addStep();
-verifyEqual(tc, app.PlanTable.Data{1, 3}, '');                                    % nothing typed
-verifyTrue(tc, contains(app.PlanTable.Data{1, 4}, 'cutoff = {0.1, 0.3, 0.5, 1} (default search)'));
-verifyTrue(tc, contains(app.PlanTable.Data{2, 4}, '[-0.2 1] s'));
-verifyTrue(tc, contains(app.PlanTable.Data{3, 4}, 'from the analysis contract'));
+verifyTrue(tc, contains(app.PlanTable.Data{1, 3}, 'cutoff = {0.1, 0.3, 0.5, 1} (default search)'));
+verifyTrue(tc, contains(app.PlanTable.Data{2, 3}, '[-0.2 1] s'));
+verifyTrue(tc, contains(app.PlanTable.Data{3, 3}, 'from the analysis contract'));
 app.PlanTable.Selection = [1 1]; app.showDetails('plan', app.PlanTable);
-verifyTrue(tc, any(contains(app.DetailArea.Value, 'Effective: cutoff = {0.1, 0.3, 0.5, 1} (default search)')));
+verifyTrue(tc, any(contains(app.DetailArea.Value, 'Values: cutoff = {0.1, 0.3, 0.5, 1} (default search)')));
 app.run(false);
 T = app.ResultTable.Data;
 verifyTrue(tc, all(endsWith(T(:, 7), '%')));                                       % retention as percent text
@@ -428,7 +439,7 @@ EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');
 verifyTrue(tc, startsWith(com, 'EEG = pop_eegfiltnew('));
 p = neuroqc.plan.Plan(); p = p.addNative(com);     % becomes a fixed step
-verifyEqual(tc, p.Slots(1).alternatives{1}.type, 'native');
+verifyEqual(tc, p.Slots(1).alternatives{1}.type, 'eeglab');   % one call: its arguments are step parameters
 end
 
 function testScoresIgnoreChannelOffsets(tc)
@@ -492,7 +503,7 @@ verifyEqual(tc, size(app.HistTable.Data, 1), 2);
 verifyEqual(tc, app.HistTable.Data{2, 3}, 'reref');
 % build a plan through the panel and run it
 app.TypeDrop.Value = 'highpass'; app.addStep();
-app.planEdited(struct('Indices', [1 3], 'NewData', 'cutoff = {0.1, 0.5}'));
+app.PlanTable.Selection = [1 1]; app.setValues('cutoff', {0.1, 0.5});
 app.TypeDrop.Value = 'epoch'; app.addStep();
 app.TypeDrop.Value = 'baseline'; app.addStep();
 app.CondField.Value = 'target: 11; standard: 31';

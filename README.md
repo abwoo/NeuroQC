@@ -56,13 +56,13 @@ dataset and never modifies it during a search. Each candidate runs on its own co
   epochs; the line-noise frequency (50/60 Hz) and the data unit (uV/V) are judged from the
   recording; resampling has no default rate. Constraint limits and the catalog's search lists are
   general starting values, shown in the panel and editable.
-- **Plan.** Add steps in the order they should run. The *effective* column shows every parameter as
-  it will run, including the defaults that will be searched. Values come from the step's EEGLAB
-  dialog: *Values from EEGLAB dialog…* adds each dialog's values to the step's search; *Fix via
-  EEGLAB dialog* keeps the dialog's whole command (also mark→reject and ICLabel→flag→remove
-  workflows); *Add config (EEGLAB)…* configures it again, and the arguments that differ are
-  searched one by one (*Parameters…* shows them). *Skipping allowed*, *Must come before…* and the
-  *pin* column control alternatives and order.
+- **Plan.** Add steps in the order they should run. The table shows every parameter as it will
+  run (one value = fixed, several = searched, defaults marked). *Configure in EEGLAB…* opens the
+  step's EEGLAB dialog: its values join the step, and a value that differs from those already there
+  becomes a searched candidate; settings the step cannot hold (e.g. asymmetric limits) are kept as
+  the whole EEGLAB command if you choose so. *Edit values…* lists the parameters (channel lists
+  picked in EEGLAB's channel list). *Skipping allowed*, *Must come before…* and the *pin* column
+  control alternatives and order.
 - **Apply now in EEGLAB.** Runs the step on the current dataset through EEGLAB's own menu code path
   (`EEG.history`, `ALLCOM`, new dataset), so the plan starts after it.
 - **Run search / Options… / Resume…** Every command and score is printed in the Command Window and
