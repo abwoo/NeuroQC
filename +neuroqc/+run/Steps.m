@@ -115,7 +115,7 @@ classdef Steps
                 case {'reject_threshold','reject_jointprob','reject_kurtosis'}
                     [EEG, coms, info] = neuroqc.run.Steps.rejectEpochs(EEG, inst.type, p);
                 case 'native'
-                    [EEG, coms] = neuroqc.run.Steps.native(EEG, p.command);
+                    [EEG, coms, info] = neuroqc.run.Steps.native(EEG, p.command);
                 otherwise
                     error('NeuroQC:UnknownStep', 'Unknown step %s', inst.type);
             end
@@ -146,7 +146,19 @@ classdef Steps
                     if ~isempty(info.comps), EEG = pop_subcomp(EEG, info.comps, 0); end
                 case {'reject_threshold','reject_jointprob','reject_kurtosis'}
                     if ~isempty(info.rejIdx), EEG = pop_rejepoch(EEG, info.rejIdx, 0); end
-                case {'asr','native'}
+                case 'native'
+                    if isfield(info, 'decisions') && ~isempty(info.decisions)
+                        % a workflow of marks and removals: the removals the
+                        % real data decided, applied to this copy
+                        for d = info.decisions
+                            if strcmp(d.kind, 'epochs') && ~isempty(d.idx), EEG = pop_rejepoch(EEG, d.idx, 0); end
+                            if strcmp(d.kind, 'comps') && ~isempty(d.idx), EEG = pop_subcomp(EEG, d.idx, 0); end
+                        end
+                    else
+                        matched = false;
+                        EEG = neuroqc.run.Steps.run(inst, EEG, ctx);
+                    end
+                case 'asr'
                     matched = false;
                     EEG = neuroqc.run.Steps.run(inst, EEG, ctx);
                 otherwise
@@ -277,17 +289,49 @@ classdef Steps
             info.rejected = numel(idx); info.rejIdx = idx;
         end
 
-        function [EEG, coms] = native(EEG, command)
-            % Replay a command captured from an EEGLAB dialog. It runs in an
-            % isolated workspace that only contains EEG.
-            cmd = strtrim(char(command));
-            assert(isempty(regexp(cmd, '\<(ALLEEG|CURRENTSET|STUDY|CURRENTSTUDY)\>', 'once')), ...
-                'NeuroQC:Native', 'The command refers to other datasets (ALLEEG/STUDY); it cannot be replayed on candidates.');
-            % Display-only options must not open windows during a search.
-            cmd = regexprep(cmd, '''plotfreqz''\s*,\s*1', '''plotfreqz'',0');
-            cmd = regexprep(cmd, '''interrupt''\s*,\s*''on''', '''interrupt'',''off''');
-            EEG = evalWithEEG(EEG, cmd);
-            coms = {cmd};
+        function [EEG, coms, info] = native(EEG, command)
+            % Replay a command captured from an EEGLAB dialog, statement by
+            % statement, in an isolated workspace that only contains EEG.
+            % When a native step only marks and removes (a captured
+            % workflow), the removals it took on these data are recorded
+            % (info.decisions) so the signal check can apply the same
+            % removals instead of re-deciding on its own copy.
+            st = neuroqc.run.Native.statements(command);
+            coms = cell(1, numel(st));
+            info = struct('decisions', struct('kind', {}, 'idx', {}), 'rejected', 0, 'icsRemoved', 0);
+            decided = true;
+            for k = 1:numel(st)
+                cmd = st{k};
+                assert(isempty(regexp(cmd, '\<(ALLEEG|CURRENTSET|STUDY|CURRENTSTUDY)\>', 'once')), ...
+                    'NeuroQC:Native', 'The command refers to other datasets (ALLEEG/STUDY); it cannot be replayed on candidates.');
+                % Display-only options must not open windows during a search.
+                cmd = regexprep(cmd, '''plotfreqz''\s*,\s*1', '''plotfreqz'',0');
+                cmd = regexprep(cmd, '''interrupt''\s*,\s*''on''', '''interrupt'',''off''');
+                e = neuroqc.live.History.classify(cmd);
+                if strcmp(e.step, 'reject_epochs') && EEG.trials > 1
+                    % tag epochs through their events to see which ones go
+                    n0 = EEG.trials;
+                    for q = 1:numel(EEG.event), EEG.event(q).nqc_epoch = EEG.event(q).epoch; end
+                    EEG = evalWithEEG(EEG, cmd);
+                    kept = unique(arrayfun(@(x) double(x.nqc_epoch), EEG.event));
+                    EEG.event = rmfield(EEG.event, 'nqc_epoch');
+                    gone = setdiff(1:n0, kept);
+                    assert(numel(gone) < n0, 'NeuroQC:AllRejected', 'every epoch would be rejected');
+                    info.decisions(end+1) = struct('kind', 'epochs', 'idx', gone);
+                    info.rejected = info.rejected + numel(gone);
+                elseif strcmp(e.fn, 'pop_subcomp') && ~isempty(EEG.icaweights)
+                    W0 = EEG.icaweights;
+                    EEG = evalWithEEG(EEG, cmd);
+                    gone = find(~ismember(W0, EEG.icaweights, 'rows'))';
+                    info.decisions(end+1) = struct('kind', 'comps', 'idx', gone);
+                    info.icsRemoved = info.icsRemoved + numel(gone);
+                else
+                    if ~strcmp(e.kind, 'mark'), decided = false; end
+                    EEG = evalWithEEG(EEG, cmd);
+                end
+                coms{k} = cmd;
+            end
+            if ~decided, info.decisions = info.decisions([]); end   % not only marks and removals: re-run instead
         end
     end
 end

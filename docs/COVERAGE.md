@@ -34,7 +34,7 @@ Each item has four status columns:
 | `reject_threshold` | `pop_eegthresh` + `pop_rejepoch` | ✓ | ✓ | ✓ real data | injection, matched | rejecting every epoch = retention 0 |
 | `reject_jointprob` | `pop_jointprob` + `pop_rejepoch` | ✓ | ✓ | ✓ | injection, matched | |
 | `reject_kurtosis` | `pop_rejkurt` + `pop_rejepoch` | ✓ | ✓ | ✓ | injection, matched | |
-| `native` | any `pop_*` command | ✓ | ✓ | ✓ | probe for `pop_eegfiltnew`/`pop_resample`; otherwise injection, re-run (flagged) | fixed, never searched |
+| `native` | any `pop_*` command, or a captured EEGLAB workflow (one statement per line) | ✓ | ✓ | ✓ | probe for `pop_eegfiltnew`/`pop_resample`; workflows of marks + removals (`pop_eegthresh`/`pop_jointprob`/`pop_rejkurt` → `pop_rejepoch`, `pop_iclabel` → `pop_icflag` → `pop_subcomp`): injection, decision-matched (the removed epochs/components are replayed); otherwise injection, re-run (flagged) | each configuration is fixed; several configurations of one step (and skipping it) can be searched as alternatives |
 
 ## History parsing (`neuroqc.live.History`)
 

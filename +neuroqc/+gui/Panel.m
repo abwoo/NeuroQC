@@ -17,7 +17,7 @@ classdef Panel < handle
         LastFingerprint = ''
         % widgets
         DatasetLabel; WarnArea; HistTable
-        PlanTable; TypeDrop; OrderDrop
+        PlanTable; TypeDrop; OrderDrop; ConstraintLabel
         CondField; EpochField; BaseField; CompField; EventsLabel
         TrialRule = struct('mode', 'all')
         TrialLabel; SummaryLabel
@@ -47,7 +47,7 @@ classdef Panel < handle
             obj.Fig = uifigure('Name', sprintf('NeuroQC %s', neuroqc.NeuroQC.version()), ...
                 'Position', [60 60 1380 860], 'CloseRequestFcn', @(~, ~) obj.delete());
             g = uigridlayout(obj.Fig, [3 2]);
-            g.RowHeight = {80, 250, '1x'}; g.ColumnWidth = {'1x', '1.25x'};   % contract and results get the remaining height
+            g.RowHeight = {80, 300, '1x'}; g.ColumnWidth = {'1x', '1.25x'};   % contract and results get the remaining height
 
             top = uigridlayout(g, [1 2]); top.Layout.Column = [1 2]; top.ColumnWidth = {'1x', '1x'}; top.Padding = [0 0 0 0];
             obj.DatasetLabel = uilabel(top, 'Text', 'No dataset', 'FontName', 'Courier', 'VerticalAlignment', 'top', 'WordWrap', 'on');
@@ -62,7 +62,7 @@ classdef Panel < handle
             % plan (right, row 2)
             pp = uipanel(g, 'Title', 'Plan: steps after the current dataset (fixed = one value, search = {list})');
             pp.Layout.Row = 2; pp.Layout.Column = 2;
-            pg = uigridlayout(pp, [3 1]); pg.RowHeight = {'1x', 28, 28};
+            pg = uigridlayout(pp, [5 1]); pg.RowHeight = {'1x', 28, 28, 28, 20};
             obj.PlanTable = uitable(pg, 'ColumnName', {'#','step','settings (editable)','pinned'}, ...
                 'ColumnEditable', [false false true true], 'ColumnWidth', {30, 110, 'auto', 55}, 'RowName', {}, ...
                 'CellEditCallback', @(~, e) obj.planEdited(e));
@@ -82,6 +82,18 @@ classdef Panel < handle
                 'Run the selected step on the current dataset through the EEGLAB dialog (recorded in EEG.history); the plan then starts after it', ...
                 'ButtonPushedFcn', @(~, ~) obj.applyNow());
             uibutton(b2, 'Text', 'Catalog help', 'ButtonPushedFcn', @(~, ~) obj.catalogHelp());
+            b3 = uigridlayout(pg, [1 4]); b3.Padding = [0 0 0 0];
+            uibutton(b3, 'Text', 'Add EEGLAB config as candidate', 'Tooltip', ...
+                'Configure the selected step once more in its EEGLAB dialog; the search tries every configuration of the step', ...
+                'ButtonPushedFcn', @(~, ~) obj.addCandidateConfig());
+            uibutton(b3, 'Text', 'Skipping allowed on/off', 'Tooltip', ...
+                'Whether leaving the selected step out is one of the searched options', ...
+                'ButtonPushedFcn', @(~, ~) obj.toggleSkip());
+            uibutton(b3, 'Text', 'Must come before...', 'Tooltip', ...
+                'With order = search: the selected step must run before the step you choose', ...
+                'ButtonPushedFcn', @(~, ~) obj.mustBefore());
+            uibutton(b3, 'Text', 'Clear order rules', 'ButtonPushedFcn', @(~, ~) obj.clearOrderRules());
+            obj.ConstraintLabel = uilabel(pg, 'Text', 'Order rules: none', 'FontColor', [0.3 0.3 0.3]);
 
             % contract + run + results (right, row 3)
             rp = uipanel(g, 'Title', 'Analysis contract, constraints, results'); rp.Layout.Row = 3; rp.Layout.Column = 2;
@@ -203,6 +215,11 @@ classdef Panel < handle
             end
             obj.PlanTable.Data = data;
             obj.OrderDrop.Value = obj.Plan.OrderMode;
+            P = obj.Plan.Precedence;
+            if isempty(P), t = 'Order rules: none';
+            else, t = ['Order rules: ' strjoin(arrayfun(@(r) sprintf('%s before %s', P{r, 1}, P{r, 2}), 1:size(P, 1), 'UniformOutput', false), '; ')]; end
+            if strcmp(obj.Plan.OrderMode, 'fixed') && ~isempty(P), t = [t '  (used when order = search)']; end
+            obj.ConstraintLabel.Text = t;
         end
 
         function invalidate(obj, why)
@@ -253,7 +270,10 @@ classdef Panel < handle
                     obj.Plan.Slots(k).pinned = logical(e.NewData);
                 else
                     slot = obj.Plan.Slots(k);
-                    assert(numel(slot.alternatives) == 1, 'NeuroQC:Plan', 'Edit choice steps from the command line (Plan.addChoice).');
+                    assert(numel(slot.alternatives) == 1, 'NeuroQC:Plan', ['A step with several candidate configurations ', ...
+                        'is edited through its EEGLAB dialog (Add EEGLAB config as candidate) or from the command line.']);
+                    assert(~strcmp(slot.alternatives{1}.type, 'native'), 'NeuroQC:Plan', ...
+                        'An EEGLAB-configured step is edited in its dialog: select it and use Fix via EEGLAB dialog.');
                     p = parseSettings(e.NewData);
                     obj.Plan.Slots(k).alternatives{1}.params = p;
                 end
@@ -264,37 +284,123 @@ classdef Panel < handle
             end
         end
 
-        function captureStep(obj)
+        function captureStep(obj, com)
+            % Replace the selected step by its configuration in EEGLAB's
+            % own dialog(s) (a fixed native step; re-editable).
             k = obj.selected(); if isempty(k), return; end
             slot = obj.Plan.Slots(k);
-            type = slot.alternatives{1}.type;
-            id = [slot.id '_native'];
-            if strcmp(type, 'native')
-                % re-edit: open the dialog that produced the command again
-                type = neuroqc.run.Native.typeOfCommand(slot.alternatives{1}.params.command);
-                id = slot.id;
-                if isempty(type)
-                    uialert(obj.Fig, 'No EEGLAB dialog is known for this command; remove the step and add it again.', 'NeuroQC');
-                    return;
-                end
-            end
-            ok = {'resample','highpass','lowpass','linenoise','filter','asr','badchannels','restore','reref','ica'};
-            if ~any(strcmp(type, ok))
-                uialert(obj.Fig, sprintf(['%s cannot be reproduced by one dialog command (EEGLAB records ', ...
-                    'marking and removal separately, or the step comes from the contract). Set its value in ', ...
-                    'the settings column instead.'], type), 'NeuroQC');
-                return;
-            end
+            id = slot.id; if ~endsWith(id, '_native'), id = [id '_native']; end
             try
-                com = neuroqc.run.Native.capture(type);
-                if isempty(com), return; end
-                obj.Plan.Slots(k).alternatives = {struct('type', 'native', 'params', struct('command', com))};
+                if nargin < 2
+                    com = obj.captureFor(obj.dialogType(slot));
+                    if isempty(com), return; end
+                end
+                obj.Plan.Slots(k).alternatives = {neuroqc.plan.Plan.nativeAlt(com)};
                 obj.Plan.Slots(k).id = id;
                 obj.invalidate('Plan changed');
                 obj.showPlan();
             catch ME
                 uialert(obj.Fig, ME.message, 'NeuroQC');
             end
+        end
+
+        function addCandidateConfig(obj, com)
+            % One more configuration of the selected step, from its EEGLAB
+            % dialog; the search tries each configuration of the slot.
+            k = obj.selected(); if isempty(k), return; end
+            slot = obj.Plan.Slots(k);
+            try
+                if nargin < 2
+                    com = obj.captureFor(obj.dialogType(slot));
+                    if isempty(com), return; end
+                end
+                alt = neuroqc.plan.Plan.nativeAlt(com);
+                same = cellfun(@(a) strcmp(a.type, 'native') && strcmp(a.params.command, alt.params.command), slot.alternatives);
+                if any(same), neuroqc.utils.log('This configuration is already a candidate of %s.', slot.id); return; end
+                obj.Plan = obj.Plan.addAlternative(slot.id, alt);
+                neuroqc.utils.log('%s now has %d candidate configuration(s).', slot.id, numel(obj.Plan.Slots(k).alternatives));
+                obj.invalidate('Plan changed');
+                obj.showPlan();
+            catch ME
+                uialert(obj.Fig, ME.message, 'NeuroQC');
+            end
+        end
+
+        function toggleSkip(obj)
+            k = obj.selected(); if isempty(k), return; end
+            slot = obj.Plan.Slots(k);
+            has = any(cellfun(@(a) strcmp(a.type, 'none'), slot.alternatives));
+            try
+                obj.Plan = obj.Plan.setSkippable(slot.id, ~has);
+                neuroqc.utils.log('%s: skipping %s.', slot.id, ternary(~has, 'is now searched as an option', 'is no longer an option'));
+                obj.invalidate('Plan changed'); obj.showPlan();
+            catch ME
+                uialert(obj.Fig, ME.message, 'NeuroQC');
+            end
+        end
+
+        function mustBefore(obj, other)
+            k = obj.selected(); if isempty(k), return; end
+            ids = {obj.Plan.Slots.id}; me = ids{k};
+            if nargin < 2
+                rest = ids(~strcmp(ids, me));
+                if isempty(rest), return; end
+                [j, ok] = listdlg('ListString', rest, 'SelectionMode', 'single', 'Name', sprintf('%s must come before', me));
+                if ~ok, return; end
+                other = rest{j};
+            end
+            obj.Plan = obj.Plan.before(me, other);
+            if strcmp(obj.Plan.OrderMode, 'fixed')
+                neuroqc.utils.log('Order rule %s before %s is used when Order = search.', me, other);
+            end
+            obj.invalidate('Plan changed'); obj.showPlan();
+        end
+
+        function clearOrderRules(obj)
+            obj.Plan.Precedence = cell(0, 2);
+            obj.invalidate('Plan changed'); obj.showPlan();
+        end
+
+        function type = dialogType(~, slot)
+            % Which EEGLAB dialog(s) configure this slot.
+            alts = slot.alternatives(~cellfun(@(a) strcmp(a.type, 'none'), slot.alternatives));
+            assert(~isempty(alts), 'NeuroQC:Plan', 'The step has no configuration to edit.');
+            type = alts{1}.type;
+            if strcmp(type, 'native')
+                type = neuroqc.run.Native.typeOfCommand(alts{1}.params.command);
+                assert(~isempty(type), 'NeuroQC:Native', 'No EEGLAB dialog is known for this command; remove the step and add it again.');
+            end
+            ok = {'resample','highpass','lowpass','linenoise','filter','asr','badchannels','restore','reref','ica', ...
+                'icremove','reject_threshold','reject_jointprob','reject_kurtosis'};
+            assert(any(strcmp(type, ok)), 'NeuroQC:Native', ['%s has no EEGLAB dialog here (epoch and baseline come ', ...
+                'from the analysis contract above; named channels from the settings column).'], type);
+        end
+
+        function com = captureFor(obj, type)
+            switch type
+                case {'reject_threshold','reject_jointprob','reject_kurtosis'}
+                    com = neuroqc.run.Native.captureWorkflow(type, obj.previewEpoched());
+                case 'icremove'
+                    com = neuroqc.run.Native.captureWorkflow(type);
+                otherwise
+                    com = neuroqc.run.Native.capture(type);
+            end
+        end
+
+        function EEG = previewEpoched(obj)
+            % The current dataset, epoched on a copy with the contract
+            % window when it is still continuous (for epoch-level dialogs).
+            EEG = neuroqc.live.Session.current();
+            assert(~isempty(EEG), 'NeuroQC:NoDataset', 'No dataset in EEGLAB.');
+            if EEG.trials > 1, return; end
+            c = obj.contract();
+            codes = c.allEvents();
+            assert(~isempty(codes), 'NeuroQC:Contract', 'Define the conditions first (the preview is epoched on their events).');
+            [~, EEG] = evalc('pop_epoch(EEG, codes, c.effectiveEpoch(), ''epochinfo'', ''yes'')');
+            if ~isempty(c.effectiveBaseline())
+                [~, EEG] = evalc('pop_rmbase(EEG, 1000 * c.effectiveBaseline(), [])');
+            end
+            neuroqc.utils.log('Dialog on a preview copy epoched [%g %g] s on %s.', c.effectiveEpoch(), strjoin(codes, ', '));
         end
 
         function applyNow(obj)
@@ -423,7 +529,7 @@ classdef Panel < handle
                     c = obj.contract();
                     codes = c.allEvents();
                     assert(~isempty(codes), 'NeuroQC:Contract', 'Define the conditions first (the preview is epoched on their events).');
-                    [~, EEG] = evalc('pop_epoch(EEG, codes, c.effectiveEpoch(), ''epochinfo'', ''yes'')');
+                    [~, EEG] = evalc('pop_epoch(EEG, codes, c.effectiveEpoch(), ''epochinfo'', ''yes'')');   % no baseline removed yet
                     neuroqc.utils.log('Baseline dialog on a preview copy epoched [%g %g] s on %s.', c.effectiveEpoch(), strjoin(codes, ', '));
                 end
                 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_rmbase(EEG);');
@@ -737,7 +843,11 @@ function t = settingsText(slot)
 parts = {};
 for a = 1:numel(slot.alternatives)
     alt = slot.alternatives{a};
-    if strcmp(alt.type, 'none'), parts{end+1} = 'none'; continue; end %#ok<AGROW>
+    if strcmp(alt.type, 'none'), parts{end+1} = 'none (skip)'; continue; end %#ok<AGROW>
+    if strcmp(alt.type, 'native')
+        parts{end+1} = ['EEGLAB: ' strjoin(neuroqc.run.Native.statements(alt.params.command), ' / ')]; %#ok<AGROW>
+        continue;
+    end
     f = fieldnames(alt.params);
     kv = cellfun(@(n) sprintf('%s = %s', n, valText(alt.params.(n))), f, 'UniformOutput', false);
     if numel(slot.alternatives) > 1, parts{end+1} = sprintf('%s(%s)', alt.type, strjoin(kv, '; ')); %#ok<AGROW>
@@ -774,4 +884,8 @@ for p = d.params
     if ~isempty(p.suggest), parts{end+1} = sprintf('%s %s', p.name, valText(p.suggest)); end %#ok<AGROW>
 end
 if isempty(parts), t = 'none (all parameters fixed by default)'; else, t = strjoin(parts, ', '); end
+end
+
+function s = ternary(c, a, b)
+if c, s = a; else, s = b; end
 end

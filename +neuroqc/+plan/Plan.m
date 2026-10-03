@@ -44,11 +44,24 @@ classdef Plan
 
         function obj = addNative(obj, command, id)
             if nargin < 3, id = 'native'; end
-            command = char(command);
-            e = neuroqc.live.History.classify(command);
-            assert(~isempty(e.fn) && startsWith(e.fn, 'pop_'), 'NeuroQC:Native', ...
-                'A native step must be one EEGLAB pop_* command, e.g. EEG = pop_reref(EEG, []);');
-            obj = obj.addSlot(id, {struct('type', 'native', 'params', struct('command', command))});
+            obj = obj.addSlot(id, {neuroqc.plan.Plan.nativeAlt(command)});
+        end
+
+        function obj = addAlternative(obj, id, alt)
+            % One more alternative for a slot (e.g. another configuration
+            % captured from an EEGLAB dialog); the search tries each.
+            k = obj.slotIndex(id);
+            if ischar(alt) && strcmp(alt, 'none'), alt = struct('type', 'none', 'params', struct()); end
+            obj.Slots(k).alternatives{end+1} = alt;
+        end
+
+        function obj = setSkippable(obj, id, tf)
+            % Whether skipping the step is one of the searched options.
+            k = obj.slotIndex(id);
+            isNone = cellfun(@(a) strcmp(a.type, 'none'), obj.Slots(k).alternatives);
+            if tf && ~any(isNone), obj.Slots(k).alternatives{end+1} = struct('type', 'none', 'params', struct()); end
+            if ~tf, obj.Slots(k).alternatives(isNone) = []; end
+            assert(~isempty(obj.Slots(k).alternatives), 'NeuroQC:Plan', 'A step needs at least one alternative.');
         end
 
         function obj = addChoice(obj, id, varargin)
@@ -373,6 +386,22 @@ classdef Plan
         end
     end
 
+    methods (Static)
+        function alt = nativeAlt(command)
+            % A native alternative: one or more EEGLAB pop_* statements
+            % (one per line), as returned by an EEGLAB dialog or workflow.
+            command = char(command);
+            st = neuroqc.run.Native.statements(command);
+            assert(~isempty(st), 'NeuroQC:Native', 'Empty native command.');
+            for k = 1:numel(st)
+                e = neuroqc.live.History.classify(st{k});
+                assert(~isempty(e.fn) && startsWith(e.fn, 'pop_'), 'NeuroQC:Native', ...
+                    'Each line of a native step must be one EEGLAB pop_* command, e.g. EEG = pop_reref(EEG, []); (got: %s)', st{k});
+            end
+            alt = struct('type', 'native', 'params', struct('command', command));
+        end
+    end
+
     methods (Access = private)
         function obj = addSlot(obj, id, alternatives)
             base = id; k = 1;
@@ -469,7 +498,7 @@ end
 
 function t = instLabel(type, p)
 if strcmp(type, 'native')
-    t = ['native: ' strtrim(p.command)];
+    t = ['native: ' strjoin(neuroqc.run.Native.statements(p.command), ' / ')];
     if numel(t) > 70, t = [t(1:67) '...']; end
     return;
 end

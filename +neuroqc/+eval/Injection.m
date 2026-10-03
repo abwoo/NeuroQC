@@ -99,8 +99,10 @@ classdef Injection
                 mode = inst.params.mode; chans = cellstr(inst.params.channels);
                 if isfield(inst.params, 'exclude'), ex = cellstr(inst.params.exclude); end
             elseif strcmp(inst.type, 'native')
-                e = neuroqc.live.History.classify(inst.params.command);
-                if strcmp(e.step, 'reref') && isfield(e.params, 'mode'), mode = e.params.mode; end
+                for stmt = neuroqc.run.Native.statements(inst.params.command)
+                    e = neuroqc.live.History.classify(stmt{1});
+                    if strcmp(e.step, 'reref') && isfield(e.params, 'mode'), mode = e.params.mode; end
+                end
             end
             if isempty(mode), return; end
             rec = struct('mode', mode, 'channels', {chans}, 'exclude', {ex}, 'labels', {{S.chanlocs.labels}});

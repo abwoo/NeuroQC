@@ -48,17 +48,72 @@ classdef Native
             % Run a captured command (a fixed 'native' plan step) on the
             % current dataset, wrapped like an EEGLAB menu callback, so the
             % operation is stored and recorded in EEG.history.
-            cmd = strtrim(char(command));
-            assert(~isempty(regexp(cmd, '^\s*\[?\s*EEG\>', 'once')), 'NeuroQC:Native', ...
-                'Only a command that returns EEG can be applied: %s', cmd);
-            if ~endsWith(cmd, ';'), cmd = [cmd ';']; end
+            st = neuroqc.run.Native.statements(command);
+            for k = 1:numel(st)
+                assert(~isempty(regexp(st{k}, '^\s*\[?\s*EEG\>', 'once')), 'NeuroQC:Native', ...
+                    'Only commands that return EEG can be applied: %s', st{k});
+                if ~endsWith(st{k}, ';'), st{k} = [st{k} ';']; end
+            end
+            cmd = strjoin(st, ' ');   % a workflow is one EEGLAB operation (one new dataset)
             call = sprintf('%s LASTCOM = ''%s'';', cmd, strrep(cmd, '''', ''''''));
             neuroqc.run.Native.applyCall(call, 'native');
         end
 
+        function s = statements(command)
+            % The EEGLAB statements of a native step, one per line (a
+            % captured workflow such as mark -> reject has several).
+            s = strtrim(splitlines(char(command)))';
+            s = s(~cellfun(@isempty, s));
+        end
+
+        function com = captureWorkflow(type, EEG)
+            % A multi-step EEGLAB operation configured in its own dialogs
+            % on a copy, returned as one native step (one statement per
+            % line, each recorded in EEG.history when it runs):
+            %   reject_threshold / reject_jointprob / reject_kurtosis
+            %       the marking dialog, then pop_rejepoch of the marked
+            %       epochs (every setting of the dialog is kept, e.g.
+            %       asymmetric limits, channels, time range)
+            %   icremove
+            %       pop_iclabel, pop_icflag (classes and thresholds), then
+            %       pop_subcomp of the flagged components
+            if nargin < 2, EEG = neuroqc.live.Session.current(); end
+            assert(~isempty(EEG), 'NeuroQC:NoDataset', 'No dataset is loaded in EEGLAB.');
+            com = '';
+            switch type
+                case {'reject_threshold','reject_jointprob','reject_kurtosis'}
+                    assert(EEG.trials > 1, 'NeuroQC:Native', 'Epoch rejection needs epoched (preview) data.');
+                    field = struct('reject_threshold', 'rejthresh', 'reject_jointprob', 'rejjp', 'reject_kurtosis', 'rejkurt');
+                    c1 = neuroqc.run.Native.captureCall(EEG, neuroqc.run.Native.menuCall(type));
+                    if isempty(c1), return; end
+                    c1 = strtrim(regexprep(c1, '^\s*\w+\s*=\s*pop_eegthresh\([^;]*\);\s*(?=EEG\s*=)', ''));  % 'Indexes = ...' prefix, if any
+                    e = neuroqc.live.History.classify(c1);
+                    com = c1;
+                    if ~strcmp(e.step, 'reject_epochs')            % marked only: remove the marked epochs
+                        com = sprintf('%s\nEEG = pop_rejepoch(EEG, EEG.reject.%s, 0);', c1, field.(type));
+                    end
+                case 'icremove'
+                    assert(~isempty(EEG.icaweights), 'NeuroQC:Native', ['The dataset has no ICA decomposition, so the ', ...
+                        'ICLabel dialogs cannot run. For ICA inside the plan use the icremove step and its settings.']);
+                    [c1, E1] = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_iclabel(EEG);');
+                    if isempty(c1), return; end
+                    c2 = neuroqc.run.Native.captureCall(E1, '[EEG, LASTCOM] = pop_icflag(EEG);');
+                    if isempty(c2), return; end
+                    com = sprintf('%s\n%s\nEEG = pop_subcomp(EEG, [], 0);', c1, c2);
+                otherwise
+                    error('NeuroQC:Native', 'No EEGLAB workflow for %s', type);
+            end
+            neuroqc.utils.log('Captured workflow:\n%s', com);
+        end
+
         function type = typeOfCommand(command)
-            % The dialog that produces a captured command ('' if none).
-            e = neuroqc.live.History.classify(command);
+            % The dialog(s) that produce a captured command ('' if none).
+            st = neuroqc.run.Native.statements(command);
+            e = neuroqc.live.History.classify(st{1});
+            wf = {'pop_eegthresh','reject_threshold'; 'pop_jointprob','reject_jointprob'; ...
+                'pop_rejkurt','reject_kurtosis'; 'pop_iclabel','icremove'};
+            k = find(strcmp(wf(:, 1), e.fn), 1);
+            if ~isempty(k), type = wf{k, 2}; return; end
             map = {'pop_resample','resample'; 'pop_eegfiltnew','filter'; 'pop_clean_rawdata','asr'; ...
                 'pop_rejchan','badchannels'; 'pop_interp','restore'; 'pop_reref','reref'; 'pop_runica','ica'};
             k = find(strcmp(map(:, 1), e.fn), 1);

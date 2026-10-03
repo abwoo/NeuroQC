@@ -522,7 +522,8 @@ function tf = isDataDriven(in)
 dataDriven = {'badchannels','channels','restore','ica','icremove','asr', ...
     'reject_threshold','reject_jointprob','reject_kurtosis'};
 if strcmp(in.type, 'native')
-    tf = isempty(regexp(in.params.command, '^\s*\[?\s*EEG[^=]*=\s*pop_(eegfiltnew|resample)\s*\(', 'once'));
+    st = neuroqc.run.Native.statements(in.params.command);
+    tf = any(cellfun(@isempty, regexp(st, '^\s*\[?\s*EEG[^=]*=\s*pop_(eegfiltnew|resample)\s*\(', 'once')));
 else
     tf = any(strcmp(in.type, dataDriven));
 end
@@ -533,9 +534,11 @@ function [ctx, acc] = advance(in, ctx, acc, info, coms, unmatched, secs)
 % the parallel trunk and replay, so all three run identical steps.
 if strcmp(in.type, 'highpass'), ctx.highpass = max(ctx.highpass, in.params.cutoff); end
 if strcmp(in.type, 'native')
-    e = neuroqc.live.History.classify(in.params.command);
-    if isfield(e.params, 'locutoff') && isfinite(e.params.locutoff) && ~(isfield(e.params, 'revfilt') && e.params.revfilt)
-        ctx.highpass = max(ctx.highpass, e.params.locutoff);
+    for stmt = neuroqc.run.Native.statements(in.params.command)
+        e = neuroqc.live.History.classify(stmt{1});
+        if isfield(e.params, 'locutoff') && isfinite(e.params.locutoff) && ~(isfield(e.params, 'revfilt') && e.params.revfilt)
+            ctx.highpass = max(ctx.highpass, e.params.locutoff);
+        end
     end
 end
 if isempty(acc), return; end

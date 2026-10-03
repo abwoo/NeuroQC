@@ -434,6 +434,72 @@ verifyEqual(tc, ad.nbchan, n);
 verifyTrue(tc, all(ismember({'O1', 'O2'}, {ad.chanlocs.labels})));
 end
 
+function testNativeRejectionWorkflowKeepsDialogSettingsAndDecisions(tc)
+% Mark -> reject captured from EEGLAB's dialogs is one step: every dialog
+% setting is kept (asymmetric limits here), both commands are in the
+% history, and the signal check applies the epochs the real data rejected
+% (decision-matched) instead of re-deciding on the injected copy.
+EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30));
+nqc_setBase(EEG);
+wf = sprintf(['EEG = pop_eegthresh(EEG,1,[1:32],-60,120,-0.2,0.996,0,0);\n', ...
+    'EEG = pop_rejepoch(EEG, EEG.reject.rejthresh, 0);']);
+p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('epoch'); p = p.add('baseline');
+p = p.addNative(wf, 'reject');
+r = neuroqc.NeuroQC.optimize(p, nqc_c());
+c = r.cands(1);
+verifyEqual(tc, c.status, 'ok');
+verifyGreaterThan(tc, c.rejectedEpochs, 0);
+verifyEmpty(tc, c.unmatched);                                   % decision-matched
+verifyEqual(tc, r.signalCheck, 'injection');
+verifyLessThan(tc, c.signal.amplitudeError, 0.05);
+verifyTrue(tc, any(contains(c.coms, '-60,120')) && any(contains(c.coms, 'pop_rejepoch')));
+% the decision equals what the asymmetric limits mark on the processed data
+E = neuroqc.run.Executor.replay(r, 1);
+verifyEqual(tc, E.trials, 60 - c.rejectedEpochs);
+% legality: a rejection workflow on continuous data is refused with a reason
+q = neuroqc.plan.Plan(); q = q.addNative(wf, 'reject'); q = q.add('epoch');
+verifyError(tc, @() q.enumerate(neuroqc.live.DataState.fromEEG(EEG), nqc_c()), 'NeuroQC:NoLegalPipeline');
+end
+
+function testNativeIcaWorkflowRemovesTheFlaggedComponents(tc)
+assumeTrue(tc, exist('pop_iclabel', 'file') == 2, 'ICLabel not installed');
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30));
+nqc_setBase(EEG);
+wf = sprintf(['EEG = pop_iclabel(EEG, ''default'');\n', ...
+    'EEG = pop_icflag(EEG, [NaN NaN;0.5 1;0.5 1;NaN NaN;NaN NaN;NaN NaN;NaN NaN]);\n', ...
+    'EEG = pop_subcomp(EEG, [], 0);']);
+p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('ica', 'fitHighpass', 1);
+p = p.addNative(wf, 'icclean'); p = p.add('epoch'); p = p.add('baseline');
+r = neuroqc.NeuroQC.optimize(p, nqc_c());
+c = r.cands(1);
+verifyEqual(tc, c.status, 'ok');
+verifyGreaterThan(tc, c.icsRemoved, 0);                        % blinks are flagged as Eye
+verifyEmpty(tc, c.unmatched);
+verifyEqual(tc, sum(contains(c.coms, {'pop_iclabel', 'pop_icflag', 'pop_subcomp'})), 3);
+% without any ICA before it, the workflow is not a legal step
+q = neuroqc.plan.Plan(); q = q.addNative(wf, 'icclean');
+verifyError(tc, @() q.enumerate(neuroqc.live.DataState.fromEEG(EEG), nqc_c()), 'NeuroQC:NoLegalPipeline');
+end
+
+function testEeglabConfigurationsAreSearchedAsCandidates(tc)
+% Several configurations of one step from EEGLAB dialogs, plus "skip",
+% are the searched alternatives of that step; each stays intact.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+nqc_setBase(EEG);
+p = neuroqc.plan.Plan();
+p = p.addNative('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',30,''filtorder'',3300,''plotfreqz'',0);', 'filter');
+p = p.addAlternative('filter', neuroqc.plan.Plan.nativeAlt('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',20,''plotfreqz'',0);'));
+p = p.setSkippable('filter', true);
+p = p.add('epoch'); p = p.add('baseline');
+r = neuroqc.NeuroQC.optimize(p, nqc_c());
+verifyEqual(tc, numel(r.leaves), 3);
+verifyEqual(tc, sum(contains(r.labels, 'filtorder'',3300')), 1);   % the full dialog setting is kept
+verifyEqual(tc, sum(startsWith(r.labels, 'epoch')), 1);            % the skipped variant
+verifyTrue(tc, any(strcmp(r.marginal.parameter, 'filter.(alternative)')));
+p = p.setSkippable('filter', false);
+verifyEqual(tc, numel(p.Slots(1).alternatives), 2);
+end
+
 % ---------------------------------------------------------------- helpers
 function c = nqc_c()
 c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...

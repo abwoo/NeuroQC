@@ -185,6 +185,33 @@ verifyEqual(tc, app.CondField.Value, 's1: "S  1"');
 c = app.contract(); verifyEqual(tc, c.conditions(1).events, {'S  1'});
 end
 
+function testPanelCandidateConfigsSkipAndOrderRules(tc)
+% Plan editing that used to need the command line: candidate
+% configurations from EEGLAB dialogs, "skip" as an option, order rules.
+nqc_setBase(nqc_synth(struct('seconds', 60, 'nPerCond', 10)));
+app = neuroqc.gui.Panel();
+cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.TypeDrop.Value = 'lowpass'; app.addStep();
+app.TypeDrop.Value = 'highpass'; app.addStep();
+app.PlanTable.Selection = [1 1];
+app.captureStep('EEG = pop_eegfiltnew(EEG, ''hicutoff'',30,''plotfreqz'',0);');   % what the dialog returns
+verifyEqual(tc, app.Plan.Slots(1).alternatives{1}.type, 'native');
+app.addCandidateConfig('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''filtorder'',200,''plotfreqz'',0);');
+app.addCandidateConfig('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''filtorder'',200,''plotfreqz'',0);');   % duplicate ignored
+verifyEqual(tc, numel(app.Plan.Slots(1).alternatives), 2);
+app.toggleSkip();
+verifyEqual(tc, numel(app.Plan.Slots(1).alternatives), 3);
+verifyTrue(tc, contains(app.PlanTable.Data{1, 3}, 'none (skip)'));
+verifyTrue(tc, contains(app.PlanTable.Data{1, 3}, 'EEGLAB: EEG = pop_eegfiltnew'));
+app.PlanTable.Selection = [2 1];
+app.mustBefore('lowpass_native');
+verifyEqual(tc, app.Plan.Precedence, {'highpass', 'lowpass_native'});
+verifyTrue(tc, contains(app.ConstraintLabel.Text, 'highpass before lowpass_native'));
+verifyEqual(tc, neuroqc.run.Native.typeOfCommand(sprintf('EEG = pop_eegthresh(EEG,1,[1:32],-60,120,-0.2,0.996,0,0);\nEEG = pop_rejepoch(EEG, EEG.reject.rejthresh, 0);')), 'reject_threshold');
+app.clearOrderRules();
+verifyEmpty(tc, app.Plan.Precedence);
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');

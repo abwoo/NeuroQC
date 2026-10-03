@@ -151,23 +151,28 @@ classdef Catalog
                 case {'baseline','reject_threshold','reject_jointprob','reject_kurtosis'}
                     if ~st.epoched, reason = sprintf('%s needs epoched data', type); return; end
                 case 'native'
-                    % Infer the effect from the EEGLAB function the command calls.
-                    e = neuroqc.live.History.classify(p.command);
-                    switch e.step
-                        case 'epoch'
-                            if st.epoched, reason = 'native pop_epoch on epoched data'; return; end
-                            st.epoched = true;
-                        case 'resample'
-                            if isfield(e.params, 'fs') && isfinite(e.params.fs), st.srate = e.params.fs; end
-                        case 'ica', st.hasICA = true; st.icRemoved = false;
-                        case 'icremove', st.icRemoved = true;
-                        case {'highpass','lowpass','bandpass','linenoise'}
-                            if st.epoched, reason = 'native filter on epoched data'; return; end
-                            if isfield(e.params, 'locutoff') && isfinite(e.params.locutoff) && ~e.params.revfilt
-                                st.highpass = max(st.highpass, e.params.locutoff);
-                            end
-                        case {'baseline','reject_epochs'}
-                            if ~st.epoched, reason = 'native epoch-level command on continuous data'; return; end
+                    % Infer the effect from the EEGLAB functions the
+                    % statements call (a captured workflow has several).
+                    for stmt = neuroqc.run.Native.statements(p.command)
+                        e = neuroqc.live.History.classify(stmt{1});
+                        switch e.step
+                            case 'epoch'
+                                if st.epoched, reason = 'native pop_epoch on epoched data'; return; end
+                                st.epoched = true;
+                            case 'resample'
+                                if isfield(e.params, 'fs') && isfinite(e.params.fs), st.srate = e.params.fs; end
+                            case 'ica', st.hasICA = true; st.icRemoved = false;
+                            case {'ic_flags','icremove'}
+                                if ~st.hasICA, reason = sprintf('native %s needs ICA earlier in the plan or in the dataset', e.fn); return; end
+                                if strcmp(e.step, 'icremove'), st.icRemoved = true; end
+                            case {'highpass','lowpass','bandpass','linenoise'}
+                                if st.epoched, reason = 'native filter on epoched data'; return; end
+                                if isfield(e.params, 'locutoff') && isfinite(e.params.locutoff) && ~e.params.revfilt
+                                    st.highpass = max(st.highpass, e.params.locutoff);
+                                end
+                            case {'baseline','reject_epochs','epoch_flags'}
+                                if ~st.epoched, reason = 'native epoch-level command on continuous data'; return; end
+                        end
                     end
             end
         end
