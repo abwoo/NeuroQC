@@ -54,10 +54,26 @@ classdef Steps
                 case 'channels'
                     [EEG, coms, info] = neuroqc.run.Steps.listedChannels(EEG, p);
                 case 'restore'
+                    % back to the starting montage, then the channels removed
+                    % before NeuroQC (EEG.etc.neuroqc.preRemoved)
                     target = rootChanlocs(EEG);
                     missing = setdiff(lower({target.labels}), lower({EEG.chanlocs.labels}));
-                    EEG = pop_interp(EEG, target, 'spherical');
-                    coms = {'EEG = pop_interp(EEG, EEG.etc.neuroqc.rootChanlocs, ''spherical'');'};
+                    pre = [];
+                    if isfield(EEG.etc.neuroqc, 'preRemoved'), pre = EEG.etc.neuroqc.preRemoved; end
+                    if ~isempty(missing) || isempty(pre)
+                        EEG = pop_interp(EEG, target, 'spherical');
+                        coms = {'EEG = pop_interp(EEG, EEG.etc.neuroqc.rootChanlocs, ''spherical'');'};
+                    end
+                    if ~isempty(pre)
+                        absent = ~ismember(lower({pre.labels}), lower({EEG.chanlocs.labels}));
+                        if any(absent)
+                            requireLocations(EEG);
+                            EEG = pop_interp(EEG, pre(absent), 'spherical');
+                            coms{end+1} = sprintf(['EEG = pop_interp(EEG, EEG.etc.neuroqc.preRemoved(%s), ''spherical''); ', ...
+                                '%% NeuroQC: channels removed before the plan'], mat2str(find(absent)));
+                            missing = [missing lower({pre(absent).labels})];
+                        end
+                    end
                     info.interpolated = missing;
                 case 'reref'
                     ex = {};

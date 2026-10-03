@@ -430,7 +430,8 @@ icaAt = find(strcmp(steps, 'ica'), 1, 'last');
 pruned = ~isempty(icaAt) && any(strcmp(steps(icaAt+1:end), 'icremove'));
 hp = 0; if ~isempty(s.filters.highpass), hp = max(s.filters.highpass); end
 st = struct('epoched', s.isEpoched, 'srate', s.srate, 'hasICA', s.ica.present, ...
-    'icRemoved', s.ica.present && pruned, 'removed', false, 'highpass', hp);
+    'icRemoved', s.ica.present && pruned, 'removed', isfield(s, 'restorableChannels') && ~isempty(s.restorableChannels), ...
+    'highpass', hp);   % removed: channels removed before NeuroQC can be restored by the plan
 end
 
 function nodes = buildTree(leaves)

@@ -30,6 +30,7 @@ classdef DataState
             s.hasUrevent = isfield(EEG, 'urevent') && ~isempty(EEG.urevent);
             s.reference = referenceOf(EEG);
             s.removedChannels = removedChannels(EEG);
+            s.restorableChannels = restorableIdx(EEG);   % indices into chaninfo.removedchans
             s.ica = icaState(EEG);
             s.history = neuroqc.live.History.parse(fieldOr(EEG, 'history', ''));
             s.process = s.history(ismember({s.history.kind}, {'process'}));
@@ -114,6 +115,19 @@ if isfield(EEG, 'chaninfo') && isfield(EEG.chaninfo, 'removedchans') && ~isempty
     if isfield(rc, 'labels'), names = arrayfun(@(c) char(string(c.labels)), rc, 'UniformOutput', false); end
 end
 names = names(:)';
+end
+
+function idx = restorableIdx(EEG)
+% Removed data channels with a location: they can be restored by spherical
+% interpolation (fiducials and unlocated channels cannot).
+idx = [];
+if ~isfield(EEG, 'chaninfo') || ~isfield(EEG.chaninfo, 'removedchans') || isempty(EEG.chaninfo.removedchans), return; end
+rc = EEG.chaninfo.removedchans;
+if ~isfield(rc, 'X') || ~isfield(rc, 'labels'), return; end
+for k = 1:numel(rc)
+    ty = ''; if isfield(rc, 'type') && ~isempty(rc(k).type), ty = char(string(rc(k).type)); end
+    if ~isempty(rc(k).X) && ~strcmpi(ty, 'FID'), idx(end+1) = k; end %#ok<AGROW>
+end
 end
 
 function ica = icaState(EEG)

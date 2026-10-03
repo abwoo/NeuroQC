@@ -52,7 +52,7 @@ classdef Executor
             result = struct('plan', plan, 'contract', contract, 'options', opts, 'state', state, ...
                 'rootFingerprint', live.fingerprint, 'leaves', leaves, 'tree', tree, 'report', rep, ...
                 'labels', {labels}, 'cands', [], 'ranking', [], 'marginal', [], 'root', [], 'ref', [], ...
-                'rootComs', {{}}, 'versions', versions(), 'signalCheck', '');
+                'rootComs', {{}}, 'versions', versions(), 'signalCheck', '', 'identity', '');
             if opts.dryRun, return; end
             [root, rootComs] = neuroqc.run.Executor.prepareRoot(EEG, contract, opts);
             result.root = root; result.rootComs = rootComs;
@@ -63,7 +63,14 @@ classdef Executor
             % Continue an interrupted search from its checkpoint folder.
             M = load(fullfile(dirName, 'manifest.mat'));
             R = load(fullfile(dirName, 'root.mat'));
+            assert(isfield(M, 'identity') && isfield(R, 'identity') && strcmp(M.identity, R.identity), ...
+                'NeuroQC:Checkpoint', ['%s: the starting dataset (root.mat) and the search description ', ...
+                '(manifest.mat) do not belong to the same search (or were written by an older NeuroQC).'], dirName);
             result = M.result; result.root = R.root;
+            result.identity = M.identity;
+            result.options.checkpoint = dirName;
+            assert(strcmp(searchIdentity(result), M.identity), 'NeuroQC:Checkpoint', ...
+                '%s: the stored starting dataset no longer matches the search identity.', dirName);
             v = versions();
             if ~isequal(v.eeglab, result.versions.eeglab) || ~isequal(v.matlab, result.versions.matlab)
                 neuroqc.utils.log('WARNING: software versions differ from the interrupted run (%s / %s now, %s / %s then).', ...
@@ -74,7 +81,8 @@ classdef Executor
             prev = repmat(emptyCand(), numel(result.leaves), 1);
             for f = 1:numel(files)
                 d = load(fullfile(dirName, files(f).name));
-                assert(strcmp(d.key, result.leaves(d.id).key), 'NeuroQC:Checkpoint', ...
+                assert(isfield(d, 'identity') && strcmp(d.identity, M.identity) && d.id <= numel(result.leaves) && ...
+                    strcmp(d.key, result.leaves(d.id).key), 'NeuroQC:Checkpoint', ...
                     'Checkpoint file %s does not belong to this search.', files(f).name);
                 prev(d.id) = d.cand; done(d.id) = true;
             end
@@ -98,8 +106,8 @@ classdef Executor
             end
             result.signalCheck = mode;
             env = struct('tree', tree, 'leaves', leaves, 'contract', contract, 'ref', ref, 'opts', opts, ...
-                'mode', mode, 'nbchan', root.nbchan, 'done', done, 'checkpoint', opts.checkpoint, 'tStart', tic, ...
-                'truth', []);
+                'mode', mode, 'nbchan', root.nbchan + numel(fieldOr(root.etc.neuroqc, 'preRemoved', [])), 'done', done, 'checkpoint', opts.checkpoint, 'tStart', tic, ...
+                'truth', [], 'identity', '');
             S = [];
             if strcmp(mode, 'injection')
                 [S, env.truth] = neuroqc.eval.Injection.prepare(root, contract, ref, opts);
@@ -108,8 +116,11 @@ classdef Executor
             else
                 neuroqc.utils.log('Signal check: filter probe (no data-driven steps in the plan).');
             end
-            if ~isempty(opts.checkpoint)
-                neuroqc.run.Executor.writeManifest(result);
+            if ~isempty(opts.checkpoint) && ~any(done)
+                result = neuroqc.run.Executor.writeManifest(result);
+                env.identity = result.identity;
+            elseif isfield(result, 'identity')
+                env.identity = result.identity;
             end
             ctx0 = struct('contract', contract, 'highpass', rootHighpass(result.state));
             acc0 = struct('interpolated', {{}}, 'icsRemoved', 0, 'rejected', 0, 'coms', {{}}, 'seconds', 0, 'unmatched', {{}});
@@ -258,10 +269,12 @@ classdef Executor
             root = EEG; coms = {};
             function add(c), root = eeg_hist(root, c); coms{end+1} = c; end
             if isfield(opts, 'dataUnit') && strcmp(opts.dataUnit, 'V')
-                root.data = root.data * 1e6;
-                if ~isempty(root.icaweights), root.icaweights = root.icaweights / 1e6; root.icawinv = []; root.icaact = []; end
-                root = eeg_checkset(root);
-                add('EEG.data = EEG.data * 1e6; % NeuroQC: volts -> microvolts');
+                % the script line does exactly what is done here (ICA weights
+                % too, so existing activations keep their scale)
+                cmd = ['EEG.data = EEG.data * 1e6; if ~isempty(EEG.icaweights), EEG.icaweights = EEG.icaweights / 1e6; ', ...
+                    'EEG.icawinv = []; EEG.icaact = []; end; EEG = eeg_checkset(EEG); % NeuroQC: volts -> microvolts'];
+                root = evalWithEEG(root, cmd);
+                add(cmd);
             end
             r = round(root.srate);
             if root.srate ~= r && abs(root.srate - r) <= 1e-9 * r
@@ -284,13 +297,29 @@ classdef Executor
                 root = eeg_checkset(root, 'makeur');
                 add('EEG = eeg_checkset(EEG, ''makeur''); % NeuroQC: trial identities');
             end
+            % a trial list left in the dataset by an earlier search (e.g. an
+            % adopted candidate) must never restrict this one
+            if isfield(root, 'etc') && isstruct(root.etc) && isfield(root.etc, 'neuroqc') && isfield(root.etc.neuroqc, 'eligibleUrevents')
+                root.etc.neuroqc = rmfield(root.etc.neuroqc, 'eligibleUrevents');
+                add('EEG.etc.neuroqc = rmfield(EEG.etc.neuroqc, ''eligibleUrevents''); % NeuroQC: drop an earlier trial rule');
+            end
             elig = eligibleTrials(root, contract);
             if ~isempty(elig)
                 root.etc.neuroqc.eligibleUrevents = elig;
+                add(sprintf('EEG.etc.neuroqc.eligibleUrevents = %s; %% NeuroQC: trial rule %s (urevent ids)', ...
+                    mat2str(elig(:)'), contract.trials.mode));
                 neuroqc.utils.log('Trial rule %s: %d eligible time-locking events.', contract.trials.mode, numel(elig));
             end
             root.etc.neuroqc.rootChanlocs = root.chanlocs;
             add('EEG.etc.neuroqc.rootChanlocs = EEG.chanlocs; % NeuroQC: montage before the plan');
+            pre = neuroqc.live.DataState.fromEEG(root).restorableChannels;
+            if ~isempty(pre)
+                root.etc.neuroqc.preRemoved = root.chaninfo.removedchans(pre);
+                add(sprintf(['EEG.etc.neuroqc.preRemoved = EEG.chaninfo.removedchans(%s); ', ...
+                    '%% NeuroQC: channels removed before the plan, restorable by interpolation'], mat2str(pre)));
+                neuroqc.utils.log('Channels removed before NeuroQC that a restore step can interpolate: %s', ...
+                    strjoin({root.etc.neuroqc.preRemoved.labels}, ', '));
+            end
         end
 
         function EEG = replay(result, idx, recordGlobal)
@@ -315,6 +344,50 @@ classdef Executor
                 end
                 ctx = advance(in, ctx, [], struct(), coms, {}, 0);
             end
+            [EEG, com] = neuroqc.run.Executor.selectEligible(EEG, result.contract);
+            if ~isempty(com)
+                fprintf('    %s\n', com);
+                EEG = eeg_hist(EEG, com);
+                if recordGlobal, eegh(com); end
+            end
+        end
+
+        function [EEG, com] = selectEligible(EEG, contract)
+            % Output only the trials the trial rule keeps. The rule decides
+            % which trials are scored; the data a candidate hands on must
+            % hold the same trials. Epochs time-locked to a condition event
+            % outside the rule are removed (pop_select, in EEG.history).
+            com = '';
+            if ~isfield(EEG, 'etc') || ~isstruct(EEG.etc) || ~isfield(EEG.etc, 'neuroqc') || ...
+                    ~isfield(EEG.etc.neuroqc, 'eligibleUrevents')
+                return;
+            end
+            if EEG.trials == 1 && (~isfield(EEG, 'epoch') || isempty(EEG.epoch))
+                neuroqc.utils.log(['Trial rule: the output is continuous, so it still holds every trial; the ', ...
+                    'eligible urevent ids are kept in EEG.etc.neuroqc.eligibleUrevents for later epoching.']);
+                return;
+            end
+            elig = EEG.etc.neuroqc.eligibleUrevents;
+            codes = contract.allEvents();
+            halfSample = 1000 / EEG.srate / 2 + 1e-6;
+            drop = false(1, EEG.trials);
+            for k = 1:EEG.trials
+                ep = EEG.epoch(k);
+                lat = ep.eventlatency; ev = ep.event; ty = ep.eventtype;
+                if ~iscell(lat), lat = num2cell(lat); end
+                if ~iscell(ev), ev = num2cell(ev); end
+                if ischar(ty) || isstring(ty), ty = {char(ty)}; elseif ~iscell(ty), ty = num2cell(ty); end
+                for q = 1:numel(lat)
+                    if abs(double(lat{q})) > halfSample, continue; end
+                    if ~any(strcmp(strtrim(char(string(ty{q}))), codes)), continue; end
+                    drop(k) = ~ismember(double(EEG.event(ev{q}).urevent), elig);
+                    break;
+                end
+            end
+            if ~any(drop), return; end
+            assert(~all(drop), 'NeuroQC:TrialRule', 'The trial rule keeps none of the output epochs.');
+            [EEG, com] = pop_select(EEG, 'notrial', find(drop));
+            com = sprintf('%s %% NeuroQC: keep only trials of the trial rule (%d removed)', com, sum(drop));
         end
 
         function adopt(result, idx, force)
@@ -322,6 +395,13 @@ classdef Executor
             if nargin < 2 || isempty(idx), idx = result.ranking.recommended; end
             if nargin < 3, force = false; end
             assert(~isempty(idx), 'NeuroQC:Adopt', 'No candidate to adopt (no feasible or no unique recommendation).');
+            st = result.ranking.table.status{idx};
+            if ~strcmp(st, 'feasible')
+                why = result.ranking.table.reason{idx};
+                assert(force, 'NeuroQC:Adopt', ['Candidate %d is %s, not feasible: %s. Call adopt(result, %d, true) ', ...
+                    'to adopt it anyway.'], idx, st, why, idx);
+                neuroqc.utils.log('WARNING: adopting candidate %d although it is %s: %s', idx, st, why);
+            end
             [cur, ~] = neuroqc.live.Session.current();
             here = strcmp(neuroqc.live.Session.fingerprint(cur), result.rootFingerprint);
             if ~here && ~force
@@ -342,9 +422,16 @@ classdef Executor
             if strcmp(result.cands(idx).status, 'ok')
                 m = neuroqc.eval.Measure.candidate(EEG, result.contract, result.ref, result.options);
                 a = [m.objectives.agg]; b = [result.cands(idx).m.objectives.agg];
-                same = all(abs(a - b) <= 1e-6 * max(1, abs(b)));
-                neuroqc.utils.log('Replay check: objectives %s (search: %s) -> %s', mat2str(a, 5), mat2str(b, 5), ...
+                same = all(abs(a - b) <= 1e-6 * max(1, abs(b))) && isequal(m.kept, result.cands(idx).m.kept);
+                neuroqc.utils.log('Replay check: objectives %s, trials %s (search: %s, %s) -> %s', mat2str(a, 5), ...
+                    mat2str(m.kept), mat2str(b, 5), mat2str(result.cands(idx).m.kept), ...
                     ternary(same, 'identical', 'DIFFERENT (non-deterministic step?)'));
+                % the evaluation (and the constraints it passed) belongs to the
+                % searched data; a rebuilt dataset that differs is not that candidate
+                assert(same || force, 'NeuroQC:ReplayMismatch', ['The rebuilt candidate %d differs from the one ', ...
+                    'evaluated in the search, so its evaluation does not apply to it. Nothing was stored. Call ', ...
+                    'adopt(result, %d, true) to store it anyway.'], idx, idx);
+                if ~same, neuroqc.utils.log('WARNING: storing a rebuilt candidate that differs from the evaluated one.'); end
             end
             EEG.setname = sprintf('%s NeuroQC#%d', result.state.setname, idx);
             assignin('base', 'NEUROQC_ADOPT__', EEG);
@@ -353,13 +440,31 @@ classdef Executor
             neuroqc.utils.log('Candidate %d stored as a new EEGLAB dataset; its EEG.history lists every step.', idx);
         end
 
-        function writeManifest(result)
+        function result = writeManifest(result)
+            % Bind the checkpoint folder to this search. A folder holding
+            % files of another search (other data, contract, plan or
+            % options) is refused rather than mixed.
             d = result.options.checkpoint;
             if ~isfolder(d), mkdir(d); end
+            identity = searchIdentity(result);
+            result.identity = identity;
+            used = ~isempty(dir(fullfile(d, '*.mat')));
+            if used
+                prev = '';
+                if isfile(fullfile(d, 'manifest.mat'))
+                    M = load(fullfile(d, 'manifest.mat'), 'identity');
+                    if isfield(M, 'identity'), prev = M.identity; end
+                end
+                assert(strcmp(prev, identity), 'NeuroQC:Checkpoint', ['Checkpoint folder %s already holds files ', ...
+                    'of a different search (other data, contract, plan or options). Use an empty folder, or ', ...
+                    'neuroqc.NeuroQC.resume(folder) to continue that search.'], d);
+                % same search started again: earlier candidates are discarded, not mixed
+                delete(fullfile(d, 'leaf_*.mat'));
+            end
             root = result.root; %#ok<NASGU>
-            if ~isfile(fullfile(d, 'root.mat')), save(fullfile(d, 'root.mat'), 'root', '-v7.3'); end
+            save(fullfile(d, 'root.mat'), 'root', 'identity', '-v7.3');
             result.root = [];
-            save(fullfile(d, 'manifest.mat'), 'result', '-v7.3');
+            save(fullfile(d, 'manifest.mat'), 'result', 'identity', '-v7.3');
             neuroqc.utils.log('Checkpoint folder: %s (resume with neuroqc.NeuroQC.resume).', d);
         end
 
@@ -383,6 +488,10 @@ function o = withDefaults(o, d)
 for f = fieldnames(d)'
     if ~isfield(o, f{1}), o.(f{1}) = d.(f{1}); end
 end
+end
+
+function v = fieldOr(s, f, d)
+if isfield(s, f), v = s.(f); else, v = d; end
 end
 
 function c = emptyCand()
@@ -448,6 +557,8 @@ c.interpolatedFraction = numel(acc.interpolated) / env.nbchan;
 c.unmatched = acc.unmatched;
 try
     c.m = neuroqc.eval.Measure.candidate(E, env.contract, env.ref, env.opts);
+    [~, ~, tcom] = evalc('neuroqc.run.Executor.selectEligible(E, env.contract)');
+    if ~isempty(tcom), c.coms{end+1} = tcom; end
     if ~isempty(S)
         c.signal = neuroqc.eval.Injection.compare(S, env.contract, env.truth, env.leaves(li).path);
     end
@@ -466,9 +577,9 @@ end
 
 function saveLeaf(env, cand)
 if isempty(env.checkpoint), return; end
-id = cand.id; key = cand.key; %#ok<NASGU>
+id = cand.id; key = cand.key; identity = env.identity; %#ok<NASGU>
 tmp = fullfile(env.checkpoint, sprintf('leaf_%06d.tmp.mat', id));
-save(tmp, 'id', 'key', 'cand', '-v7.3');
+save(tmp, 'id', 'key', 'cand', 'identity', '-v7.3');
 movefile(tmp, fullfile(env.checkpoint, sprintf('leaf_%06d.mat', id)), 'f');
 if isfield(env.opts, 'stopAfter') && numel(dir(fullfile(env.checkpoint, 'leaf_*.mat'))) >= env.opts.stopAfter
     % simulated interruption (tests): everything saved so far is kept
@@ -558,4 +669,26 @@ end
 
 function s = ternary(c, a, b)
 if c, s = a; else, s = b; end
+end
+
+function EEG = evalWithEEG(EEG, NEUROQC_CMD__)
+% Run a script line on EEG exactly as the exported script will.
+eval(NEUROQC_CMD__);
+end
+
+function id = searchIdentity(result)
+% What makes two searches the same: the starting data (full content), the
+% analysis contract, the enumerated pipelines and the options that change
+% results. A checkpoint folder belongs to exactly one identity.
+o = result.options;
+o = rmfield(o, intersect(fieldnames(o), {'checkpoint','stopAfter','parallel','verbose','dryRun'}));
+md = java.security.MessageDigest.getInstance('SHA-256');
+root = result.root;
+md.update(typecast(double(root.data(:)), 'uint8'));
+parts = {getByteStreamFromArray(result.rootComs), getByteStreamFromArray(result.contract.toStruct()), ...
+    getByteStreamFromArray(result.labels), getByteStreamFromArray(o), ...
+    getByteStreamFromArray({root.chanlocs.labels}), getByteStreamFromArray(root.srate), ...
+    getByteStreamFromArray(arrayfun(@(e) {char(string(e.type)), double(e.latency)}, root.event, 'UniformOutput', false))};
+for k = 1:numel(parts), md.update(parts{k}); end
+id = lower(reshape(dec2hex(typecast(md.digest(), 'uint8'))', 1, []));
 end

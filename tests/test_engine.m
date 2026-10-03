@@ -317,6 +317,123 @@ verifyFalse(tc, contains(txt, 'pop_eegfiltnew() - performing'));   % EEGLAB's ow
 verifyTrue(tc, contains(txt, 'Recommended'));
 end
 
+function testTrialRuleRestrictsTheOutputToo(tc)
+% Audit: with a trial rule only the eligible trials were scored, but the
+% adopted dataset still held every epoch. Adopted data and the exported
+% script must hold exactly the scored trials.
+EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30, 'artifactTrials', 0));
+nqc_setBase(EEG);
+c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
+    'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz','P3','P4'}}, ...
+    'trials', struct('mode', 'time_ranges', 'ranges', [30 Inf]));
+p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('epoch'); p = p.add('baseline');
+r = neuroqc.NeuroQC.optimize(p, c);
+neuroqc.NeuroQC.adopt(r, 1);
+ad = evalin('base', 'EEG');
+verifyEqual(tc, ad.trials, sum(r.ref.n));
+verifyTrue(tc, contains(ad.history, 'notrial'));
+d = tempname; mkdir(d); cleanup = onCleanup(@() rmdir(d, 's')); %#ok<NASGU>
+neuroqc.NeuroQC.writeScript(r, 1, fullfile(d, 'nqc_rule_script.m'));
+addpath(d); c2 = onCleanup(@() rmpath(d)); %#ok<NASGU>
+out = nqc_rule_script(EEG);
+verifyEqual(tc, out.trials, sum(r.ref.n));
+end
+
+function testEarlierTrialRuleDoesNotPersist(tc)
+% Audit: after switching the rule back to 'all', the earlier restriction
+% was still applied (it travelled in EEG.etc of the dataset).
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0));
+p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('epoch'); p = p.add('baseline');
+nqc_setBase(EEG); a = neuroqc.NeuroQC.optimize(p, nqc_c());
+E2 = EEG; E2.etc.neuroqc.eligibleUrevents = [EEG.event(1:4).urevent];   % left by an earlier search
+nqc_setBase(E2); b = neuroqc.NeuroQC.optimize(p, nqc_c());
+verifyEqual(tc, b.ref.n, a.ref.n);
+verifyTrue(tc, any(contains(b.rootComs, 'rmfield(EEG.etc.neuroqc, ''eligibleUrevents'')')));
+end
+
+function testVoltConversionScriptScalesIcaLikeTheSearch(tc)
+% Audit: the search scaled ICA weights with the data, the script did not.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+V = EEG; V.data = V.data * 1e-6;
+rng(3); V.icaweights = randn(V.nbchan); V.icasphere = eye(V.nbchan); V.icachansind = 1:V.nbchan;
+V.icawinv = []; V.icaact = []; V = eeg_checkset(V);
+nqc_setBase(V);
+% no epoch step: pop_epoch renormalises the components and would hide the scale
+p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1);
+r = neuroqc.NeuroQC.optimize(p, nqc_c(), struct('dataUnit', 'V'));
+d = tempname; mkdir(d); cleanup = onCleanup(@() rmdir(d, 's')); %#ok<NASGU>
+neuroqc.NeuroQC.writeScript(r, 1, fullfile(d, 'nqc_volt_script.m'));
+addpath(d); c2 = onCleanup(@() rmpath(d)); %#ok<NASGU>
+out = nqc_volt_script(V);
+ref = neuroqc.run.Executor.replay(r, 1);           % the search's own in-memory path
+verifyEqual(tc, out.icaweights, ref.icaweights, 'RelTol', 1e-9);
+m = neuroqc.eval.Measure.candidate(out, r.contract, r.ref);
+verifyEqual(tc, [m.objectives.agg], [r.cands(1).m.objectives.agg], 'RelTol', 1e-6);
+end
+
+function testCheckpointFolderBelongsToOneSearch(tc)
+% Audit: an existing root.mat was kept while manifest.mat was replaced, so
+% a second search in the same folder could resume on another dataset.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', {0.1, 0.5}); p = p.add('epoch'); p = p.add('baseline');
+d = tempname; cleanup = onCleanup(@() rmdir(d, 's')); %#ok<NASGU>
+nqc_setBase(EEG);
+verifyError(tc, @() neuroqc.NeuroQC.optimize(p, nqc_c(), struct('checkpoint', d, 'stopAfter', 1)), 'NeuroQC:Interrupted');
+other = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'seed', 99));
+nqc_setBase(other);
+verifyError(tc, @() neuroqc.NeuroQC.optimize(p, nqc_c(), struct('checkpoint', d)), 'NeuroQC:Checkpoint');
+c3 = nqc_c(); c3.baseline = [-0.1 0];
+nqc_setBase(EEG);
+verifyError(tc, @() neuroqc.NeuroQC.optimize(p, c3, struct('checkpoint', d)), 'NeuroQC:Checkpoint');
+% the folder still resumes its own search, and the same search may start over
+res = neuroqc.NeuroQC.resume(d);
+verifyTrue(tc, all(strcmp({res.cands.status}, 'ok')));
+again = neuroqc.NeuroQC.optimize(p, nqc_c(), struct('checkpoint', d));
+verifyEqual(tc, again.identity, res.identity);
+% a starting dataset from another search is refused on resume
+d2 = tempname; c4 = onCleanup(@() rmdir(d2, 's')); %#ok<NASGU>
+nqc_setBase(other); neuroqc.NeuroQC.optimize(p, nqc_c(), struct('checkpoint', d2));
+copyfile(fullfile(d2, 'root.mat'), fullfile(d, 'root.mat'));
+verifyError(tc, @() neuroqc.NeuroQC.resume(d), 'NeuroQC:Checkpoint');
+end
+
+function testAdoptRefusesInfeasibleAndNonReproducingCandidates(tc)
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+nqc_setBase(EEG);
+p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('epoch'); p = p.add('baseline');
+r = neuroqc.NeuroQC.optimize(p, nqc_c(), struct('minTrials', 1000));
+n0 = evalin('base', 'numel(ALLEEG)');
+verifyError(tc, @() neuroqc.NeuroQC.adopt(r, 1), 'NeuroQC:Adopt');          % rejected: not adopted silently
+verifyEqual(tc, evalin('base', 'numel(ALLEEG)'), n0);
+neuroqc.NeuroQC.adopt(r, 1, true);                                          % explicit override
+verifyEqual(tc, evalin('base', 'numel(ALLEEG)'), n0 + 1);
+nqc_setBase(EEG);
+r = neuroqc.NeuroQC.optimize(p, nqc_c());
+r.cands(1).m.objectives(1).agg = 2 * r.cands(1).m.objectives(1).agg;      % evaluation no longer matches the data
+n0 = evalin('base', 'numel(ALLEEG)');
+verifyError(tc, @() neuroqc.NeuroQC.adopt(r, 1), 'NeuroQC:ReplayMismatch');
+verifyEqual(tc, evalin('base', 'numel(ALLEEG)'), n0);
+end
+
+function testRestoreChannelsRemovedBeforeNeuroQC(tc)
+% Audit: channels removed in EEGLAB before entering could not be restored
+% by the plan (restore demanded a removal inside the plan).
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+n = EEG.nbchan;
+EEG = pop_select(EEG, 'rmchannel', {'O1', 'O2'});
+assert(numel(EEG.chaninfo.removedchans) >= 2);
+nqc_setBase(EEG);
+p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('restore'); p = p.add('epoch'); p = p.add('baseline');
+r = neuroqc.NeuroQC.optimize(p, nqc_c());
+verifyEqual(tc, r.cands(1).status, 'ok');
+verifyEqual(tc, r.cands(1).interpolatedFraction, 2 / n, 'AbsTol', 1e-12);
+verifyTrue(tc, any(contains(r.cands(1).coms, 'preRemoved')));
+neuroqc.NeuroQC.adopt(r, 1);
+ad = evalin('base', 'EEG');
+verifyEqual(tc, ad.nbchan, n);
+verifyTrue(tc, all(ismember({'O1', 'O2'}, {ad.chanlocs.labels})));
+end
+
 % ---------------------------------------------------------------- helpers
 function c = nqc_c()
 c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...

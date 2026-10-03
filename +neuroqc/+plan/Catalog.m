@@ -60,7 +60,7 @@ classdef Catalog
                     d.params = [P('labels', {}, {}, false, 'channel labels you name (e.g. known-bad O1, O2)'), ...
                         P('action', 'interpolate', {}, false, '''remove'' or ''interpolate''')];
                 case 'restore'
-                    d.label = 'Restore removed channels (spherical interpolation)'; d.dialog = 'pop_interp';
+                    d.label = 'Restore removed channels (spherical interpolation): the starting montage plus channels removed before NeuroQC (chaninfo.removedchans, with locations)'; d.dialog = 'pop_interp';
                 case 'reref'
                     d.label = 'Re-reference'; d.dialog = 'pop_reref';
                     d.params = [P('mode', 'average', {}, true, '''average'' or ''channels'''), ...
@@ -135,7 +135,7 @@ classdef Catalog
                         reason = 'channels action must be remove or interpolate'; return;
                     end
                 case 'restore'
-                    if ~st.removed, reason = 'restore needs channels removed earlier in the plan'; return; end
+                    if ~st.removed, reason = 'restore needs channels removed earlier in the plan or before NeuroQC (EEG.chaninfo.removedchans)'; return; end
                     st.removed = false;
                 case 'reref'
                     if ~any(strcmp(p.mode, {'average','channels'})), reason = 'reref mode must be average or channels'; return; end
