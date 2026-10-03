@@ -23,7 +23,7 @@ classdef Panel < handle
         TrialLabel; SummaryLabel
         LimitFields = struct()
         ObjectiveField
-        Options = struct('dataUnit', 'uV', 'checkpoint', '', 'searchMode', 'exhaustive', 'sampleSize', 100, ...
+        Options = struct('dataUnit', 'auto', 'checkpoint', '', 'searchMode', 'exhaustive', 'sampleSize', 100, ...
             'parallel', false, 'externalQC', [])
         ResultTable; StatusLabel; DetailArea
     end
@@ -117,7 +117,7 @@ classdef Panel < handle
             cg = uigridlayout(rg, [7 4]); cg.Padding = [0 0 0 0]; cg.RowSpacing = 3;
             cg.ColumnWidth = {80, '1x', 150, 95}; cg.RowHeight = repmat({24}, 1, 7);
             uilabel(cg, 'Text', 'Conditions');
-            obj.CondField = uieditfield(cg, 'Placeholder', 'target: 11 21; standard: 31  (codes with spaces in "quotes")');
+            obj.CondField = uieditfield(cg, 'Placeholder', 'none yet - use Add from events... (format: name: code code; name2: code)');
             uibutton(cg, 'Text', 'Add from events...', 'Tooltip', ...
                 'Name a condition and pick its event codes from the dataset''s own event list (EEGLAB selection window)', ...
                 'ButtonPushedFcn', @(~, ~) obj.addCondition());
@@ -128,18 +128,18 @@ classdef Panel < handle
                 'Which trials count: all, between start/end markers, time ranges, or an EEGLAB event selection (pop_selectevent)', ...
                 'ButtonPushedFcn', @(~, ~) obj.chooseTrials());
             uibutton(cg, 'Text', 'All trials', 'ButtonPushedFcn', @(~, ~) obj.setTrialRule(struct('mode', 'all')));
-            uilabel(cg, 'Text', 'Epoch (s)'); obj.EpochField = uieditfield(cg, 'Value', '-0.2 1');
+            uilabel(cg, 'Text', 'Epoch (s)'); obj.EpochField = uieditfield(cg, 'Value', '', 'Placeholder', 'start end in s around the event - required (EEGLAB pop_epoch...)');
             uibutton(cg, 'Text', 'EEGLAB pop_epoch...', 'Tooltip', ...
                 'Set the epoch in EEGLAB''s own epoching dialog (run on a copy); the window is filled in here', ...
                 'ButtonPushedFcn', @(~, ~) obj.epochFromEEGLAB());
             uilabel(cg, 'Text', '');
-            uilabel(cg, 'Text', 'Baseline (s)'); obj.BaseField = uieditfield(cg, 'Value', '-0.2 0');
+            uilabel(cg, 'Text', 'Baseline (s)'); obj.BaseField = uieditfield(cg, 'Value', '', 'Placeholder', 'empty = pre-stimulus baseline [epoch start 0] s');
             uibutton(cg, 'Text', 'EEGLAB pop_rmbase...', 'Tooltip', ...
                 'Set the baseline in EEGLAB''s own baseline dialog on epoched preview data (ms are converted to s)', ...
                 'ButtonPushedFcn', @(~, ~) obj.baselineFromEEGLAB());
             uilabel(cg, 'Text', '');
             uilabel(cg, 'Text', 'Components');
-            obj.CompField = uieditfield(cg, 'Placeholder', 'P3: 0.3 0.6 @ Pz CPz POz; N2: 0.2 0.3 @ Fz FCz # peakLatency negative');
+            obj.CompField = uieditfield(cg, 'Placeholder', 'none yet - use Add component... (format: name: start end @ channels [# measure polarity])');
             uibutton(cg, 'Text', 'Add component...', 'Tooltip', ...
                 'Name, window and measure, then the ROI from the dataset''s channels (EEGLAB channel selection)', ...
                 'ButtonPushedFcn', @(~, ~) obj.addComponent());
@@ -171,7 +171,7 @@ classdef Panel < handle
             ag.ColumnWidth = {'fit', 170, 'fit', 'fit', 'fit', '1x'};
             uilabel(ag, 'Text', 'Objective', 'HorizontalAlignment', 'right');
             obj.ObjectiveField = uidropdown(ag, 'Items', {'composite', 'pareto'}, 'Value', 'composite', 'Editable', 'on', 'Tooltip', ...
-                'composite | pareto | one objective; a priority list can be typed: P3.mean, N2.peakLatency');
+                'composite | pareto | one objective (component.measure); a priority list can be typed, comma-separated');
             uibutton(ag, 'Text', 'Preview count', 'ButtonPushedFcn', @(~, ~) obj.run(true));
             uibutton(ag, 'Text', 'Run search', 'FontWeight', 'bold', 'ButtonPushedFcn', @(~, ~) obj.run(false));
             uibutton(ag, 'Text', 'Options...', 'Tooltip', 'Data unit, checkpoint folder, sampled search, parallel, external QC table', ...
@@ -231,6 +231,11 @@ classdef Panel < handle
             h = s.history;
             obj.HistTable.Data = [num2cell([h.line]') {h.kind}' {h.step}' {h.statement}'];
             ev = arrayfun(@(k) sprintf('%s (%d)', s.eventTypes{k}, s.eventCounts(k)), 1:numel(s.eventTypes), 'UniformOutput', false);
+            if s.isEpoched
+                obj.EpochField.Placeholder = sprintf('empty = the data''s epochs [%g %g] s', s.xmin, s.xmax);
+            else
+                obj.EpochField.Placeholder = 'start end in s around the event - required (EEGLAB pop_epoch...)';
+            end
             obj.EventsLabel.Text = ['Event types: ' strjoin(ev, ', ')];
             obj.EventsLabel.Tooltip = obj.EventsLabel.Text;   % the full list, however long
             obj.updateSummary();
@@ -576,6 +581,7 @@ classdef Panel < handle
             c = obj.contract();
             codes = c.allEvents();
             assert(~isempty(codes), 'NeuroQC:Contract', 'Define the conditions first (the preview is epoched on their events).');
+            assert(numel(c.effectiveEpoch()) == 2, 'NeuroQC:Contract', 'Set the epoch first (EEGLAB pop_epoch...).');
             [~, EEG] = evalc('pop_epoch(EEG, codes, c.effectiveEpoch(), ''epochinfo'', ''yes'')');
             if ~isempty(c.effectiveBaseline())
                 [~, EEG] = evalc('pop_rmbase(EEG, 1000 * c.effectiveBaseline(), [])');
@@ -626,10 +632,21 @@ classdef Panel < handle
 
         % -------------------------------------------------------------- run
         function c = contract(obj)
+            [ep, bl] = obj.windows();
             c = neuroqc.eval.Contract('conditions', parseConditions(obj.CondField.Value), ...
-                'components', parseComponents(obj.CompField.Value), ...
-                'epoch', str2num(obj.EpochField.Value), 'baseline', str2num(obj.BaseField.Value), ... %#ok<ST2NM>
-                'trials', obj.TrialRule);
+                'components', parseComponents(obj.CompField.Value), 'epoch', ep, 'baseline', bl, 'trials', obj.TrialRule);
+        end
+
+        function [ep, bl] = windows(obj)
+            % What the fields say; left empty: the epochs of an already
+            % epoched dataset, and the pre-stimulus baseline [start 0].
+            ep = str2num(obj.EpochField.Value); %#ok<ST2NM>
+            bl = str2num(obj.BaseField.Value); %#ok<ST2NM>
+            if isempty(ep)
+                EEG = neuroqc.live.Session.current();
+                if ~isempty(EEG) && EEG.trials > 1, ep = [EEG.xmin EEG.xmax]; end
+            end
+            if isempty(bl) && numel(ep) == 2 && ep(1) < 0, bl = [ep(1) 0]; end
         end
 
         % ------------------------------------- contract from EEGLAB dialogs
@@ -657,7 +674,8 @@ classdef Panel < handle
             d = uifigure('Name', 'NeuroQC search options', 'Position', [240 240 520 300], 'WindowStyle', 'modal');
             gl = uigridlayout(d, [7 3]); gl.ColumnWidth = {170, '1x', 110}; gl.RowHeight = repmat({26}, 1, 7);
             uilabel(gl, 'Text', 'Data unit of the dataset');
-            du = uidropdown(gl, 'Items', {'uV', 'V'}, 'Value', o.dataUnit, 'Tooltip', 'V: scaled to uV on NeuroQC''s copy (ICA weights too)');
+            du = uidropdown(gl, 'Items', {'auto', 'uV', 'V'}, 'Value', o.dataUnit, 'Tooltip', ...
+                'auto: from the amplitude scale of the dataset; V: scaled to uV on NeuroQC''s copy (ICA weights too)');
             uilabel(gl, 'Text', '');
             uilabel(gl, 'Text', 'Checkpoint folder');
             ck = uilabel(gl, 'Text', orDash(o.checkpoint));
@@ -847,6 +865,7 @@ classdef Panel < handle
                     c = obj.contract();
                     codes = c.allEvents();
                     assert(~isempty(codes), 'NeuroQC:Contract', 'Define the conditions first (the preview is epoched on their events).');
+                    assert(numel(c.effectiveEpoch()) == 2, 'NeuroQC:Contract', 'Set the epoch first (EEGLAB pop_epoch...).');
                     [~, EEG] = evalc('pop_epoch(EEG, codes, c.effectiveEpoch(), ''epochinfo'', ''yes'')');   % no baseline removed yet
                     neuroqc.utils.log('Baseline dialog on a preview copy epoched [%g %g] s on %s.', c.effectiveEpoch(), strjoin(codes, ', '));
                 end
@@ -872,7 +891,7 @@ classdef Panel < handle
         function addComponent(obj, name, win, roi, measure, polarity)
             if nargin < 2
                 a = inputdlg({'Component name', 'Window start (s)', 'Window end (s)'}, 'NeuroQC component', 1, ...
-                    {'P3', '0.3', '0.6'});
+                    {'', '', ''});
                 if isempty(a), return; end
                 name = strtrim(a{1}); win = [str2double(a{2}) str2double(a{3})];
                 assert(~isempty(name) && all(isfinite(win)) && win(2) > win(1), 'NeuroQC:Contract', ...
@@ -1031,6 +1050,11 @@ classdef Panel < handle
                 end
                 for f = fieldnames(obj.Options)'
                     if ~isempty(obj.Options.(f{1})) || islogical(obj.Options.(f{1})), opts.(f{1}) = obj.Options.(f{1}); end
+                end
+                if strcmp(opts.dataUnit, 'auto')
+                    s = neuroqc.live.DataState.fromEEG(neuroqc.live.Session.current());
+                    opts.dataUnit = s.unitGuess;
+                    neuroqc.utils.log('Data unit: %s (judged from the amplitude scale; set it in Options... to override).', s.unitGuess);
                 end
                 obj.StatusLabel.Text = 'Running... progress in the Command Window'; drawnow;
                 stop(obj.Timer);
@@ -1270,8 +1294,14 @@ for a = 1:numel(slot.alternatives)
         elseif ~isempty(q.suggest), kv{end+1} = sprintf('%s = %s (default search)', q.name, valText(q.suggest)); %#ok<AGROW>
         else, kv{end+1} = sprintf('%s = %s (default)', q.name, valText(q.default)); end %#ok<AGROW>
     end
-    if strcmp(alt.type, 'epoch'), kv{end+1} = sprintf('window [%s] s, condition events (from the analysis contract)', ctxt.epoch); end %#ok<AGROW>
-    if strcmp(alt.type, 'baseline'), kv{end+1} = sprintf('[%s] s (from the analysis contract)', ctxt.baseline); end %#ok<AGROW>
+    if strcmp(alt.type, 'epoch')
+        if isempty(strtrim(ctxt.epoch)), kv{end+1} = 'window: not set yet (required, analysis contract)'; %#ok<AGROW>
+        else, kv{end+1} = sprintf('window [%s] s, condition events (from the analysis contract)', ctxt.epoch); end %#ok<AGROW>
+    end
+    if strcmp(alt.type, 'baseline')
+        if isempty(strtrim(ctxt.baseline)), kv{end+1} = 'pre-stimulus [epoch start 0] s (default; from the analysis contract)'; %#ok<AGROW>
+        else, kv{end+1} = sprintf('[%s] s (from the analysis contract)', ctxt.baseline); end %#ok<AGROW>
+    end
     if strcmp(alt.type, 'restore'), kv{end+1} = 'starting montage + channels removed before NeuroQC'; end %#ok<AGROW>
     if numel(slot.alternatives) > 1, parts{end+1} = sprintf('%s(%s)', alt.type, strjoin(kv, '; ')); %#ok<AGROW>
     else, parts{end+1} = strjoin(kv, '; '); end %#ok<AGROW>

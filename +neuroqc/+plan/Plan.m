@@ -161,6 +161,7 @@ classdef Plan
                 'searchMode', 'exhaustive', 'sampleSize', 100, 'sampleSeed', 1));
             assert(~isempty(obj.Slots), 'NeuroQC:Plan', 'The plan is empty: add at least one step.');
             n = numel(obj.Slots);
+            obj = obj.resolveAuto(state);
             inst = cell(1, n);
             for k = 1:n
                 inst{k} = obj.expandSlot(k, contract);
@@ -288,6 +289,26 @@ classdef Plan
                         'rearranged. Conflicts: %s'], describe(reasons));
                 end
                 error('NeuroQC:NoLegalPipeline', 'No legal pipeline: %s', describe(reasons));
+            end
+        end
+
+        function obj = resolveAuto(obj, state)
+            % Values that come from the data: linenoise freq 'auto' (or
+            % unset) -> the mains frequency detected in this dataset.
+            lf = []; if isfield(state, 'lineFreq'), lf = state.lineFreq; end
+            for k = 1:numel(obj.Slots)
+                for a = 1:numel(obj.Slots(k).alternatives)
+                    alt = obj.Slots(k).alternatives{a};
+                    if ~strcmp(alt.type, 'linenoise'), continue; end
+                    if ~isfield(alt.params, 'freq') || (ischar(alt.params.freq) && strcmpi(alt.params.freq, 'auto'))
+                        if isempty(lf), alt.params.freq = 'auto';
+                        else
+                            alt.params.freq = lf;
+                            neuroqc.utils.log('%s: line frequency %g Hz detected in the dataset.', obj.Slots(k).id, lf);
+                        end
+                        obj.Slots(k).alternatives{a} = alt;
+                    end
+                end
             end
         end
 

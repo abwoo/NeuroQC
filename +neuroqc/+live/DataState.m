@@ -32,6 +32,10 @@ classdef DataState
             s.removedChannels = removedChannels(EEG);
             s.restorableChannels = restorableIdx(EEG);   % indices into chaninfo.removedchans
             s.ica = icaState(EEG);
+            s.lineFreq = lineFrequency(EEG);   % 50 or 60 Hz mains, from the data ([] if not clear)
+            x = EEG.data(:, 1:min(EEG.pnts, round(10 * EEG.srate)), 1);
+            s.unitGuess = 'uV';                % EEGLAB convention; 'V' when amplitudes are ~1e-6 smaller
+            m = median(abs(double(x(:)))); if m > 0 && m < 1e-3, s.unitGuess = 'V'; end
             s.history = neuroqc.live.History.parse(fieldOr(EEG, 'history', ''));
             s.process = s.history(ismember({s.history.kind}, {'process'}));
             s.filters = filterSummary(s.history);
@@ -128,6 +132,29 @@ for k = 1:numel(rc)
     ty = ''; if isfield(rc, 'type') && ~isempty(rc(k).type), ty = char(string(rc(k).type)); end
     if ~isempty(rc(k).X) && ~strcmpi(ty, 'FID'), idx(end+1) = k; end %#ok<AGROW>
 end
+end
+
+function f0 = lineFrequency(EEG)
+% Mains frequency of this recording (50 or 60 Hz) from its spectrum: the
+% candidate whose power stands out from the neighbouring bins by >= 5x.
+% [] when neither does (filtered, or not resolvable at this rate).
+f0 = [];
+fs = EEG.srate;
+if fs < 130, return; end
+X = double(EEG.data(:, :));
+n = min(size(X, 2), round(60 * fs));
+X = X(:, 1:n); X = X - mean(X, 2);
+P = mean(abs(fft(X, [], 2)) .^ 2, 1);
+f = (0:n-1) * fs / n;
+ratio = [0 0];
+cand = [50 60];
+for k = 1:2
+    pk = abs(f - cand(k)) <= 0.5;
+    nb = abs(f - cand(k)) > 2 & abs(f - cand(k)) <= 6;
+    if any(pk) && any(nb), ratio(k) = max(P(pk)) / median(P(nb)); end
+end
+[r, k] = max(ratio);
+if r >= 5, f0 = cand(k); end
 end
 
 function ica = icaState(EEG)

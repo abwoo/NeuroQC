@@ -32,11 +32,11 @@ classdef Catalog
             switch type
                 case 'resample'
                     d.label = 'Resample'; d.dialog = 'pop_resample';
-                    d.params = P('fs', 250, {}, false, 'new sampling rate (Hz), downsampling only');
+                    d.params = P('fs', [], {}, false, 'new sampling rate (Hz), downsampling only; required (no default)');
                     d.probe = true;
                 case 'linenoise'
                     d.label = 'Line-noise notch (FIR band-stop)'; d.dialog = 'pop_eegfiltnew';
-                    d.params = [P('freq', 50, {}, false, 'line frequency (Hz)'), ...
+                    d.params = [P('freq', 'auto', {}, false, 'line frequency (Hz); ''auto'' = 50 or 60 Hz detected from the dataset''s spectrum'), ...
                         P('halfwidth', 2, {}, false, 'stop band = freq +/- halfwidth (Hz)')];
                     d.probe = true;
                 case 'highpass'
@@ -186,9 +186,13 @@ function reason = invalidValue(type, p)
 reason = '';
 pos = @(f) isfield(p, f) && ~(isnumeric(p.(f)) && isscalar(p.(f)) && isfinite(p.(f)) && p.(f) > 0);
 switch type
-    case 'resample', if pos('fs'), reason = 'resample fs must be a positive number'; end
+    case 'resample'
+        if ~isfield(p, 'fs') || isempty(p.fs), reason = 'resample needs the new rate fs (no default; set it, e.g. from the EEGLAB dialog)';
+        elseif pos('fs'), reason = 'resample fs must be a positive number'; end
     case {'highpass','lowpass'}, if pos('cutoff'), reason = sprintf('%s cutoff must be a positive number (Hz)', type); end
-    case 'linenoise', if pos('freq') || pos('halfwidth'), reason = 'linenoise freq and halfwidth must be positive numbers (Hz)'; end
+    case 'linenoise'
+        if isfield(p, 'freq') && ischar(p.freq), reason = 'no clear 50/60 Hz line noise in this dataset; set linenoise freq';
+        elseif pos('freq') || pos('halfwidth'), reason = 'linenoise freq and halfwidth must be positive numbers (Hz)'; end
     case 'asr', if pos('cutoff'), reason = 'asr cutoff must be a positive number (SD)'; end
     case 'badchannels', if pos('threshold'), reason = 'badchannels threshold must be a positive number'; end
     case 'reject_threshold', if pos('uv'), reason = 'reject_threshold uv must be a positive number'; end

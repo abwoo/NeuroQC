@@ -51,6 +51,12 @@ dataset and never modifies it during a search. Each candidate runs on its own co
   `pop_rmbase` (ms converted to s); the ROI from EEGLAB's channel selection. *View ERP* opens
   `pop_timtopo`, *Chan. locations…* opens `pop_chanedit`. The text fields stay editable and show
   the trials per condition under the rule.
+- **Nothing is prefilled for a particular study.** Conditions, epoch and components start empty.
+  Defaults that are used are stated and come from conventions or from the data: an empty baseline
+  is the pre-stimulus interval [epoch start, 0]; an empty epoch on epoched data is the data's own
+  epochs; the line-noise frequency (50/60 Hz) and the data unit (uV/V) are judged from the
+  recording; resampling has no default rate. Constraint limits and the catalog's search lists are
+  general starting values, shown in the panel and editable.
 - **Plan.** Add steps in the order they should run. The *effective* column shows every parameter as
   it will run, including the defaults that will be searched. Values come from the step's EEGLAB
   dialog: *Values from EEGLAB dialog…* adds each dialog's values to the step's search; *Fix via

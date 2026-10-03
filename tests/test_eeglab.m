@@ -102,6 +102,7 @@ function testPanelClearsResultsWhenThePlanChanges(tc)
 % could be adopted as if they belonged to the new plan.
 nqc_setBase(nqc_synth(struct('seconds', 90, 'nPerCond', 20)));
 app = neuroqc.gui.Panel();
+app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.TypeDrop.Value = 'highpass'; app.addStep();
 app.planEdited(struct('Indices', [1 3], 'NewData', 'cutoff = 0.1'));
@@ -144,6 +145,7 @@ function testPanelContractFromEeglabDialogs(tc)
 EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30, 'artifactTrials', 0));
 nqc_setBase(EEG);
 app = neuroqc.gui.Panel();
+app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.addCondition('target', {'11'});
 app.addCondition('standard', {'31'});
@@ -190,6 +192,7 @@ function testPanelCandidateConfigsSkipAndOrderRules(tc)
 % configurations from EEGLAB dialogs, "skip" as an option, order rules.
 nqc_setBase(nqc_synth(struct('seconds', 60, 'nPerCond', 10)));
 app = neuroqc.gui.Panel();
+app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.TypeDrop.Value = 'lowpass'; app.addStep();
 app.TypeDrop.Value = 'highpass'; app.addStep();
@@ -218,6 +221,7 @@ function testDialogArgumentsAreSearchedOneByOne(tc)
 % each argument appears in the per-parameter summary.
 nqc_setBase(nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0)));
 app = neuroqc.gui.Panel();
+app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
 app.addComponent('P3', [0.3 0.5], {'Pz', 'P3', 'P4'}, 'mean', 'positive');
@@ -285,6 +289,7 @@ verifyEqual(tc, v.cutoff, 15);
 % in the panel: each dialog adds its value to the catalog step's search
 nqc_setBase(EEG);
 app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 app.TypeDrop.Value = 'lowpass'; app.addStep(); app.PlanTable.Selection = [1 1];
 app.valuesFromDialog('EEG = pop_eegfiltnew(EEG, ''hicutoff'',30,''plotfreqz'',1);', EEG);
 verifyEqual(tc, app.Plan.Slots(1).alternatives{1}.params.cutoff, 30);
@@ -304,6 +309,7 @@ function testPanelOptionsResumeAndInspect(tc)
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
 nqc_setBase(EEG);
 app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
 app.addComponent('P3', [0.3 0.5], {'Pz', 'P3', 'P4'}, 'mean', 'positive');
 verifyEqual(tc, app.ObjectiveField.Items, {'composite', 'pareto', 'P3.mean'});
@@ -336,6 +342,7 @@ function testTrialTimeRangesFromEeglabSelection(tc)
 EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30));
 nqc_setBase(EEG);
 app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
 [~, com] = pop_select(EEG, 'time', [30 120]);          % what EEGLAB's data selection returns
 app.trialRuleFromTimeSelection(com, 120);
@@ -355,6 +362,7 @@ function testEveryPartShowsItsFullContent(tc)
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
 nqc_setBase(EEG);
 app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
 app.addComponent('P3', [0.3 0.5], {'Pz', 'P3', 'P4'}, 'mean', 'positive');
 app.TypeDrop.Value = 'highpass'; app.addStep();
@@ -380,6 +388,43 @@ verifyEqual(tc, char(g.Scrollable), 'on');                                      
 verifyEqual(tc, g.RowHeight{3}, 470);
 app.Fig.Position = [60 60 1380 860]; drawnow;
 verifyEqual(tc, char(g.Scrollable), 'off');
+end
+
+function testNothingIsPrefilledAndDefaultsComeFromTheData(tc)
+% A general tool: the analysis fields start empty (no example events,
+% channels or windows); defaults that are used come from the data or are
+% stated: baseline = pre-stimulus, epochs of epoched data, line frequency
+% and data unit from the recording.
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
+nqc_setBase(EEG);
+app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+verifyEmpty(tc, app.CondField.Value); verifyEmpty(tc, app.CompField.Value);
+verifyEmpty(tc, app.EpochField.Value); verifyEmpty(tc, app.BaseField.Value);
+verifyFalse(tc, any(contains({app.CondField.Placeholder, app.CompField.Placeholder}, {'11', '31', 'P3', 'Pz'})));
+app.EpochField.Value = '-0.3 0.8';
+[ep, bl] = app.windows();
+verifyEqual(tc, ep, [-0.3 0.8]); verifyEqual(tc, bl, [-0.3 0]);          % pre-stimulus baseline by default
+[~, Ep] = evalc('pop_epoch(EEG, {''11'', ''31''}, [-0.25 0.9])');
+nqc_setBase(Ep); app.refreshLive(true); app.EpochField.Value = '';
+[ep, bl] = app.windows();
+verifyEqual(tc, ep, [Ep.xmin Ep.xmax], 'AbsTol', 1e-9);                   % the data's own epochs
+verifyEqual(tc, bl, [Ep.xmin 0], 'AbsTol', 1e-9);
+verifyTrue(tc, contains(app.EpochField.Placeholder, 'the data''s epochs'));
+% line frequency and unit from the recording, not a fixed 50 Hz / uV
+s = neuroqc.live.DataState.fromEEG(EEG);
+verifyEqual(tc, s.lineFreq, 50); verifyEqual(tc, s.unitGuess, 'uV');
+E60 = EEG; t = (0:E60.pnts-1) / E60.srate;
+E60.data = E60.data - 4 * sin(2*pi*50*t) + 6 * sin(2*pi*60*t);            % a 60 Hz recording
+s = neuroqc.live.DataState.fromEEG(E60); verifyEqual(tc, s.lineFreq, 60);
+EV = EEG; EV.data = EV.data * 1e-6;
+s = neuroqc.live.DataState.fromEEG(EV); verifyEqual(tc, s.unitGuess, 'V');
+p = neuroqc.plan.Plan(); p = p.add('linenoise');
+leaves = p.enumerate(neuroqc.live.DataState.fromEEG(E60), nqc_contract());
+verifyEqual(tc, leaves(1).path{1}.params.freq, 60);
+EF = EEG; EF.data = EF.data - 4 * sin(2*pi*50*t);                          % no mains peak
+verifyError(tc, @() p.enumerate(neuroqc.live.DataState.fromEEG(EF), nqc_contract()), 'NeuroQC:NoLegalPipeline');
+q = neuroqc.plan.Plan(); q = q.add('resample');                            % no default target rate
+verifyError(tc, @() q.enumerate(s, nqc_contract()), 'NeuroQC:NoLegalPipeline');
 end
 
 function testCaptureReturnsCommandWithoutTouchingData(tc)
@@ -440,6 +485,7 @@ end
 function testPanelFollowsLiveDatasetAndRuns(tc)
 nqc_setBase(nqc_synth(struct('seconds', 120, 'nPerCond', 30)));
 app = neuroqc.gui.Panel();
+app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 verifyEqual(tc, size(app.HistTable.Data, 1), 1);
 % an EEGLAB operation on the live dataset (as a menu would do) appears in the panel

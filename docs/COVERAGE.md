@@ -19,7 +19,7 @@ Each item has four status columns:
 | Step | EEGLAB call | Impl. | Auto | Real | Signal check | Notes |
 |---|---|---|---|---|---|---|
 | `resample` | `pop_resample` | ✓ | ✓ | ✓ real data | probe | downsampling only |
-| `linenoise` | `pop_eegfiltnew` (revfilt) | ✓ | ✓ | ✓ | probe | FIR band-stop; CleanLine/Zapline only as native steps |
+| `linenoise` | `pop_eegfiltnew` (revfilt) | ✓ | ✓ | ✓ | probe | FIR band-stop at the mains frequency detected in the recording (50/60 Hz) unless set; CleanLine/Zapline only as native steps |
 | `highpass` | `pop_eegfiltnew` | ✓ | ✓ | ✓ real data | probe | |
 | `lowpass` | `pop_eegfiltnew` | ✓ | ✓ | ✓ real data | probe | |
 | `asr` | `pop_clean_rawdata` | ✓ | ✓ | ✓ | injection, decision-matched: the window-by-window reconstructions ASR chose on the real data are recorded and applied (`neuroqc.run.AsrRecord`, checked to reproduce EEGLAB's output exactly; otherwise re-run and flagged) | needs clean_rawdata; Euclidean ASR, burst correction only |
