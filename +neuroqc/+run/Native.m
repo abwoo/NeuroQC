@@ -49,7 +49,24 @@ classdef Native
             % workspace, wrapped exactly like an EEGLAB menu callback.
             [tryStr, catchStr] = neuroqc.run.Native.eeglabStrings(type);
             neuroqc.utils.log('EEGLAB on the current dataset: %s', call);
-            evalin('base', [tryStr call catchStr]);
+            evalin('base', 'NQC_COM__ = '''';');
+            evalin('base', [tryStr call ' NQC_COM__ = LASTCOM;' catchStr]);
+            com = strtrim(char(evalin('base', 'NQC_COM__')));
+            evalin('base', 'clear NQC_COM__');
+            if isempty(com), return; end
+            % EEGLAB's eegh skips a command identical to the previous session
+            % command (ALLCOM{1}), and then it is missing from EEG.history
+            % as well. The dataset history must list every operation.
+            EEG = evalin('base', 'EEG');
+            h = strtrim(char(EEG.history)); if size(h, 1) > 1, h = strtrim(h(end, :)); end
+            if ~endsWith(h, com)
+                EEG = eeg_hist(EEG, com);
+                assignin('base', 'NQC_EEG__', EEG);
+                evalin('base', ['EEG = NQC_EEG__; clear NQC_EEG__; ' ...
+                    '[ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG, CURRENTSET);']);
+                neuroqc.utils.log(['EEGLAB did not add "%s" to EEG.history (it repeats the previous ', ...
+                    'session command); NeuroQC added it.'], com);
+            end
         end
 
         function com = capture(type, EEG)

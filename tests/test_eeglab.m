@@ -52,6 +52,22 @@ global ALLCOM %#ok<GVMIS>
 verifyTrue(tc, any(contains(ALLCOM, 'pop_reref')));
 end
 
+function testRepeatedCommandStaysInDatasetHistory(tc)
+% EEGLAB's eegh skips a command equal to the previous session command; the
+% dataset history must still list it (applied twice -> listed twice).
+nqc_setBase(nqc_synth(struct('seconds', 60, 'nPerCond', 10)));
+evalin('base', 'DEBUG_EEGLAB_MENUS = 1;');
+cleanup = onCleanup(@() evalin('base', 'clear DEBUG_EEGLAB_MENUS')); %#ok<NASGU>
+EEG = evalin('base', 'EEG'); [~, com] = pop_reref(EEG, []);
+eegh(com);                                   % the previous session command is the same call
+neuroqc.run.Native.applyCall('[EEG, LASTCOM] = pop_reref(EEG, []);', 'reref');
+cur = evalin('base', 'EEG');
+verifyEqual(tc, numel(strfind(cur.history, 'pop_reref')), 1);
+neuroqc.run.Native.applyCall('[EEG, LASTCOM] = pop_reref(EEG, []);', 'reref');
+cur = evalin('base', 'EEG');
+verifyEqual(tc, numel(strfind(cur.history, 'pop_reref')), 2);
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');

@@ -308,7 +308,10 @@ classdef Executor
                 [EEG, coms] = runStep(in, EEG, ctx, result.options.verbose);
                 for q = 1:numel(coms)
                     fprintf('    %s\n', coms{q});
-                    if recordGlobal, EEG = eegh(coms{q}, EEG); else, EEG = eeg_hist(EEG, coms{q}); end
+                    % eeg_hist always appends; eegh(com, EEG) would skip a command equal to
+                    % the previous session command, losing it from the dataset history
+                    EEG = eeg_hist(EEG, coms{q});
+                    if recordGlobal, eegh(coms{q}); end
                 end
                 ctx = advance(in, ctx, [], struct(), coms, {}, 0);
             end

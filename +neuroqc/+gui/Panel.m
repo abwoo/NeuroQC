@@ -235,8 +235,13 @@ classdef Panel < handle
             k = obj.selected(); if isempty(k), return; end
             type = obj.Plan.Slots(k).alternatives{1}.type;
             try
+                before = neuroqc.live.Session.fingerprint(neuroqc.live.Session.current());
                 neuroqc.run.Native.applyNow(type);
                 obj.refreshLive(false);
+                if strcmp(before, neuroqc.live.Session.fingerprint(neuroqc.live.Session.current()))
+                    neuroqc.utils.log('Dialog cancelled or no change; the dataset is unchanged.');
+                    return;
+                end
                 choice = uiconfirm(obj.Fig, 'Remove this step from the plan now that it is applied?', 'NeuroQC', ...
                     'Options', {'Remove from plan', 'Keep'});
                 if strcmp(choice, 'Remove from plan'), obj.removeStep(); end
