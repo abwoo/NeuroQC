@@ -91,7 +91,8 @@ classdef Injection
 
         function r = compare(S, contract, truth, path)
             r = struct('source', 'injection', 'amplitudeError', NaN, 'latencyShiftMs', NaN, ...
-                'artifactPct', NaN, 'waveformCorr', NaN, 'topoCorr', NaN, 'chain', '', 'note', '');
+                'artifactPct', NaN, 'waveformCorr', NaN, 'topoCorr', NaN, 'chain', '', 'note', '', ...
+                'notApplicable', {{}});   % NaN in an applicable metric = check failed (Rank rejects it)
             Ew = expectedWeights(truth, {S.chanlocs.labels}, path);   % nch_leaf x nComp
             labs = lower({S.chanlocs.labels});
             if strcmp(truth.kind, 'spectral')
@@ -105,6 +106,7 @@ classdef Injection
                     tc(b) = safeCorr(amp, truth.A * abs(Ew(:, b)));
                 end
                 r.amplitudeError = max(errs); r.topoCorr = min(tc); r.latencyShiftMs = 0; r.artifactPct = 0;
+                r.notApplicable = {'waveformCorr'};   % a sinusoid has no waveform to compare
                 return;
             end
             if S.trials == 1

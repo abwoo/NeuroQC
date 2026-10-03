@@ -64,6 +64,72 @@ verifyLessThan(tc, fa / sims, 0.06);
 verifyGreaterThan(tc, hit / sims, 0.8);
 end
 
+function testManyCandidatesKeepTheFamilywiseErrorBounded(tc)
+% 24 candidates with the same true noise: the share of searches in which
+% ANY of them is declared worse must stay near 5%. Per-comparison
+% intervals against the selected best (adjust = 'none') fail this badly
+% (audit: 87/100 searches), the default simultaneous procedure must not.
+rs = RandStream('mt19937ar', 'Seed', 12);
+K = 24; sims = 80; o = neuroqc.eval.Rank.defaults(); o.nBoot = 600;
+for N = [30 100]
+    ref = nqc_ref(N);
+    fwer = 0; fwerNone = 0; frac = 0;
+    for k = 1:sims
+        common = randn(rs, N, 1);
+        cs = arrayfun(@(j) nqc_cand(common + randn(rs, N, 1)), 1:K);
+        R = neuroqc.eval.Rank.run(cs, ref, o);
+        fwer = fwer + any(~R.table.notDistinguished); frac = frac + mean(~R.table.notDistinguished);
+        oN = o; oN.adjust = 'none';
+        R = neuroqc.eval.Rank.run(cs, ref, oN);
+        fwerNone = fwerNone + any(~R.table.notDistinguished);
+    end
+    fprintf('%d candidates, %d trials: any false "worse" %.3f (adjust none: %.3f), mean share %.4f\n', ...
+        K, N, fwer / sims, fwerNone / sims, frac / sims);
+    verifyLessThanOrEqual(tc, fwer / sims, 0.08);
+    verifyGreaterThan(tc, fwerNone / sims, 0.3);       % the problem the default avoids
+end
+end
+
+function testPowerDoesNotCollapseWithManyCandidates(tc)
+% A clearly noisier candidate (1.4x SD) among 23 equal ones must still
+% usually be declared worse.
+rs = RandStream('mt19937ar', 'Seed', 13);
+N = 100; sims = 40; ref = nqc_ref(N); o = neuroqc.eval.Rank.defaults(); o.nBoot = 600;
+hit = 0;
+for k = 1:sims
+    common = randn(rs, N, 1);
+    cs = arrayfun(@(j) nqc_cand(common + randn(rs, N, 1)), 1:23);
+    cs(24) = nqc_cand(common + 1.71 * randn(rs, N, 1));
+    R = neuroqc.eval.Rank.run(cs, ref, o);
+    hit = hit + ~R.table.notDistinguished(24);
+end
+fprintf('power with 24 candidates: %.3f\n', hit / sims);
+verifyGreaterThan(tc, hit / sims, 0.8);
+end
+
+function testMissingSignalCheckIsNotAPass(tc)
+% NaN in an applicable signal metric means the check failed or was not
+% computed; it must reject the candidate. A metric the check declares not
+% applicable is skipped. A candidate without any signal check is rejected.
+N = 40; ref = nqc_ref(N); x = randn(N, 1);
+o = neuroqc.eval.Rank.defaults(); o.nBoot = 100;
+ok = struct('source', 'injection', 'amplitudeError', 0.01, 'latencyShiftMs', 0, 'artifactPct', 0, ...
+    'waveformCorr', 0.99, 'topoCorr', 0.99, 'chain', '', 'notApplicable', {{}});
+nanAmp = ok; nanAmp.amplitudeError = NaN; nanAmp.waveformCorr = NaN;
+naTopo = ok; naTopo.topoCorr = NaN; naTopo.notApplicable = {'topoCorr'};
+cs = [nqc_cand(x, 'signal', ok) nqc_cand(x, 'signal', nanAmp) nqc_cand(x, 'signal', naTopo) nqc_cand(x)];
+cs(4).signal = [];
+R = neuroqc.eval.Rank.run(cs, ref, o);
+verifyEqual(tc, R.table.status, {'feasible'; 'rejected'; 'feasible'; 'rejected'});
+verifyTrue(tc, contains(R.table.reason{2}, 'amplitudeError not computed'));
+verifyTrue(tc, contains(R.table.reason{2}, 'waveformCorr not computed'));
+verifyTrue(tc, contains(R.table.reason{4}, 'signal check missing'));
+% a NaN retention / interpolation count is not a pass either
+c5 = nqc_cand(x); c5.interpolatedFraction = NaN;
+R = neuroqc.eval.Rank.run(c5, ref, o);
+verifyEqual(tc, R.table.status, {'rejected'});
+end
+
 function testEquivalenceNeedsAMarginAndEvidence(tc)
 % "Not distinguished" is not equivalence. With a margin, equivalence is
 % claimed when the 90% CI of the difference lies within it: often for
@@ -204,7 +270,7 @@ end
 function testBonferroniWidensIntervals(tc)
 rng(6); N = 60; ref = nqc_ref(N); base = randn(N, 1);
 cs = arrayfun(@(k) nqc_cand(base + 0.8 * randn(N, 1)), 1:6);
-o = neuroqc.eval.Rank.defaults(); o.nBoot = 2000;
+o = neuroqc.eval.Rank.defaults(); o.nBoot = 2000; o.adjust = 'none';
 R1 = neuroqc.eval.Rank.run(cs, ref, o);
 o.adjust = 'bonferroni';
 R2 = neuroqc.eval.Rank.run(cs, ref, o);

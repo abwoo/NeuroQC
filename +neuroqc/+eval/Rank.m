@@ -23,18 +23,28 @@ classdef Rank
     %        'pareto'     the non-dominated set over all objectives (point
     %                     estimates); no single winner unless it is unique
     %   4. Uncertainty: a paired bootstrap over trials (the same resampled
-    %      trials, by urevent, for every candidate). For each candidate the
-    %      (1-alpha) percentile interval of its difference from the best is
-    %      reported. If it reaches 0 the data do NOT DISTINGUISH the
-    %      candidate from the best - this is absence of evidence, not
-    %      equivalence. Equivalence is claimed only with an explicit margin
-    %      (opts.equivalenceMargin, objective units): the 90% interval of
-    %      the difference must lie inside +/- margin (two one-sided tests at
-    %      5%). probBest = share of bootstrap draws in which the candidate is
-    %      best (ranking uncertainty). Default alpha = 0.02, chosen by
-    %      simulation (see tests): post-selection false "worse" rate <= ~5%
-    %      for 20-100 trials per condition. opts.adjust = 'bonferroni'
-    %      divides alpha by the number of comparisons.
+    %      trials, by urevent, for every candidate). A candidate is "not
+    %      distinguished from the best" unless the data show it is worse
+    %      than some other candidate. Default (opts.adjust =
+    %      'simultaneous'): intervals for ALL pairwise differences are
+    %      simultaneous (bootstrap maximum over pairs), so the probability
+    %      that ANY candidate is wrongly declared worse stays bounded for
+    %      any number of candidates and after selecting the best. The
+    %      bootstrap is anti-conservative with few trials, so the default
+    %      alpha = 0.02 was chosen by simulation: probability of any false
+    %      "worse" <= 5% for 2-24 candidates, 20-100 trials per condition,
+    %      unequal condition sizes, independent or highly correlated
+    %      candidates (see test_statistics). diffLo/diffHi are these
+    %      simultaneous intervals of the difference from the best. If one
+    %      reaches 0 the data do NOT DISTINGUISH the candidate from the
+    %      best - absence of evidence, not equivalence. Equivalence is
+    %      claimed only with an explicit margin (opts.equivalenceMargin,
+    %      objective units): the 90% interval of the difference must lie
+    %      inside +/- margin (two one-sided tests at 5%). probBest = share
+    %      of bootstrap draws in which the candidate is best.
+    %      opts.adjust = 'none' (one percentile interval per comparison
+    %      with the selected best; NOT valid for many candidates) or
+    %      'bonferroni' (the same with alpha / number of comparisons).
     %   5. Among candidates the data do not distinguish from the best, the
     %      recommendation is the least aggressive: highest minimum trial
     %      retention, then smallest signal distortion, then best objective.
@@ -52,7 +62,7 @@ classdef Rank
                 'maxAmplitudeError', 0.10, 'maxLatencyShiftMs', 10, 'maxArtifactPct', 0.05, ...
                 'minWaveformCorr', 0.95, 'minTopoCorr', 0.90, ...
                 'objective', 'composite', 'nBoot', 2000, 'nBootPeakOuter', 200, 'nBootPeakInner', 100, ...
-                'nBootPeak', 1000, 'alpha', 0.02, 'adjust', 'none', 'equivalenceMargin', [], 'seed', 1, ...
+                'nBootPeak', 1000, 'alpha', 0.02, 'adjust', 'simultaneous', 'equivalenceMargin', [], 'seed', 1, ...
                 'externalQC', [], 'externalLimits', struct());
         end
 
@@ -82,18 +92,36 @@ classdef Rank
                 minRet(i) = min(m.retention); minKept(i) = min(m.kept);
                 interp(i) = c.interpolatedFraction;
                 sg = c.signal;
-                ampErr(i) = sg.amplitudeError; latSh(i) = sg.latencyShiftMs; artPct(i) = sg.artifactPct;
-                wCorr(i) = sg.waveformCorr; tCorr(i) = sg.topoCorr;
+                if ~isempty(sg)
+                    ampErr(i) = sg.amplitudeError; latSh(i) = sg.latencyShiftMs; artPct(i) = sg.artifactPct;
+                    wCorr(i) = sg.waveformCorr; tCorr(i) = sg.topoCorr;
+                end
                 resid(i) = m.artifactPct; blsd(i) = m.baselineSd;
                 why = {};
-                if minKept(i) < opts.minTrials, why{end+1} = sprintf('only %d trials in a condition (< %d)', minKept(i), opts.minTrials); end %#ok<AGROW>
-                if minRet(i) < opts.minRetention, why{end+1} = sprintf('retention %.0f%% (< %.0f%%)', 100*minRet(i), 100*opts.minRetention); end %#ok<AGROW>
-                if interp(i) > opts.maxInterpolated, why{end+1} = sprintf('%.0f%% channels interpolated (> %.0f%%)', 100*interp(i), 100*opts.maxInterpolated); end %#ok<AGROW>
-                if ampErr(i) > opts.maxAmplitudeError, why{end+1} = sprintf('%s: component amplitude changed by %.0f%%', sg.source, 100*ampErr(i)); end %#ok<AGROW>
-                if latSh(i) > opts.maxLatencyShiftMs, why{end+1} = sprintf('%s: peak latency shifted by %.0f ms', sg.source, latSh(i)); end %#ok<AGROW>
-                if artPct(i) > opts.maxArtifactPct, why{end+1} = sprintf('%s: artifactual deflection of %.0f%%', sg.source, 100*artPct(i)); end %#ok<AGROW>
-                if wCorr(i) < opts.minWaveformCorr, why{end+1} = sprintf('%s: recovered waveform r = %.2f', sg.source, wCorr(i)); end %#ok<AGROW>
-                if tCorr(i) < opts.minTopoCorr, why{end+1} = sprintf('%s: recovered topography r = %.2f', sg.source, tCorr(i)); end %#ok<AGROW>
+                % every comparison is written so that a missing value (NaN) fails it:
+                % a check that was not computed is never a pass
+                if ~(minKept(i) >= opts.minTrials), why{end+1} = sprintf('only %d trials in a condition (< %d)', minKept(i), opts.minTrials); end %#ok<AGROW>
+                if ~(minRet(i) >= opts.minRetention), why{end+1} = sprintf('retention %.0f%% (< %.0f%%)', 100*minRet(i), 100*opts.minRetention); end %#ok<AGROW>
+                if ~(interp(i) <= opts.maxInterpolated), why{end+1} = sprintf('%.0f%% channels interpolated (> %.0f%%)', 100*interp(i), 100*opts.maxInterpolated); end %#ok<AGROW>
+                if isempty(sg)
+                    why{end+1} = 'signal check missing'; %#ok<AGROW>
+                else
+                    na = {}; if isfield(sg, 'notApplicable'), na = cellstr(sg.notApplicable); end
+                    lim = {'amplitudeError', opts.maxAmplitudeError, 1, 'component amplitude changed by %.0f%%', 100; ...
+                        'latencyShiftMs', opts.maxLatencyShiftMs, 1, 'peak latency shifted by %.0f ms', 1; ...
+                        'artifactPct', opts.maxArtifactPct, 1, 'artifactual deflection of %.0f%%', 100; ...
+                        'waveformCorr', opts.minWaveformCorr, -1, 'recovered waveform r = %.2f', 1; ...
+                        'topoCorr', opts.minTopoCorr, -1, 'recovered topography r = %.2f', 1};
+                    for q = 1:size(lim, 1)
+                        if any(strcmp(lim{q, 1}, na)), continue; end
+                        v = sg.(lim{q, 1});
+                        if ~isfinite(v)
+                            why{end+1} = sprintf('%s: %s not computed', sg.source, lim{q, 1}); %#ok<AGROW>
+                        elseif ~(lim{q, 3} * v <= lim{q, 3} * lim{q, 2})
+                            why{end+1} = sprintf(['%s: ' lim{q, 4}], sg.source, lim{q, 5} * v); %#ok<AGROW>
+                        end
+                    end
+                end
                 for f = fieldnames(opts.externalLimits)'
                     lim = opts.externalLimits.(f{1}); v = ext.(f{1})(i);
                     if ~(v >= lim(1) && v <= lim(2)), why{end+1} = sprintf('external %s = %g outside [%g %g]', f{1}, v, lim); end %#ok<AGROW>
@@ -128,21 +156,16 @@ classdef Rank
                 for q = 1:numel(objNames)
                     pts = arrayfun(@(i) primaryPoint(cands(feas(i)).m, objNames{q}, ref), S);
                     [~, ib] = min(pts); bq = S(ib);
-                    keepS = false(size(S));
-                    for k = 1:numel(S)
-                        d = boot{q}(S(k), :) - boot{q}(bq, :); d = d(isfinite(d));
-                        if isempty(d), continue; end
-                        l = pct(d, 100 * alphaEff / 2); h = pct(d, 100 * (1 - alphaEff / 2));
-                        keepS(k) = l <= 0 || S(k) == bq;
-                        if q == 1
-                            lo(feas(S(k))) = l; hi(feas(S(k))) = h;
-                            if ~isempty(opts.equivalenceMargin)
-                                mrg = opts.equivalenceMargin;
-                                equiv(feas(S(k))) = pct(d, 5) >= -mrg && pct(d, 95) <= mrg;
+                    [keepS, l, h] = bestSet(pts(:), boot{q}(S, :), ib, alphaEff, opts.adjust);
+                    if q == 1
+                        lo(feas(S)) = l; hi(feas(S)) = h;
+                        if ~isempty(opts.equivalenceMargin)
+                            mrg = opts.equivalenceMargin;
+                            for k = 1:numel(S)
+                                d = boot{q}(S(k), :) - boot{q}(bq, :); d = d(isfinite(d));
+                                if ~isempty(d), equiv(feas(S(k))) = pct(d, 5) >= -mrg && pct(d, 95) <= mrg; end
                             end
                         end
-                    end
-                    if q == 1
                         notDist(feas(S(keepS))) = true;
                         Bm = boot{1}(S, :);
                         isMin = Bm <= min(Bm, [], 1) + 1e-12 * max(1, abs(min(Bm, [], 1)));
@@ -250,8 +273,9 @@ classdef Rank
                 neuroqc.utils.log('Ranking: Pareto set over objectives %s (point estimates).', strjoin(R.objective, ', '));
             else
                 neuroqc.utils.log(['Ranking by %s (lower SME = more precise measure). diff = difference from the best ', ...
-                    'with %.0f%% interval; "nd" = not distinguished from the best by these data (not equivalence).'], ...
-                    strjoin(R.objective, ' > '), 100 * (1 - o.alpha));
+                    'with %.0f%% interval (%s); "nd" = not distinguished from the best by these data (not equivalence).'], ...
+                    strjoin(R.objective, ' > '), 100 * (1 - o.alpha), ...
+                    ternary(strcmp(o.adjust, 'simultaneous'), 'simultaneous over all candidates', ['adjust = ' o.adjust]));
             end
             fprintf('   %-4s %-9s %9s %19s %3s %5s %6s %6s %6s %5s  %s\n', 'id', 'status', 'objective', 'diff vs best [CI]', 'nd', 'pBest', 'minRet', 'interp', 'ampErr', 'art', 'pipeline');
             for k = R.order(:)'
@@ -353,6 +377,48 @@ for v = setdiff(Q.Properties.VariableNames, {'key'})
     x = nan(numel(cands), 1); x(tf) = double(col(loc(tf)));
     ext.(matlab.lang.makeValidName(v{1})) = x;
 end
+end
+
+function [keep, lo, hi] = bestSet(pts, Bq, ib, alpha, adjust)
+% Which candidates the data do not show to be worse than another one.
+% pts: point objectives (K x 1); Bq: paired bootstrap replicates (K x B);
+% ib: index of the point-best. lo/hi: interval of each difference from
+% the best (0 for the best itself).
+K = numel(pts); keep = false(K, 1); lo = nan(K, 1); hi = nan(K, 1);
+keep(ib) = true;
+if ~strcmp(adjust, 'simultaneous')
+    % one percentile interval per comparison with the selected best
+    for k = 1:K
+        d = Bq(k, :) - Bq(ib, :); d = d(isfinite(d));
+        if isempty(d), continue; end
+        lo(k) = pct(d, 100 * alpha / 2); hi(k) = pct(d, 100 * (1 - alpha / 2));
+        keep(k) = keep(k) || lo(k) <= 0;
+    end
+    return;
+end
+% Simultaneous over ALL ordered pairs (bootstrap max statistic): with
+% probability ~>= 1-alpha no candidate is wrongly declared worse than any
+% other, however many candidates are compared and whichever one looks
+% best. This is what makes "not distinguished from the best" valid after
+% selecting the best among many. The statistic is the raw difference, not
+% a t-ratio: with few trials the per-pair bootstrap SD is itself noisy and
+% the maximum of t-ratios over many pairs is driven by the pairs whose SD
+% happens to be underestimated (simulation: 40% false "worse" at 30
+% trials and 24 candidates). Raw differences keep the error rate bounded
+% at the cost of power for pairs that differ little.
+B = size(Bq, 2); maxD = -inf(1, B);
+Dhat = pts - pts';                             % K x K: i minus j
+for i = 1:K
+    D = Bq(i, :) - Bq;                         % K x B: candidate i minus each j
+    D(~isfinite(D)) = NaN;
+    maxD = max(maxD, max(D - Dhat(i, :)', [], 1, 'omitnan'));
+end
+z = maxD(isfinite(maxD));
+if isempty(z), c = Inf; else, c = pct(z, 100 * (1 - alpha)); end
+worse = Dhat > c;
+keep = keep | ~any(worse, 2);
+lo = Dhat(:, ib) - c; hi = Dhat(:, ib) + c;
+lo(ib) = 0; hi(ib) = 0;
 end
 
 function v = pct(x, p)

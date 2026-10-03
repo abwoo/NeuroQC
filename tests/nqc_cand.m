@@ -25,7 +25,7 @@ m = struct('kept', kept, 'retention', kept ./ n, 'extraTrials', 0, 'objectives',
 sig = o.signal;
 if isempty(sig)
     sig = struct('source', 'test', 'amplitudeError', 0, 'latencyShiftMs', 0, 'artifactPct', 0, ...
-        'waveformCorr', 1, 'topoCorr', NaN, 'chain', '');
+        'waveformCorr', 1, 'topoCorr', NaN, 'chain', '', 'notApplicable', {{'topoCorr'}});
 end
 c = struct('id', 0, 'key', o.key, 'stratum', o.stratum, 'status', 'ok', 'message', '', 'm', m, 'signal', sig, ...
     'interpolatedFraction', 0, 'icsRemoved', 0, 'rejectedEpochs', 0, 'coms', {{}}, 'seconds', 0, 'unmatched', {{}});

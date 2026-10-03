@@ -26,7 +26,8 @@ classdef FilterProbe
     methods (Static)
         function r = run(path, srate, contract)
             r = struct('source', 'filter probe', 'amplitudeError', 0, 'latencyShiftMs', 0, ...
-                'artifactPct', 0, 'waveformCorr', 1, 'topoCorr', NaN, 'chain', '');
+                'artifactPct', 0, 'waveformCorr', 1, 'topoCorr', NaN, 'chain', '', ...
+                'notApplicable', {{'topoCorr'}});   % one probe channel: no topography
             steps = neuroqc.eval.FilterProbe.filterSteps(path);
             if isempty(steps), return; end
             r.chain = strjoin(cellfun(@(s) s.key, steps, 'UniformOutput', false), ' > ');
@@ -43,7 +44,7 @@ classdef FilterProbe
                     beta = X \ y(mid)';
                     errs(b) = abs(1 - norm(beta));
                 end
-                r.amplitudeError = max(errs); r.waveformCorr = NaN;
+                r.amplitudeError = max(errs); r.waveformCorr = NaN; r.notApplicable = {'topoCorr', 'waveformCorr'};
                 return;
             end
             pad = 60; % s of zeros on each side: longer than half of any FIR used here
