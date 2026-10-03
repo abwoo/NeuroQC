@@ -563,6 +563,25 @@ verifyEqual(tc, r.cands(1).status, 'failed');
 verifyTrue(tc, contains(r.cands(1).message, 'not in the dataset: EOGX'));
 end
 
+function testFixedEeglabCommandsAreDecisionMatched(tc)
+% A fixed EEGLAB transform re-run on the injected copy is the same
+% operation (not flagged); a data-driven one (pop_rejchan) is flagged.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+nqc_setBase(EEG);
+p = neuroqc.plan.Plan();
+p = p.addEeglab('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',30,''plotfreqz'',0);', 'filter');
+p = p.addNative('EEG = pop_reref(EEG, []);', 'ref');
+p = p.add('epoch'); p = p.add('baseline'); p = p.add('reject_threshold', 'uv', 150);
+r = neuroqc.NeuroQC.optimize(p, nqc_c());
+verifyEqual(tc, r.signalCheck, 'injection');
+verifyEmpty(tc, r.cands(1).unmatched);
+q = neuroqc.plan.Plan();
+q = q.addNative('EEG = pop_rejchan(EEG, ''elec'',[1:32],''threshold'',5,''norm'',''on'',''measure'',''kurt'');', 'bad');
+q = q.add('epoch'); q = q.add('baseline');
+r = neuroqc.NeuroQC.optimize(q, nqc_c());
+verifyEqual(tc, r.cands(1).unmatched, {'native'});
+end
+
 % ---------------------------------------------------------------- helpers
 function c = nqc_c()
 c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...

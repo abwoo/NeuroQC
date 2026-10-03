@@ -25,7 +25,7 @@ classdef Panel < handle
         ObjectiveField
         Options = struct('dataUnit', 'uV', 'checkpoint', '', 'searchMode', 'exhaustive', 'sampleSize', 100, ...
             'parallel', false, 'externalQC', [])
-        ResultTable; StatusLabel
+        ResultTable; StatusLabel; DetailArea
     end
 
     methods
@@ -50,6 +50,10 @@ classdef Panel < handle
                 'Position', [60 60 1380 860], 'CloseRequestFcn', @(~, ~) obj.delete());
             g = uigridlayout(obj.Fig, [3 2]);
             g.RowHeight = {80, 300, '1x'}; g.ColumnWidth = {'1x', '1.25x'};   % contract and results get the remaining height
+            % below the size every part needs, keep their sizes and scroll
+            obj.Fig.AutoResizeChildren = 'off';   % the grid resizes itself; this lets SizeChangedFcn run
+            obj.Fig.SizeChangedFcn = @(f, ~) fitLayout(g, f.Position);
+            fitLayout(g, obj.Fig.Position);
 
             top = uigridlayout(g, [1 2]); top.Layout.Column = [1 2]; top.ColumnWidth = {'1x', '1x'}; top.Padding = [0 0 0 0];
             obj.DatasetLabel = uilabel(top, 'Text', 'No dataset', 'FontName', 'Courier', 'VerticalAlignment', 'top', 'WordWrap', 'on');
@@ -59,15 +63,16 @@ classdef Panel < handle
             hp = uipanel(g, 'Title', 'EEG.history of the current dataset (live)'); hp.Layout.Row = 2; hp.Layout.Column = 1;
             hg = uigridlayout(hp, [1 1]);
             obj.HistTable = uitable(hg, 'ColumnName', {'line','kind','step','statement'}, ...
-                'ColumnWidth', {40, 60, 95, 'auto'}, 'RowName', {});
+                'ColumnWidth', {40, 60, 95, 'auto'}, 'RowName', {}, ...
+                'SelectionChangedFcn', @(t, ~) obj.showDetails('history', t));
 
             % plan (right, row 2)
             pp = uipanel(g, 'Title', 'Plan: steps after the current dataset (fixed = one value, search = {list})');
             pp.Layout.Row = 2; pp.Layout.Column = 2;
             pg = uigridlayout(pp, [5 1]); pg.RowHeight = {'1x', 28, 28, 28, 20};
-            obj.PlanTable = uitable(pg, 'ColumnName', {'#','step','settings (editable)','pinned'}, ...
-                'ColumnEditable', [false false true true], 'ColumnWidth', {30, 110, 'auto', 55}, 'RowName', {}, ...
-                'CellEditCallback', @(~, e) obj.planEdited(e));
+            obj.PlanTable = uitable(pg, 'ColumnName', {'#','step','your settings (editable)','effective (searched or fixed)','pin'}, ...
+                'ColumnEditable', [false false true false true], 'ColumnWidth', {30, 110, '2x', '3x', 55}, 'RowName', {}, ...
+                'CellEditCallback', @(~, e) obj.planEdited(e), 'SelectionChangedFcn', @(t, ~) obj.showDetails('plan', t));
             b1 = uigridlayout(pg, [1 7]); b1.Padding = [0 0 0 0];
             obj.TypeDrop = uidropdown(b1, 'Items', neuroqc.plan.Catalog.types());
             uibutton(b1, 'Text', 'Add', 'ButtonPushedFcn', @(~, ~) obj.addStep());
@@ -182,9 +187,14 @@ classdef Panel < handle
             uibutton(ag, 'Text', 'Print script', 'ButtonPushedFcn', @(~, ~) obj.printScript());
             resP = uipanel(g, 'Title', 'Results (select a row, then Inspect / Adopt / Print script)');
             resP.Layout.Row = 3; resP.Layout.Column = 1;
-            obj.ResultTable = uitable(uigridlayout(resP, [1 1]), 'RowName', {}, 'ColumnName', ...
-                {'id','status','objective','diff CI','not distinguished','P(best)','min ret','interp','amp err','art','pipeline / reason'}, ...
-                'ColumnWidth', {35, 70, 65, 120, 45, 50, 55, 50, 55, 45, 'auto'});
+            rgl = uigridlayout(resP, [2 1]); rgl.RowHeight = {'1x', 96};
+            obj.ResultTable = uitable(rgl, 'RowName', {}, 'ColumnName', ...
+                {'id','status','objective','diff vs best','nd','P(best)','min ret.','interp.','amp. err.','artifact','pipeline / reason'}, ...
+                'ColumnWidth', {40, 70, 72, 128, 34, 62, 66, 60, 74, 66, 'auto'}, ...
+                'Tooltip', 'nd = not distinguished from the best by these data (not equivalence); * = recommended. Select a row for the full text below.', ...
+                'SelectionChangedFcn', @(t, ~) obj.showDetails('result', t));
+            obj.DetailArea = uitextarea(rgl, 'Editable', 'off', 'WordWrap', 'on', 'FontSize', 11, ...
+                'Value', {'Select a row of the history, the plan or the results to see its full content here.'});
             % any change to what the search depends on makes shown results stale
             settings = [{obj.CondField, obj.EpochField, obj.CompField, obj.BaseField, obj.ObjectiveField}, ...
                 struct2cell(obj.LimitFields)'];
@@ -222,6 +232,7 @@ classdef Panel < handle
             obj.HistTable.Data = [num2cell([h.line]') {h.kind}' {h.step}' {h.statement}'];
             ev = arrayfun(@(k) sprintf('%s (%d)', s.eventTypes{k}, s.eventCounts(k)), 1:numel(s.eventTypes), 'UniformOutput', false);
             obj.EventsLabel.Text = ['Event types: ' strjoin(ev, ', ')];
+            obj.EventsLabel.Tooltip = obj.EventsLabel.Text;   % the full list, however long
             obj.updateSummary();
             if ~force, neuroqc.utils.log('Current EEGLAB dataset changed: %s (%d history entries).', s.setname, numel(h)); end
             if ~isempty(obj.Result) && ~strcmp(fp, obj.Result.rootFingerprint)
@@ -233,10 +244,11 @@ classdef Panel < handle
         % ------------------------------------------------------------- plan
         function showPlan(obj)
             S = obj.Plan.Slots;
-            data = cell(numel(S), 4);
+            data = cell(numel(S), 5);
+            ctxt = struct('epoch', obj.EpochField.Value, 'baseline', obj.BaseField.Value);
             for k = 1:numel(S)
                 data{k, 1} = k; data{k, 2} = S(k).id;
-                data{k, 3} = settingsText(S(k)); data{k, 4} = S(k).pinned;
+                data{k, 3} = userText(S(k)); data{k, 4} = settingsText(S(k), ctxt); data{k, 5} = S(k).pinned;
             end
             obj.PlanTable.Data = data;
             obj.OrderDrop.Value = obj.Plan.OrderMode;
@@ -291,7 +303,7 @@ classdef Panel < handle
         function planEdited(obj, e)
             k = e.Indices(1);
             try
-                if e.Indices(2) == 4
+                if e.Indices(2) == 5
                     obj.Plan.Slots(k).pinned = logical(e.NewData);
                 else
                     slot = obj.Plan.Slots(k);
@@ -1048,10 +1060,51 @@ classdef Panel < handle
                 id = sprintf('%d', k); if any(recs == k), id = [id '*']; end
                 txt = r.labels{k}; if ~isempty(T.reason{k}), txt = [T.reason{k} ' | ' txt]; end
                 if ~isempty(T.stratum{k}), txt = ['[' T.stratum{k} '] ' txt]; end
-                data(end+1, :) = {id, T.status{k}, T.objective(k), ci, T.notDistinguished(k), T.probBest(k), ...
-                    T.minRetention(k), T.interpolated(k), T.ampError(k), T.artifactPct(k), txt}; %#ok<AGROW>
+                data(end+1, :) = {id, T.status{k}, num(T.objective(k), '%.4g'), ci, T.notDistinguished(k), num(T.probBest(k), '%.3f'), ...
+                    pctText(T.minRetention(k)), pctText(T.interpolated(k)), pctText(T.ampError(k)), pctText(T.artifactPct(k)), txt}; %#ok<AGROW>
             end
             obj.ResultTable.Data = data;
+        end
+
+        function showDetails(obj, kind, t)
+            % The full content of the selected row, wrapped, whatever the
+            % column widths.
+            sel = t.Selection;
+            if isempty(sel) || isempty(t.Data), return; end
+            r = sel(1, 1);
+            try
+                switch kind
+                    case 'history'
+                        h = t.Data(r, :);
+                        v = {sprintf('EEG.history line %d (%s, %s):', h{1}, h{2}, orDash(h{3})), h{4}};
+                    case 'plan'
+                        slot = obj.Plan.Slots(r);
+                        v = {sprintf('Step %d: %s', r, slot.id), ['Your settings: ' orDash(userText(slot))], ...
+                            ['Effective: ' settingsText(slot, struct('epoch', obj.EpochField.Value, 'baseline', obj.BaseField.Value))]};
+                        for a = 1:numel(slot.alternatives)
+                            alt = slot.alternatives{a};
+                            if strcmp(alt.type, 'native'), v = [v {'EEGLAB command(s):'} neuroqc.run.Native.statements(alt.params.command)]; end %#ok<AGROW>
+                        end
+                    case 'result'
+                        k = str2double(strrep(t.Data{r, 1}, '*', ''));
+                        T = obj.Result.ranking.table;
+                        v = {sprintf('Candidate %d (%s)%s', k, T.status{k}, ternary(endsWith(t.Data{r, 1}, '*'), ', recommended', '')), ...
+                            ['Pipeline: ' obj.Result.labels{k}]};
+                        if ~isempty(T.reason{k}), v{end+1} = ['Reason: ' T.reason{k}]; end
+                        if ~isempty(T.stratum{k}), v{end+1} = ['Stratum (what is measured): ' T.stratum{k}]; end
+                        v{end+1} = sprintf(['Objective %.4g; difference from the best [%.3g %.3g]; not distinguished %d; P(best) %.3f; ', ...
+                            'min retention %s; min trials %g; interpolated %s; amplitude error %s; latency shift %.3g ms; ', ...
+                            'artifactual deflection %s; waveform r %.3f; topography r %.3f'], T.objective(k), T.diffLo(k), T.diffHi(k), ...
+                            T.notDistinguished(k), T.probBest(k), pctText(T.minRetention(k)), T.minTrials(k), pctText(T.interpolated(k)), ...
+                            pctText(T.ampError(k)), T.latencyShiftMs(k), pctText(T.artifactPct(k)), T.waveformCorr(k), T.topoCorr(k));
+                        c = obj.Result.cands(k);
+                        if ~isempty(c.unmatched), v{end+1} = ['Signal check not decision-matched for: ' strjoin(c.unmatched, ', ')]; end
+                        v = [v {'EEGLAB commands:'} c.coms(:)'];
+                end
+                obj.DetailArea.Value = v(:);
+            catch ME
+                obj.DetailArea.Value = {ME.message};
+            end
         end
 
         function k = selectedResult(obj)
@@ -1158,6 +1211,21 @@ switch r.mode
 end
 end
 
+function fitLayout(g, pos)
+% Every part keeps the size it needs; below that the window scrolls.
+if pos(4) < 840, g.RowHeight = {80, 300, 470}; else, g.RowHeight = {80, 300, '1x'}; end
+if pos(3) < 1300, g.ColumnWidth = {560, 720}; else, g.ColumnWidth = {'1x', '1.25x'}; end
+g.Scrollable = matlab.lang.OnOffSwitchState(pos(4) < 840 || pos(3) < 1300);
+end
+
+function t = num(v, f)
+if isfinite(v), t = sprintf(f, v); else, t = '-'; end
+end
+
+function t = pctText(v)
+if isfinite(v), t = sprintf('%.1f%%', 100 * v); else, t = '-'; end
+end
+
 function t = qcText(q)
 if isempty(q), t = ''; elseif ischar(q) || isstring(q), t = char(q); else, t = sprintf('table (%d rows)', height(q)); end
 end
@@ -1166,7 +1234,19 @@ function t = orDash(t)
 if isempty(t), t = '-'; end
 end
 
-function t = settingsText(slot)
+function t = userText(slot)
+% what the user set (the editable column): explicit values only
+if numel(slot.alternatives) ~= 1 || any(strcmp(slot.alternatives{1}.type, {'native','eeglab','none'}))
+    t = '(see effective)'; return;
+end
+p = slot.alternatives{1}.params;
+f = fieldnames(p);
+t = strjoin(cellfun(@(n) sprintf('%s = %s', n, valText(p.(n))), f, 'UniformOutput', false), '; ');
+end
+
+function t = settingsText(slot, ctxt)
+% every parameter as it will run: given, default search or default
+if nargin < 2, ctxt = struct('epoch', '', 'baseline', ''); end
 parts = {};
 for a = 1:numel(slot.alternatives)
     alt = slot.alternatives{a};
@@ -1183,8 +1263,16 @@ for a = 1:numel(slot.alternatives)
         parts{end+1} = sprintf('EEGLAB %s: %s%s', alt.params.fn, strjoin(kv, '; '), tail); %#ok<AGROW>
         continue;
     end
-    f = fieldnames(alt.params);
-    kv = cellfun(@(n) sprintf('%s = %s', n, valText(alt.params.(n))), f, 'UniformOutput', false);
+    d = neuroqc.plan.Catalog.get(alt.type);
+    kv = {};
+    for q = d.params
+        if isfield(alt.params, q.name), kv{end+1} = sprintf('%s = %s', q.name, valText(alt.params.(q.name))); %#ok<AGROW>
+        elseif ~isempty(q.suggest), kv{end+1} = sprintf('%s = %s (default search)', q.name, valText(q.suggest)); %#ok<AGROW>
+        else, kv{end+1} = sprintf('%s = %s (default)', q.name, valText(q.default)); end %#ok<AGROW>
+    end
+    if strcmp(alt.type, 'epoch'), kv{end+1} = sprintf('window [%s] s, condition events (from the analysis contract)', ctxt.epoch); end %#ok<AGROW>
+    if strcmp(alt.type, 'baseline'), kv{end+1} = sprintf('[%s] s (from the analysis contract)', ctxt.baseline); end %#ok<AGROW>
+    if strcmp(alt.type, 'restore'), kv{end+1} = 'starting montage + channels removed before NeuroQC'; end %#ok<AGROW>
     if numel(slot.alternatives) > 1, parts{end+1} = sprintf('%s(%s)', alt.type, strjoin(kv, '; ')); %#ok<AGROW>
     else, parts{end+1} = strjoin(kv, '; '); end %#ok<AGROW>
 end

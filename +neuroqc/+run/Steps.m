@@ -159,8 +159,10 @@ classdef Steps
                             if strcmp(d.kind, 'comps') && ~isempty(d.idx), EEG = pop_subcomp(EEG, d.idx, 0); end
                         end
                     else
-                        matched = false;
+                        % re-run; that is the same operation when every
+                        % statement is a fixed transform (no data-driven choice)
                         EEG = neuroqc.run.Steps.run(inst, EEG, ctx);
+                        matched = all(cellfun(@isFixedTransform, neuroqc.run.Native.statements(inst.params.command)));
                     end
                 case 'asr'
                     if isfield(info, 'asr') && ~isempty(info.asr)
@@ -351,6 +353,16 @@ end
 
 function EEG = evalWithEEG(EEG, NEUROQC_CMD__)
 eval(NEUROQC_CMD__);
+end
+
+function tf = isFixedTransform(stmt)
+% EEGLAB calls whose effect does not depend on the data values (filters,
+% resampling, re-referencing, baseline, epoching, channel selection or
+% interpolation by explicit lists): re-running them on another dataset
+% applies exactly the same operation.
+e = neuroqc.live.History.classify(stmt);
+tf = any(strcmp(e.fn, {'pop_eegfiltnew','pop_firws','pop_resample','pop_reref','pop_rmbase', ...
+    'pop_epoch','pop_select','pop_interp'}));
 end
 
 function L = presentChannels(EEG, wanted, what)

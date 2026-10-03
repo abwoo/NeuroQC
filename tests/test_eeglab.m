@@ -201,8 +201,8 @@ app.addCandidateConfig('EEG = pop_eegfiltnew(EEG, ''hicutoff'',40,''filtorder'',
 verifyEqual(tc, numel(app.Plan.Slots(1).alternatives), 2);
 app.toggleSkip();
 verifyEqual(tc, numel(app.Plan.Slots(1).alternatives), 3);
-verifyTrue(tc, contains(app.PlanTable.Data{1, 3}, 'none (skip)'));
-verifyTrue(tc, contains(app.PlanTable.Data{1, 3}, 'EEGLAB pop_eegfiltnew: hicutoff = 30'));
+verifyTrue(tc, contains(app.PlanTable.Data{1, 4}, 'none (skip)'));
+verifyTrue(tc, contains(app.PlanTable.Data{1, 4}, 'EEGLAB pop_eegfiltnew: hicutoff = 30'));
 app.PlanTable.Selection = [2 1];
 app.mustBefore('lowpass_native');
 verifyEqual(tc, app.Plan.Precedence, {'highpass', 'lowpass_native'});
@@ -232,7 +232,7 @@ verifyEqual(tc, numel(alt), 1);                                    % one step, s
 A = alt{1}.params.args;
 verifyEqual(tc, A(strcmp({A.name}, 'hicutoff')).values, {30, 40});
 verifyEqual(tc, A(strcmp({A.name}, 'locutoff')).values, {0.1, 0.3});
-verifyTrue(tc, contains(app.PlanTable.Data{1, 3}, '[4 combinations]'));
+verifyTrue(tc, contains(app.PlanTable.Data{1, 4}, '[4 combinations]'));
 app.editParams('hicutoff', {30, 40, 45});                          % the editor's effect
 app.run(false);
 r = app.Result;
@@ -347,6 +347,39 @@ verifyTrue(tc, contains(app.TrialLabel.Text, 'pop_select'));
 lat = ([EEG.event.latency] - 1) / EEG.srate;
 n = sum(strcmp({EEG.event.type}, '11') & ((lat >= 30 & lat < 100) | (lat >= 110 & lat < 120)));
 verifyTrue(tc, contains(app.SummaryLabel.Text, sprintf('target %d of 30', n)));
+end
+
+function testEveryPartShowsItsFullContent(tc)
+% Effective values (also the defaults that will be searched), the full
+% text of any selected row, and a usable layout at a small window size.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+nqc_setBase(EEG);
+app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
+app.addComponent('P3', [0.3 0.5], {'Pz', 'P3', 'P4'}, 'mean', 'positive');
+app.TypeDrop.Value = 'highpass'; app.addStep();
+app.TypeDrop.Value = 'epoch'; app.addStep(); app.TypeDrop.Value = 'baseline'; app.addStep();
+verifyEqual(tc, app.PlanTable.Data{1, 3}, '');                                    % nothing typed
+verifyTrue(tc, contains(app.PlanTable.Data{1, 4}, 'cutoff = {0.1, 0.3, 0.5, 1} (default search)'));
+verifyTrue(tc, contains(app.PlanTable.Data{2, 4}, '[-0.2 1] s'));
+verifyTrue(tc, contains(app.PlanTable.Data{3, 4}, 'from the analysis contract'));
+app.PlanTable.Selection = [1 1]; app.showDetails('plan', app.PlanTable);
+verifyTrue(tc, any(contains(app.DetailArea.Value, 'Effective: cutoff = {0.1, 0.3, 0.5, 1} (default search)')));
+app.run(false);
+T = app.ResultTable.Data;
+verifyTrue(tc, all(endsWith(T(:, 7), '%')));                                       % retention as percent text
+app.ResultTable.Selection = [1 1]; app.showDetails('result', app.ResultTable);
+k = str2double(strrep(T{1, 1}, '*', ''));
+verifyTrue(tc, any(contains(app.DetailArea.Value, app.Result.labels{k})));         % full pipeline
+verifyTrue(tc, any(contains(app.DetailArea.Value, 'pop_eegfiltnew')));             % full commands
+app.HistTable.Selection = [1 1]; app.showDetails('history', app.HistTable);
+verifyTrue(tc, any(contains(app.DetailArea.Value, 'pop_loadset')));
+app.Fig.Position = [60 60 1000 640]; drawnow;
+g = app.Fig.Children(1);
+verifyEqual(tc, char(g.Scrollable), 'on');                                         % parts keep their size, window scrolls
+verifyEqual(tc, g.RowHeight{3}, 470);
+app.Fig.Position = [60 60 1380 860]; drawnow;
+verifyEqual(tc, char(g.Scrollable), 'off');
 end
 
 function testCaptureReturnsCommandWithoutTouchingData(tc)
