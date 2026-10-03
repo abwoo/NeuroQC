@@ -143,12 +143,17 @@ Options are listed in `help neuroqc.run.Executor` (search) and `help neuroqc.eva
    - Objectives: `'composite'` (only when every measure has the same unit), a priority list, or
      `'pareto'`.
    - A paired bootstrap over trials, matched by `urevent`, gives each candidate an interval for its
-     difference from the best.
+     difference from the best. The intervals are simultaneous over all candidate pairs, so the
+     chance that any candidate is wrongly called worse stays bounded however many candidates are
+     searched (simulated: <= 5% for 2-24 candidates and 20-100 trials per condition at the default
+     `alpha = 0.02`; with per-comparison intervals it was 88% for 24 candidates).
      - *Not distinguished* means the interval reaches zero. This is absence of evidence, not
        equivalence.
      - Equivalence is claimed only when you give `equivalenceMargin`.
-     - `probBest` shows the ranking uncertainty, and `adjust = 'bonferroni'` corrects for many
-       comparisons.
+     - `probBest` shows the ranking uncertainty. `adjust = 'none'` or `'bonferroni'` gives the
+       older per-comparison intervals.
+   - A signal-preservation metric that applies but could not be computed (NaN) rejects the
+     candidate; it is never treated as a pass.
    - Candidates that differ in measure-defining choices (the reference) are ranked in separate
      strata, never against each other.
    - The recommendation is the least aggressive candidate among those not distinguished from the
