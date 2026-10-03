@@ -1,6 +1,6 @@
 {
   "version": "0.7.0",
-  "test_count": 75,
+  "test_count": 76,
   "capture": {
     "dataset": "32 channels, 400 s, 90 target / 90 standard trials",
     "grid": "4 high-pass x 2 low-pass x 3 rejection thresholds",
@@ -39,5 +39,5 @@
     "docs/assets/tab8-qc-imported.png": 141031,
     "docs/assets/tab9-goal-reranked.png": 146131
   },
-  "generated_at": "2026-10-03T07:21:33Z"
+  "generated_at": "2026-10-03T07:29:06Z"
 }

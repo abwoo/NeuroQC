@@ -193,7 +193,7 @@ Synthetic 32-channel oddball with known P3, blinks and movement artifacts
 addpath(fullfile(pwd, 'tests')); results = run_all();
 ```
 
-The suite has 75 automated tests on synthetic data with known ground truth:
+The suite has 76 automated tests on synthetic data with known ground truth:
 
 - the history parser,
 - plan legality and enumeration (checked against brute force),
@@ -203,7 +203,7 @@ The suite has 75 automated tests on synthetic data with known ground truth:
 - end-to-end searches, including resume, parallel and spectral objectives,
 - EEGLAB and panel integration.
 
-All 75 automated tests pass in MATLAB R2026a with EEGLAB 2026.0.0. Two optional runs use your own
+All 76 automated tests pass in MATLAB R2026a with EEGLAB 2026.0.0. Two optional runs use your own
 data and are never committed:
 
 - `NEUROQC_REAL_SET` parses one of your datasets.
