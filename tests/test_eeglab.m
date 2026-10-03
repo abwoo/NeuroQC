@@ -434,6 +434,32 @@ q = neuroqc.plan.Plan(); q = q.add('resample');                            % no 
 verifyError(tc, @() q.enumerate(s, nqc_contract()), 'NeuroQC:NoLegalPipeline');
 end
 
+function testFieldsAreFilledFromTheDatasetItself(tc)
+% Epoched data say their epoch window, the events they are time-locked to
+% and (from EEG.history) the baseline already removed; empty fields take
+% them, typed fields are never overwritten, and an earlier automatic
+% value follows the dataset when it changes.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+[~, Ep] = evalc('pop_epoch(EEG, {''11'', ''31''}, [-0.25 0.9], ''epochinfo'', ''yes'')');
+[Ep, com] = pop_rmbase(Ep, [-250 0]); Ep = eegh(com, Ep);
+nqc_setBase(EEG);
+app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+verifyEmpty(tc, app.CondField.Value); verifyEmpty(tc, app.EpochField.Value);   % continuous: nothing to say
+nqc_setBase(Ep); app.refreshLive(false);
+verifyEqual(tc, app.CondField.Value, '11: 11; 31: 31');                         % time-locking events
+verifyEqual(tc, str2num(app.EpochField.Value), [Ep.xmin Ep.xmax], 'AbsTol', 1e-3); %#ok<ST2NM>
+verifyEqual(tc, str2num(app.BaseField.Value), [-0.25 0]); %#ok<ST2NM>         % from pop_rmbase in the history
+verifyTrue(tc, contains(app.DatasetLabel.Text, 'channel locations: yes'));
+app.CondField.Value = 'target: 11; standard: 31';                               % the user's grouping
+Ep2 = Ep; Ep2.setname = 'other'; Ep2 = pop_select(Ep2, 'trial', 1:20);
+nqc_setBase(Ep2); app.refreshLive(false);
+verifyEqual(tc, app.CondField.Value, 'target: 11; standard: 31');              % typed: kept
+verifyEqual(tc, str2num(app.EpochField.Value), [Ep2.xmin Ep2.xmax], 'AbsTol', 1e-3); %#ok<ST2NM>
+NL = EEG; NL.chanlocs = rmfield(NL.chanlocs, {'X', 'Y', 'Z'});
+nqc_setBase(NL); app.refreshLive(false);
+verifyTrue(tc, contains(app.DatasetLabel.Text, 'channel locations: NONE'));
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');

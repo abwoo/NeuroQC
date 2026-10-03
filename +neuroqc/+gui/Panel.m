@@ -20,6 +20,7 @@ classdef Panel < handle
         PlanTable; TypeDrop; OrderDrop; ConstraintLabel
         CondField; EpochField; BaseField; CompField; EventsLabel
         TrialRule = struct('mode', 'all')
+        AutoFilled = struct('CondField', '', 'EpochField', '', 'BaseField', '')   % what the data filled in
         TrialLabel; SummaryLabel
         LimitFields = struct()
         ObjectiveField
@@ -216,9 +217,11 @@ classdef Panel < handle
             if s.isEpoched, shape = sprintf('%d epochs [%g %g] s', s.trials, s.xmin, s.xmax);
             else, shape = sprintf('continuous %.1f s', s.pnts / s.srate); end
             stored = ''; if ~live.stored, stored = '  (base EEG not stored in ALLEEG)'; end
+            locs = 'channel locations: yes'; if ~s.hasLocations, locs = 'channel locations: NONE (no interpolation)'; end
             obj.DatasetLabel.Text = sprintf(['Set %s: %s%s\n%d ch | %g Hz | %s | %d events\n', ...
-                'Reference: %s | ICA: %s\nFilters: %s'], mat2str(live.currentSet), s.setname, stored, ...
-                s.nbchan, s.srate, shape, s.nEvents, s.reference, s.ica.summary, orDash(s.filters.text));
+                'Reference: %s | ICA: %s | %s\nFilters: %s'], mat2str(live.currentSet), s.setname, stored, ...
+                s.nbchan, s.srate, shape, s.nEvents, s.reference, s.ica.summary, locs, orDash(s.filters.text));
+            obj.autoFill(s);
             if isempty(s.warnings), obj.WarnArea.Value = {'No inconsistencies between data and history.'};
             else, obj.WarnArea.Value = s.warnings(:); end
             h = s.history;
@@ -236,6 +239,35 @@ classdef Panel < handle
             if ~isempty(obj.Result) && ~strcmp(fp, obj.Result.rootFingerprint)
                 obj.StatusLabel.Text = sprintf(['Shown results were computed on "%s", not on the current dataset; ', ...
                     'Adopt rebuilds from that starting copy. Run again for the current one.'], obj.Result.state.setname);
+            end
+        end
+
+        function autoFill(obj, s)
+            % What the dataset itself says, filled into fields that are
+            % empty (or still hold an earlier automatic value): the epochs
+            % of epoched data, the events they are time-locked to (one
+            % condition per type, to rename or group), the baseline of the
+            % last pop_rmbase. Never overwrites what the user typed.
+            v = struct('CondField', '', 'EpochField', '', 'BaseField', '');
+            if s.isEpoched
+                v.EpochField = sprintf('%g %g', round(1000 * s.xmin) / 1000, round(1000 * s.xmax) / 1000);
+                if ~isempty(s.lockingTypes)
+                    v.CondField = conditionsText([s.lockingTypes(:) cellfun(@(t) {t}, s.lockingTypes(:), 'UniformOutput', false)]);
+                end
+            end
+            if ~isempty(s.baselineMs), v.BaseField = sprintf('%g %g', s.baselineMs / 1000); end
+            filled = {};
+            for f = fieldnames(v)'
+                fld = obj.(f{1}); cur = strtrim(fld.Value);
+                if isempty(cur) || strcmp(cur, obj.AutoFilled.(f{1}))
+                    if ~strcmp(cur, v.(f{1})), fld.Value = v.(f{1}); if ~isempty(v.(f{1})), filled{end+1} = f{1}; end, end %#ok<AGROW>
+                    obj.AutoFilled.(f{1}) = v.(f{1});
+                end
+            end
+            if ~isempty(filled)
+                names = strrep(strrep(strrep(filled, 'CondField', 'conditions (time-locking events)'), 'EpochField', 'epoch'), 'BaseField', 'baseline');
+                neuroqc.utils.log('From the dataset: %s filled in (edit them if needed).', strjoin(names, ', '));
+                obj.invalidate('Settings changed'); obj.updateObjectives();
             end
         end
 

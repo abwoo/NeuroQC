@@ -33,12 +33,23 @@ classdef DataState
             s.restorableChannels = restorableIdx(EEG);   % indices into chaninfo.removedchans
             s.ica = icaState(EEG);
             s.lineFreq = lineFrequency(EEG);   % 50 or 60 Hz mains, from the data ([] if not clear)
+            s.hasLocations = isfield(EEG, 'chanlocs') && ~isempty(EEG.chanlocs) && isfield(EEG.chanlocs, 'X') && ...
+                all(arrayfun(@(c) ~isempty(c.X), EEG.chanlocs));
+            [s.lockingTypes, s.lockingCounts] = lockingEvents(EEG);   % event types at time 0 of the epochs
+            s.baselineMs = [];                 % window of the last pop_rmbase in the history, if any
             x = EEG.data(:, 1:min(EEG.pnts, round(10 * EEG.srate)), 1);
             s.unitGuess = 'uV';                % EEGLAB convention; 'V' when amplitudes are ~1e-6 smaller
             m = median(abs(double(x(:)))); if m > 0 && m < 1e-3, s.unitGuess = 'V'; end
             s.history = neuroqc.live.History.parse(fieldOr(EEG, 'history', ''));
             s.process = s.history(ismember({s.history.kind}, {'process'}));
             s.filters = filterSummary(s.history);
+            for q = numel(s.process):-1:1
+                if strcmp(s.process(q).step, 'epoch'), break; end
+                if strcmp(s.process(q).step, 'baseline') && isfield(s.process(q).params, 'windowMs') && ...
+                        numel(s.process(q).params.windowMs) == 2
+                    s.baselineMs = s.process(q).params.windowMs; break;
+                end
+            end
             s.warnings = {};
             s = checkConsistency(s, EEG);
             s.provenance = provenance(s, EEG);
@@ -132,6 +143,25 @@ for k = 1:numel(rc)
     ty = ''; if isfield(rc, 'type') && ~isempty(rc(k).type), ty = char(string(rc(k).type)); end
     if ~isempty(rc(k).X) && ~strcmpi(ty, 'FID'), idx(end+1) = k; end %#ok<AGROW>
 end
+end
+
+function [types, counts] = lockingEvents(EEG)
+% The event type at latency 0 of each epoch: the events the data were
+% epoched on (empty for continuous data).
+types = {}; counts = [];
+if EEG.trials <= 1 || ~isfield(EEG, 'epoch') || isempty(EEG.epoch), return; end
+lock = cell(1, numel(EEG.epoch));
+for k = 1:numel(EEG.epoch)
+    ep = EEG.epoch(k);
+    lat = ep.eventlatency; ty = ep.eventtype;
+    if ~iscell(lat), lat = num2cell(lat); end
+    if ischar(ty) || isstring(ty), ty = {char(ty)}; elseif ~iscell(ty), ty = num2cell(ty); end
+    z = find(cellfun(@(x) abs(double(x)) < 1000 / EEG.srate / 2 + 1e-6, lat), 1);
+    if ~isempty(z), lock{k} = strtrim(char(string(ty{z}))); end
+end
+lock = lock(~cellfun(@isempty, lock));
+[types, ~, ic] = unique(lock, 'stable');
+counts = accumarray(ic(:), 1)';
 end
 
 function f0 = lineFrequency(EEG)
