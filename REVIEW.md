@@ -90,8 +90,8 @@ why that is wrong:
 
 ### The 0.6 suite passes, but does not test validity
 
-All 252 tests of the 0.6 suite (`NeuroQC-gh-tests`) pass on `main`. They check the code against its
-own definitions. `tests/v06_reproductions.m` checks 0.6 against external criteria instead. Run it with
+All 252 tests of the 0.6 suite (`NeuroQC-gh-tests`) passed on the historical 0.6 revision `2dd5ef3`. They check the code against its
+own definitions. The [historical reproduction script](https://github.com/abwoo/NeuroQC/blob/8cf444c/tests/v06_reproductions.m) checks 0.6 against external criteria instead. Run it with
 the 0.6 package on the path. Every check except the informational R7 fails on 0.6, which is the
 reproduction:
 

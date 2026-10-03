@@ -20,24 +20,6 @@
     "version": "0.7.0",
     "capturedAt": "2026-10-03 15:21:24"
   },
-  "assets": {
-    "docs/assets/demo-drift.gif": 460377,
-    "docs/assets/demo-goal.gif": 637985,
-    "docs/assets/demo-qc.gif": 804185,
-    "docs/assets/demo.gif": 3560196,
-    "docs/assets/logo.svg": 1170,
-    "docs/assets/manual-vs-auto.gif": 249097,
-    "docs/assets/tab1-data.png": 119716,
-    "docs/assets/tab2-scope.png": 185554,
-    "docs/assets/tab3-params.png": 143852,
-    "docs/assets/tab3b-space.png": 82636,
-    "docs/assets/tab3c-preview.png": 145902,
-    "docs/assets/tab4-log.png": 205538,
-    "docs/assets/tab5-results-generated.png": 126042,
-    "docs/assets/tab6-results-evaluated.png": 144311,
-    "docs/assets/tab7-results-drift.png": 154289,
-    "docs/assets/tab8-qc-imported.png": 141031,
-    "docs/assets/tab9-goal-reranked.png": 146131
-  },
+  "assets": {},
   "generated_at": "2026-10-03T07:29:06Z"
 }

@@ -1,6 +1,6 @@
 # The 0.6 test suite and where its checks now live
 
-The 0.6 suite (`NeuroQC-gh-tests`, 252 tests, all passing on `main`) targets the 0.6 API: the
+The 0.6 suite (`NeuroQC-gh-tests`, 252 tests, all passing on historical revision `2dd5ef3`) targets the 0.6 API: the
 four-tab wizard, GoalRanker, recipes, receipts and the drift gate. Most of that API no longer exists,
 so the files cannot run against 0.7 unchanged. Each file is mapped below to one of four outcomes:
 
@@ -31,6 +31,6 @@ so the files cannot run against 0.7 unchanged. Each file is mapped below to one 
 | `test_userflow_repair` | wizard flows and session restore | Obsolete (wizard and session files). |
 | `test_wizard_display` | wizard layout | Obsolete (wizard). The panel is covered by `test_eeglab/testPanelFollowsLiveDatasetAndRuns`. |
 
-To run the 0.6 suite itself, check out `main` and run `run_all_tests` from `NeuroQC-gh-tests`.
-To run the reproductions of 0.6's defects, run `tests/v06_reproductions.m` with the 0.6 package
-on the path.
+To run the 0.6 suite itself, check out historical revision `2dd5ef3` and run `run_all_tests` from the separate `NeuroQC-gh-tests` checkout.
+The [0.6 defect reproduction script](https://github.com/abwoo/NeuroQC/blob/8cf444c/tests/v06_reproductions.m)
+is retained in Git history rather than the current test suite. Run that script with the 0.6 package on the path.
