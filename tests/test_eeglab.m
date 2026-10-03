@@ -332,6 +332,23 @@ delete(new(contains(get(new, 'Name'), 'candidate 2')));
 verifyEqual(tc, evalin('base', 'numel(ALLEEG)'), 1);              % inspecting stores nothing
 end
 
+function testTrialTimeRangesFromEeglabSelection(tc)
+EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30));
+nqc_setBase(EEG);
+app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
+[~, com] = pop_select(EEG, 'time', [30 120]);          % what EEGLAB's data selection returns
+app.trialRuleFromTimeSelection(com, 120);
+verifyEqual(tc, app.TrialRule.ranges, [30 120]);
+[~, com] = pop_select(EEG, 'notime', [0 30; 100 110]);  % removed ranges -> kept complement
+app.trialRuleFromTimeSelection(com, 120);
+verifyEqual(tc, app.TrialRule.ranges, [30 100; 110 120]);
+verifyTrue(tc, contains(app.TrialLabel.Text, 'pop_select'));
+lat = ([EEG.event.latency] - 1) / EEG.srate;
+n = sum(strcmp({EEG.event.type}, '11') & ((lat >= 30 & lat < 100) | (lat >= 110 & lat < 120)));
+verifyTrue(tc, contains(app.SummaryLabel.Text, sprintf('target %d of 30', n)));
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');

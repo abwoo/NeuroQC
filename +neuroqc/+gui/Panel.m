@@ -911,7 +911,7 @@ classdef Panel < handle
         end
 
         function chooseTrials(obj)
-            opts = {'All trials', 'Between a start and an end marker', 'Time ranges (s)', ...
+            opts = {'All trials', 'Between a start and an end marker', 'Time ranges (EEGLAB pop_select)', ...
                 'EEGLAB event selection (pop_selectevent)'};
             [k, ok] = listdlg('ListString', opts, 'SelectionMode', 'single', 'Name', 'Trials', 'ListSize', [300 90]);
             if ~ok, return; end
@@ -928,18 +928,30 @@ classdef Panel < handle
                     if isempty(b), return; end
                     obj.setTrialRule(struct('mode', 'marker_ranges', 'startCode', s.eventTypes{a}, 'endCode', s.eventTypes{b}));
                 case 3
-                    a = inputdlg('Time ranges in s, one per row as "start end" (Inf = end of recording):', ...
-                        'Trials', [4 50], {'0 Inf'});
-                    if isempty(a), return; end
-                    r = str2num(a{1}); %#ok<ST2NM>
-                    assert(size(r, 2) == 2 && all(r(:, 2) > r(:, 1)), 'NeuroQC:Contract', 'Each row: start end, with end > start.');
-                    obj.setTrialRule(struct('mode', 'time_ranges', 'ranges', r));
+                    assert(EEG.trials == 1, 'NeuroQC:Contract', 'Time ranges apply to continuous data.');
+                    com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_select(EEG);');
+                    if isempty(com), return; end
+                    obj.trialRuleFromTimeSelection(com, (EEG.pnts - 1) / EEG.srate);
                 case 4
                     if ~isfield(EEG, 'urevent') || isempty(EEG.urevent), [~, EEG] = evalc('eeg_checkset(EEG, ''makeur'')'); end
                     [com, sel] = neuroqc.run.Native.captureCall(EEG, '[EEG, ~, LASTCOM] = pop_selectevent(EEG);');
                     if isempty(com), return; end
                     obj.trialRuleFromSelection(sel, com);
             end
+        end
+
+        function trialRuleFromTimeSelection(obj, com, duration)
+            % Time ranges kept ('time') or removed ('notime') in EEGLAB's
+            % data selection dialog -> trials whose events fall inside.
+            a = neuroqc.run.Native.argsOf(com, 'pop_select');
+            k = find(cellfun(@(x) ischar(x) && any(strcmpi(x, {'time', 'notime', 'rmtime'})), a), 1);
+            assert(~isempty(k) && numel(a) > k, 'NeuroQC:Contract', 'The selection keeps or removes no time range: %s', com);
+            r = a{k + 1};
+            if ~strcmpi(a{k}, 'time')   % removed ranges -> the complement is kept
+                r = sortrows(r); edges = [0; reshape(r', [], 1); duration];
+                r = reshape(edges, 2, [])'; r = r(r(:, 2) > r(:, 1), :);
+            end
+            obj.setTrialRule(struct('mode', 'time_ranges', 'ranges', r, 'source', com));
         end
 
         function trialRuleFromSelection(obj, sel, com)
@@ -1136,7 +1148,9 @@ function t = trialText(r)
 switch r.mode
     case 'all', t = 'all trials';
     case 'marker_ranges', t = sprintf('between markers %s and %s', char(string(r.startCode)), char(string(r.endCode)));
-    case 'time_ranges', t = sprintf('time ranges %s s', mat2str(r.ranges));
+    case 'time_ranges'
+        t = sprintf('time ranges %s s', mat2str(r.ranges));
+        if isfield(r, 'source'), t = [t ' (' r.source ')']; end
     case 'urevents'
         t = sprintf('%d selected events', numel(r.ids));
         if isfield(r, 'source'), t = [t ' (' r.source ')']; end
