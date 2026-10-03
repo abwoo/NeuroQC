@@ -13,9 +13,11 @@ classdef Steps
     %   Applies the SAME decisions to another dataset with the same
     %   structure (used by neuroqc.eval.Injection to measure how a known
     %   signal is transferred by exactly the operations applied to the
-    %   real data). Steps whose output is not a fixed linear function of
-    %   their decisions (asr, native) are re-run instead and reported as
-    %   not decision-matched.
+    %   real data). ASR replays its recorded window-by-window
+    %   reconstructions (neuroqc.run.AsrRecord, verified against EEGLAB's
+    %   output); captured mark/remove workflows replay the epochs and
+    %   components they removed. Other native commands are re-run and
+    %   reported as not decision-matched.
 
     methods (Static)
         function [EEG, coms, info] = run(inst, EEG, ctx)
@@ -45,10 +47,13 @@ classdef Steps
                     coms = {com};
                 case 'asr'
                     assert(exist('pop_clean_rawdata', 'file') == 2, 'NeuroQC:Dependency', 'clean_rawdata plugin not installed');
+                    E0 = EEG;
                     [EEG, com] = pop_clean_rawdata(EEG, 'FlatlineCriterion', 'off', 'ChannelCriterion', 'off', ...
                         'LineNoiseCriterion', 'off', 'Highpass', 'off', 'BurstCriterion', p.cutoff, ...
-                        'WindowCriterion', 'off', 'BurstRejection', 'off', 'Distance', 'Euclidian');
+                        'WindowCriterion', 'off', 'BurstRejection', 'off', 'Distance', 'Euclidian', ...
+                        'MaxMem', neuroqc.run.AsrRecord.MaxMemMB);
                     coms = {com};
+                    info.asr = recordAsr(E0, EEG, p.cutoff);
                 case 'badchannels'
                     [EEG, coms, info] = neuroqc.run.Steps.badChannels(EEG, p);
                 case 'channels'
@@ -158,8 +163,13 @@ classdef Steps
                         EEG = neuroqc.run.Steps.run(inst, EEG, ctx);
                     end
                 case 'asr'
-                    matched = false;
-                    EEG = neuroqc.run.Steps.run(inst, EEG, ctx);
+                    if isfield(info, 'asr') && ~isempty(info.asr)
+                        % the windows and reconstructions ASR chose on the real data
+                        EEG.data = cast(neuroqc.run.AsrRecord.apply(info.asr, EEG.data), 'like', EEG.data);
+                    else
+                        matched = false;
+                        EEG = neuroqc.run.Steps.run(inst, EEG, ctx);
+                    end
                 otherwise
                     EEG = neuroqc.run.Steps.run(inst, EEG, ctx);
             end
@@ -359,6 +369,24 @@ if any(~here)
     neuroqc.utils.log('%s: %s already removed by an earlier step; nothing to exclude there.', what, strjoin(wanted(~here), ', '));
 end
 L = wanted(here);
+end
+
+function rec = recordAsr(E0, E1, cutoff)
+% ASR's decisions on these data, kept only if replaying them reproduces
+% EEGLAB's own output (otherwise the signal check re-runs ASR, flagged).
+rec = [];
+try
+    r = neuroqc.run.AsrRecord.record(E0, cutoff);
+    Y = neuroqc.run.AsrRecord.apply(r, E0.data);
+    err = max(abs(Y(:) - double(E1.data(:)))) / max(1, max(abs(double(E1.data(:)))));
+    if isequal(size(Y), size(E1.data)) && err < 1e-6
+        rec = r;
+    else
+        neuroqc.utils.log('ASR decisions not reproduced exactly (relative difference %.2g); the signal check re-runs ASR.', err);
+    end
+catch ME
+    neuroqc.utils.log('ASR decisions not recorded (%s); the signal check re-runs ASR.', ME.message);
+end
 end
 
 function v = fieldOr(s, f)

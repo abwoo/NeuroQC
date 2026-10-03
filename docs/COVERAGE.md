@@ -22,7 +22,7 @@ Each item has four status columns:
 | `linenoise` | `pop_eegfiltnew` (revfilt) | ✓ | ✓ | ✓ | probe | FIR band-stop; CleanLine/Zapline only as native steps |
 | `highpass` | `pop_eegfiltnew` | ✓ | ✓ | ✓ real data | probe | |
 | `lowpass` | `pop_eegfiltnew` | ✓ | ✓ | ✓ real data | probe | |
-| `asr` | `pop_clean_rawdata` | ✓ | ✓ | ✓ | injection, re-run (flagged) | needs clean_rawdata; not decision-matched |
+| `asr` | `pop_clean_rawdata` | ✓ | ✓ | ✓ | injection, decision-matched: the window-by-window reconstructions ASR chose on the real data are recorded and applied (`neuroqc.run.AsrRecord`, checked to reproduce EEGLAB's output exactly; otherwise re-run and flagged) | needs clean_rawdata; Euclidean ASR, burst correction only |
 | `badchannels` | `pop_rejchan` (+ `pop_interp`) | ✓ | ✓ | ✓ | injection, matched | |
 | `channels` | `pop_select` / `pop_interp` | ✓ | ✓ | ✓ real data | injection, matched | interpolation needs channel locations |
 | `restore` | `pop_interp` | ✓ | ✓ | ✓ | injection, matched | |

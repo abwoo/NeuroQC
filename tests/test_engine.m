@@ -240,17 +240,33 @@ verifyEqual(tc, r.signalCheck, 'injection');
 verifyEmpty(tc, [r.cands.unmatched]);          % every decision was replayed, none re-run
 end
 
-function testAsrRunsAndIsFlaggedAsNotDecisionMatched(tc)
+function testAsrDecisionsAreReplayedOnTheSignalCopy(tc)
+% ASR's window-by-window reconstructions on the real data are recorded
+% (verified against EEGLAB's own output) and applied to the injected copy:
+% decision-matched, like every other data-driven step.
 assumeTrue(tc, exist('pop_clean_rawdata', 'file') == 2, 'clean_rawdata plugin not installed');
 EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 20));
 nqc_setBase(EEG);
 p = neuroqc.plan.Plan();
-p = p.add('highpass', 'cutoff', 1); p = p.add('asr', 'cutoff', 20);
+p = p.add('highpass', 'cutoff', 1); p = p.add('asr', 'cutoff', {10, 20});
 p = p.add('epoch'); p = p.add('baseline');
 r = neuroqc.NeuroQC.optimize(p, nqc_c());
-verifyEqual(tc, r.cands(1).status, 'ok');
-verifyTrue(tc, any(contains(r.cands(1).coms, 'clean_rawdata')) || any(contains(r.cands(1).coms, 'clean_artifacts')));
-verifyEqual(tc, r.cands(1).unmatched, {'asr'});
+for k = 1:2
+    verifyEqual(tc, r.cands(k).status, 'ok');
+    verifyEmpty(tc, r.cands(k).unmatched);                     % decision-matched
+    verifyTrue(tc, any(contains(r.cands(k).coms, '''MaxMem'',64')));
+    verifyTrue(tc, isfinite(r.cands(k).signal.amplitudeError));
+end
+% the recorded decisions are ASR's: replaying them on the real data gives
+% exactly EEGLAB's output, and they are linear in the data
+[~, E] = evalc('pop_eegfiltnew(EEG, ''locutoff'', 1, ''plotfreqz'', 0)');
+[~, E1] = evalc('pop_clean_rawdata(E, ''FlatlineCriterion'',''off'',''ChannelCriterion'',''off'',''LineNoiseCriterion'',''off'',''Highpass'',''off'',''BurstCriterion'',10,''WindowCriterion'',''off'',''BurstRejection'',''off'',''Distance'',''Euclidian'',''MaxMem'',64)');
+rec = neuroqc.run.AsrRecord.record(E, 10);
+verifyEqual(tc, neuroqc.run.AsrRecord.apply(rec, E.data), double(E1.data), 'AbsTol', 1e-9);
+verifyGreaterThan(tc, sum(~[rec.updates.trivial]), 0);              % ASR did change windows
+A = randn(size(E.data)); B = randn(size(E.data));
+verifyEqual(tc, neuroqc.run.AsrRecord.apply(rec, A + 2 * B), ...
+    neuroqc.run.AsrRecord.apply(rec, A) + 2 * neuroqc.run.AsrRecord.apply(rec, B), 'AbsTol', 1e-8);
 end
 
 function testSpectralObjectiveEndToEnd(tc)

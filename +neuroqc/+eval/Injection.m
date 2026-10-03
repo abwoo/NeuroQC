@@ -28,8 +28,9 @@ classdef Injection
     %     waveformCorr    min correlation of recovered vs expected waveform
     %     topoCorr        min correlation of recovered vs expected topography
     %
-    %   Limits: ASR and native commands are re-run on the copy instead of
-    %   replayed (their output is not a fixed function of a decision); such
+    %   ASR applies the reconstructions it chose on the real data
+    %   (neuroqc.run.AsrRecord). Native commands other than mark/remove
+    %   workflows are re-run on the copy instead of replayed; such
     %   candidates carry a note. The expected re-referenced field uses the
     %   channels present WHEN each reference was applied (recorded on the
     %   copy by noteReference), so channels removed afterwards do not
