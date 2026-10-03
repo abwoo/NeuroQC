@@ -7,7 +7,7 @@ classdef Measure
     %   Every candidate is scored the same way. Data still continuous are
     %   epoched with the contract window; the contract baseline is removed
     %   (idempotent when the pipeline already did it). Then one objective is
-    %   computed per contract component (ERP) or band (spectral):
+    %   computed per contract component:
     %
     %     mean          trial score = mean amplitude over ROI and window;
     %                   precision = analytic SME = SD / sqrt(N)  (uV)
@@ -206,26 +206,18 @@ classdef Measure
                 T.maxAbs = T.maxAbs(:);
                 if ~isempty(bl), T.baselineSd = std(reshape(data(roiAll, bsel, :), 1, []), 'omitnan'); end
             end
-            if strcmp(contract.analysis, 'spectral')
-                for b = 1:numel(contract.bands)
-                    band = contract.bands(b);
-                    roi = roiIndex(band.roi, labels);
-                    [T.data{b}, T.times{b}] = bandScores(data(roi, :, :), EEG.srate, band.freq);
+            for j = 1:numel(contract.components)
+                comp = contract.components(j);
+                roi = roiIndex(comp.roi, labels);
+                w = times >= comp.window(1) - 1e-9 & times <= comp.window(2) + 1e-9;
+                wave = permute(mean(data(roi, w, :), 1), [3 2 1]);   % trials x samples
+                if size(wave, 2) ~= sum(w), wave = reshape(wave, [], sum(w)); end
+                if strcmp(comp.measure, 'mean')
+                    T.data{j} = mean(wave, 2);
+                else
+                    T.data{j} = wave;
                 end
-            else
-                for j = 1:numel(contract.components)
-                    comp = contract.components(j);
-                    roi = roiIndex(comp.roi, labels);
-                    w = times >= comp.window(1) - 1e-9 & times <= comp.window(2) + 1e-9;
-                    wave = permute(mean(data(roi, w, :), 1), [3 2 1]);   % trials x samples
-                    if size(wave, 2) ~= sum(w), wave = reshape(wave, [], sum(w)); end
-                    if strcmp(comp.measure, 'mean')
-                        T.data{j} = mean(wave, 2);
-                    else
-                        T.data{j} = wave;
-                    end
-                    T.times{j} = 1000 * times(w);
-                end
+                T.times{j} = 1000 * times(w);
             end
         end
     end
@@ -251,7 +243,6 @@ end
 
 function [kind, pol] = objKind(contract, k)
 pol = '';
-if strcmp(contract.analysis, 'spectral'), kind = 'scalar'; return; end
 comp = contract.components(k);
 pol = comp.polarity;
 switch comp.measure
@@ -266,17 +257,3 @@ if strcmp(o.polarity, 'negative'), [a, i] = min(avgs, [], 2); else, [a, i] = max
 if strcmp(o.kind, 'peakLatency'), v = reshape(o.times(i), [], 1); else, v = a; end
 end
 
-function [s, f0] = bandScores(X, fs, band)
-% X: roi x samples x trials. log10 mean power in band, ROI-averaged,
-% Hann taper, one-sided power spectrum density scaling.
-[nch, n, nt] = size(X);
-w = 0.5 - 0.5 * cos(2 * pi * (0:n-1)' / (n - 1));
-F = fft(permute(X, [2 1 3]) .* w, [], 1);     % n x roi x trials
-f = (0:n-1) * fs / n;
-sel = f >= band(1) & f <= band(2);
-assert(any(sel), 'NeuroQC:Measure', 'Segment too short to resolve band [%g %g] Hz.', band);
-P = 2 * abs(F(sel, :, :)) .^ 2 / (fs * sum(w .^ 2));
-s = reshape(log10(mean(mean(P, 1), 2)), nt, 1);
-f0 = f(sel);
-if nch == 0, s = nan(nt, 1); end
-end

@@ -40,15 +40,6 @@ verifyLessThan(tc, eh(2), 0.02);
 verifyLessThan(tc, rs.amplitudeError, 0.01);
 end
 
-function testSpectralProbe(tc)
-c = neuroqc.eval.Contract('analysis', 'spectral', 'segment', 2, 'bands', {'alpha', [8 12], {'Oz'}});
-ok = neuroqc.eval.FilterProbe.run({inst('lowpass', 'cutoff', 30)}, 250, c);
-bad = neuroqc.eval.FilterProbe.run({inst('lowpass', 'cutoff', 9)}, 250, c);
-verifyLessThan(tc, ok.amplitudeError, 0.01);
-verifyGreaterThan(tc, bad.amplitudeError, 0.3);
-end
-
-% -------------------------------------------------------------- injection
 function testReReferencingIsNotDistortion(tc)
 [S, truth] = neuroqc.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
 in = inst('reref', 'mode', 'average', 'channels', {});

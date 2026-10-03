@@ -138,7 +138,7 @@ Options are listed in `help neuroqc.run.Executor` (search) and `help neuroqc.eva
    - `parallel = true` distributes independent subtrees over a pool.
 4. **What is measured.**
    - The contract defines the measures: mean amplitude, peak amplitude or peak latency per
-     component, or log band power for spectral analyses.
+     component.
    - No experimental effect is used, so choosing a pipeline cannot inflate the effect you test later.
    - The data quality of each measure is its standardized measurement error (SME): analytic for
      means, bootstrapped for peaks and latencies (Luck et al., 2021). SME falls when noise is removed
@@ -205,7 +205,7 @@ The suite has 76 automated tests on synthetic data with known ground truth:
 - the statistics, validated by simulation: SME vs empirical SD, false "worse" rate and power,
   equivalence, bootstrapped latency SME,
 - signal preservation for filters, re-referencing, ICA removal, interpolation and rejection,
-- end-to-end searches, including resume, parallel and spectral objectives,
+- end-to-end searches, including resume and parallel execution,
 - EEGLAB and panel integration.
 
 All 76 automated tests pass in MATLAB R2026a with EEGLAB 2026.0.0. Two optional runs use your own

@@ -17,8 +17,6 @@ classdef FilterProbe
     %     artifactPct     opposite-polarity deflection beyond the template's
     %                     own, relative to its peak
     %     waveformCorr    correlation of filtered and true epoch waveform
-    %   Spectral: a sinusoid at each band's centre frequency.
-    %     amplitudeError  max over bands |1 - output/input amplitude|
     %
     %   Only linear filtering is probed here. Data-dependent steps (ICA
     %   removal, ASR, rejection, interpolation) need neuroqc.eval.Injection.
@@ -31,22 +29,6 @@ classdef FilterProbe
             steps = neuroqc.eval.FilterProbe.filterSteps(path);
             if isempty(steps), return; end
             r.chain = strjoin(cellfun(@(s) s.key, steps, 'UniformOutput', false), ' > ');
-            if strcmp(contract.analysis, 'spectral')
-                errs = zeros(1, numel(contract.bands));
-                for b = 1:numel(contract.bands)
-                    f0 = mean(contract.bands(b).freq);
-                    n = round(120 * srate);  % 120 s, analyse the central 60 s
-                    t = (0:n-1) / srate;
-                    [y, fs] = applyChain(steps, sin(2 * pi * f0 * t), srate);
-                    ty = (0:numel(y)-1) / fs;
-                    mid = ty >= 30 & ty <= 90;
-                    X = [sin(2 * pi * f0 * ty(mid))' cos(2 * pi * f0 * ty(mid))'];
-                    beta = X \ y(mid)';
-                    errs(b) = abs(1 - norm(beta));
-                end
-                r.amplitudeError = max(errs); r.waveformCorr = NaN; r.notApplicable = {'topoCorr', 'waveformCorr'};
-                return;
-            end
             pad = 60; % s of zeros on each side: longer than half of any FIR used here
             span = contract.epoch;
             n = round((2 * pad + diff(span)) * srate);

@@ -280,17 +280,6 @@ classdef Executor
                 root.srate = r; root = eeg_checkset(root);
                 add(sprintf('EEG.srate = %d; EEG = eeg_checkset(EEG); %% NeuroQC: exact sampling rate', r));
             end
-            if contract.isContinuousSpectral()
-                seg = contract.segment;
-                starts = 1:round(seg * root.srate):(root.pnts - round(seg * root.srate));
-                ev = struct('type', 'nqc_seg', 'latency', num2cell(starts), 'duration', 0);
-                root.event = mergeEvents(root.event, ev);
-                root = eeg_checkset(root, 'eventconsistency');
-                add(sprintf(['for L = 1:%d:%d, EEG.event(end+1).type = ''nqc_seg''; EEG.event(end).latency = L; ', ...
-                    'EEG.event(end).duration = 0; end; EEG = eeg_checkset(EEG, ''eventconsistency''); EEG.urevent = []; ', ...
-                    '%% NeuroQC: %g s analysis segments'], round(seg * root.srate), root.pnts - round(seg * root.srate), seg));
-                root.urevent = [];
-            end
             if ~isfield(root, 'urevent') || isempty(root.urevent)
                 root = eeg_checkset(root, 'makeur');
                 add('EEG = eeg_checkset(EEG, ''makeur''); % NeuroQC: trial identities');
@@ -631,17 +620,6 @@ function v = versions()
 v = struct('matlab', version, 'eeglab', 'unknown', 'neuroqc', neuroqc.NeuroQC.Version, ...
     'iclabel', which('pop_iclabel'), 'firfilt', which('pop_eegfiltnew'));
 try, v.eeglab = eeg_getversion; catch, end
-end
-
-function ev = mergeEvents(ev0, ev)
-if isempty(ev0), return; end
-f = fieldnames(ev0);
-for k = 1:numel(f)
-    if ~isfield(ev, f{k}), [ev.(f{k})] = deal([]); end
-end
-ev = rmfield(ev, setdiff(fieldnames(ev), f));
-ev = [ev0(:); ev(:)]';
-[~, o] = sort([ev.latency]); ev = ev(o);
 end
 
 function elig = eligibleTrials(root, contract)

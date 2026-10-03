@@ -5,12 +5,11 @@ classdef Injection
     %   r = neuroqc.eval.Injection.compare(EEGsig, contract, truth, path)
     %
     %   A noise-free copy of the starting dataset is built that contains
-    %   only a known signal: for ERP contracts one Gaussian per component
-    %   (centred in its window, sigma = window/4, amplitude opts.injectUv)
-    %   with a smooth scalp topography centred on the component's ROI (or
-    %   on the ROI channels only when channel locations are missing), added
-    %   at every scored trial; for spectral contracts a sinusoid at each
-    %   band's centre frequency on the band's ROI.
+    %   only a known signal: one Gaussian per component (centred in its
+    %   window, sigma = window/4, amplitude opts.injectUv) with a smooth
+    %   scalp topography centred on the component's ROI (or on the ROI
+    %   channels only when channel locations are missing), added at every
+    %   scored trial.
     %
     %   The executor applies to this copy exactly the operations and the
     %   data-driven DECISIONS taken on the real data (same filters, same
@@ -46,17 +45,6 @@ classdef Injection
             S.data = zeros(size(root.data), 'like', root.data);
             S.icaact = [];
             nch = root.nbchan; fs = root.srate;
-            if strcmp(contract.analysis, 'spectral')
-                W = zeros(nch, numel(contract.bands));
-                for b = 1:numel(contract.bands)
-                    W(:, b) = topography(root, contract.bands(b).roi);
-                    f0 = mean(contract.bands(b).freq);
-                    t = (0:root.pnts-1) / fs;
-                    S.data = S.data + cast(A * W(:, b) * sin(2 * pi * f0 * t), 'like', S.data);
-                end
-                truth = struct('kind', 'spectral', 'weights', W, 'labels', {labels}, 'A', A);
-                return;
-            end
             W = zeros(nch, numel(contract.components));
             for j = 1:numel(contract.components)
                 W(:, j) = topography(root, contract.components(j).roi);
@@ -125,20 +113,6 @@ classdef Injection
                 'notApplicable', {{}});   % NaN in an applicable metric = check failed (Rank rejects it)
             Ew = expectedWeights(truth, S, path);                    % nch_leaf x nComp
             labs = lower({S.chanlocs.labels});
-            if strcmp(truth.kind, 'spectral')
-                errs = zeros(1, numel(contract.bands)); tc = errs;
-                for b = 1:numel(contract.bands)
-                    f0 = mean(contract.bands(b).freq);
-                    amp = sineAmplitude(S, f0);                       % nch x 1
-                    roi = ismember(labs, lower(contract.bands(b).roi));
-                    e = truth.A * mean(Ew(roi, b));
-                    errs(b) = abs(mean(amp(roi)) / e - 1);
-                    tc(b) = safeCorr(amp, truth.A * abs(Ew(:, b)));
-                end
-                r.amplitudeError = max(errs); r.topoCorr = min(tc); r.latencyShiftMs = 0; r.artifactPct = 0;
-                r.notApplicable = {'waveformCorr'};   % a sinusoid has no waveform to compare
-                return;
-            end
             if S.trials == 1
                 [~, S] = evalc('pop_epoch(S, contract.allEvents(), contract.epoch, ''epochinfo'', ''yes'')');
             end
@@ -266,18 +240,6 @@ E = zeros(numel(leafLabels), size(F, 2));
 E(ok, :) = F(loc(ok), :);
 end
 
-function amp = sineAmplitude(S, f0)
-% Least-squares amplitude of a sinusoid at f0 per channel (per epoch, averaged).
-X = double(S.data); [nch, n, nt] = size(X);
-t = (0:n-1)' / S.srate;
-B = [sin(2 * pi * f0 * t) cos(2 * pi * f0 * t)];
-amp = zeros(nch, 1);
-for k = 1:nt
-    beta = B \ X(:, :, k)';
-    amp = amp + sqrt(sum(beta .^ 2, 1))';
-end
-amp = amp / nt;
-end
 
 function r = safeCorr(a, b)
 a = a(:) - mean(a(:)); b = b(:) - mean(b(:));

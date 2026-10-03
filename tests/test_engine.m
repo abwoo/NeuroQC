@@ -269,22 +269,6 @@ verifyEqual(tc, neuroqc.run.AsrRecord.apply(rec, A + 2 * B), ...
     neuroqc.run.AsrRecord.apply(rec, A) + 2 * neuroqc.run.AsrRecord.apply(rec, B), 'AbsTol', 1e-8);
 end
 
-function testSpectralObjectiveEndToEnd(tc)
-% Continuous alpha power: a 9 Hz low-pass destroys the band and must be
-% rejected by the signal check; 30 Hz is fine.
-EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 10, 'alphaUv', 10, 'artifactTrials', 0));
-nqc_setBase(EEG);
-c = neuroqc.eval.Contract('analysis', 'spectral', 'segment', 2, 'bands', {'alpha', [8 12], {'Oz','O1','O2'}});
-p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', 1); p = p.add('lowpass', 'cutoff', {9, 30});
-p = p.add('epoch');
-r = neuroqc.NeuroQC.optimize(p, c);
-lp9 = contains(r.labels, 'cutoff=9'); lp30 = contains(r.labels, 'cutoff=30');
-verifyEqual(tc, r.ranking.table.status{lp9}, 'rejected');
-verifyEqual(tc, r.ranking.table.status{lp30}, 'feasible');
-verifyGreaterThan(tc, r.ref.n, 50);
-verifyEqual(tc, r.ref.units{1}, 'log10(uV^2)');
-end
-
 function testPeakLatencyObjective(tc)
 EEG = nqc_synth(struct('seconds', 200, 'nPerCond', 40, 'p3Jitter', 0.03));
 nqc_setBase(EEG);
