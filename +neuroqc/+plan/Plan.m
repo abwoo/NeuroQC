@@ -112,12 +112,19 @@ classdef Plan
             %
             %   opts.searchMode 'exhaustive' (default): every legal pipeline;
             %       refuses (does not truncate) above opts.maxLeaves.
+            %       Orders and values are explored together depth first and
+            %       an illegal prefix is cut immediately, so step orders are
+            %       never listed in advance (8 free steps = 40320 orders is
+            %       fine when most are illegal). opts.maxVisits bounds the
+            %       work (refused, never truncated, above it).
             %   opts.searchMode 'sample': opts.sampleSize distinct legal
             %       pipelines drawn uniformly over (order, parameter values)
-            %       with opts.sampleSeed. The result is then explicitly an
-            %       approximate search and is never reported as an optimum.
+            %       with opts.sampleSeed (orders are drawn exactly uniformly
+            %       among those the pins and before() allow, by counting
+            %       them, not listing them). The result is then explicitly
+            %       an approximate search and is never reported as an optimum.
             if nargin < 4, opts = struct(); end
-            opts = withDefaults(opts, struct('maxLeaves', 500, 'maxOrders', 5000, ...
+            opts = withDefaults(opts, struct('maxLeaves', 500, 'maxVisits', 2e6, ...
                 'searchMode', 'exhaustive', 'sampleSize', 100, 'sampleSeed', 1));
             assert(~isempty(obj.Slots), 'NeuroQC:Plan', 'The plan is empty: add at least one step.');
             n = numel(obj.Slots);
@@ -125,9 +132,9 @@ classdef Plan
             for k = 1:n
                 inst{k} = obj.expandSlot(k, contract);
             end
-            orders = obj.orders(opts.maxOrders);
+            [nextOf, nOrders, completions] = obj.orderSpace();
             counts = cellfun(@numel, inst);
-            upper = numel(orders) * prod(counts);
+            upper = nOrders * prod(counts);
             st0 = rootState(state);
             leaves = struct('path', {}, 'key', {}, 'order', {}, 'stratum', {});
             seen = containers.Map('KeyType', 'char', 'ValueType', 'logical');
@@ -135,23 +142,16 @@ classdef Plan
             report = struct('searchMode', opts.searchMode, 'upperBound', upper);
             switch opts.searchMode
                 case 'exhaustive'
-                    assert(upper <= 1e7, 'NeuroQC:SearchTooLarge', ...
-                        ['The plan allows up to %g pipelines (%d orders x %s values per step). Fix more ', ...
-                         'parameters or the order, or use searchMode ''sample''.'], upper, numel(orders), mat2str(counts));
-                    for oi = 1:numel(orders)
-                        walk(orders{oi}, 1, {}, st0);
-                    end
+                    visits = 0;
+                    walk(0, [], {}, st0);
                     explainIfEmpty();
-                    assert(numel(leaves) <= opts.maxLeaves, 'NeuroQC:SearchTooLarge', ...
-                        ['%d legal pipelines exceed maxLeaves = %d. Nothing was run or truncated. Fix more ', ...
-                         'parameters/order, raise opts.maxLeaves deliberately, or use searchMode ''sample'' ', ...
-                         '(approximate).'], numel(leaves), opts.maxLeaves);
                 case 'sample'
+                    assert(nOrders > 0, 'NeuroQC:NoLegalPipeline', 'The pins and before() constraints allow no step order.');
                     rs = RandStream('mt19937ar', 'Seed', opts.sampleSeed);
                     attempts = 0; maxAttempts = 50 * opts.sampleSize; legal = 0;
                     while numel(leaves) < opts.sampleSize && attempts < maxAttempts
                         attempts = attempts + 1;
-                        order = orders{randi(rs, numel(orders))};
+                        order = drawOrder(rs);
                         pick = arrayfun(@(k) randi(rs, counts(k)), 1:n);
                         if drawPath(order, pick), legal = legal + 1; end
                     end
@@ -165,30 +165,50 @@ classdef Plan
             end
             tree = buildTree(leaves);
             report.nLeaves = numel(leaves);
-            report.nOrders = numel(orders);
+            report.nOrders = nOrders;
             report.nNodes = numel(tree) - 1;
             report.nStepsUnshared = sum(arrayfun(@(l) numel(l.path), leaves));
             report.rejected = mapToStruct(reasons);
             report.searched = searchedParams(inst, obj.Slots);
 
-            function walk(order, pos, path, st)
-                if pos > numel(order)
+            function walk(mask, order, path, st)
+                pos = numel(order) + 1;
+                if pos > n
                     addLeaf(order, path);
                     return;
                 end
-                cands = inst{order(pos)};
-                for c = 1:numel(cands)
-                    in = cands{c};
-                    if strcmp(in.type, 'none')
-                        walk(order, pos + 1, path, st);
-                        continue;
+                for s = nextOf(mask, pos)
+                    cands = inst{s};
+                    for c = 1:numel(cands)
+                        visits = visits + 1;
+                        assert(visits <= opts.maxVisits, 'NeuroQC:SearchTooLarge', ...
+                            ['More than %d partial pipelines explored (%d orders x %s values per step). Nothing ', ...
+                             'was run or truncated. Fix more parameters, pin steps or add before() constraints, ', ...
+                             'or use searchMode ''sample''.'], opts.maxVisits, nOrders, mat2str(counts));
+                        in = cands{c};
+                        if strcmp(in.type, 'none')
+                            walk(bitset(mask, s), [order s], path, st);
+                            continue;
+                        end
+                        [why, st2] = neuroqc.plan.Catalog.apply(in.type, in.params, st);
+                        if ~isempty(why)
+                            note(pos, in, why);
+                            continue;
+                        end
+                        walk(bitset(mask, s), [order s], [path {in}], st2);
                     end
-                    [why, st2] = neuroqc.plan.Catalog.apply(in.type, in.params, st);
-                    if ~isempty(why)
-                        note(pos, in, why);
-                        continue;
-                    end
-                    walk(order, pos + 1, [path {in}], st2);
+                end
+            end
+
+            function order = drawOrder(rs)
+                % uniform over the allowed orders: each next slot with
+                % probability proportional to the completions it leaves
+                mask = 0; order = zeros(1, n);
+                for pos = 1:n
+                    nx = nextOf(mask, pos);
+                    w = arrayfun(@(t) completions(bitset(mask, t)), nx);
+                    t = nx(find(rand(rs) * sum(w) < cumsum(w), 1));
+                    order(pos) = t; mask = bitset(mask, t);
                 end
             end
 
@@ -211,6 +231,12 @@ classdef Plan
                 if isKey(seen, key), return; end
                 seen(key) = true;
                 leaves(end+1) = struct('path', {path}, 'key', key, 'order', order, 'stratum', stratumOf(path));
+                if strcmp(opts.searchMode, 'exhaustive')
+                    assert(numel(leaves) <= opts.maxLeaves, 'NeuroQC:SearchTooLarge', ...
+                        ['More than maxLeaves = %d legal pipelines. Nothing was run or truncated. Fix more ', ...
+                         'parameters/order, raise opts.maxLeaves deliberately, or use searchMode ''sample'' ', ...
+                         '(approximate).'], opts.maxLeaves);
+                end
             end
 
             function note(pos, in, why)
@@ -254,6 +280,48 @@ classdef Plan
                         'key', instKey(alt.type, p), 'label', instLabel(alt.type, p), ...
                         'searched', {searched}, 'defining', dtxt); %#ok<AGROW>
                 end
+            end
+        end
+
+        function [nextOf, nOrders, completions] = orderSpace(obj)
+            % The allowed step orders without listing them.
+            %   nextOf(mask, pos)  slots that may come at position pos when
+            %                      the slots in bitmask mask are placed
+            %   completions(mask)  number of allowed ways to finish
+            %   nOrders            number of allowed orders
+            n = numel(obj.Slots);
+            if strcmp(obj.OrderMode, 'fixed')
+                nextOf = @(mask, pos) pos; nOrders = 1; completions = @(mask) 1;
+                return;
+            end
+            assert(strcmp(obj.OrderMode, 'search'), 'NeuroQC:Plan', 'OrderMode must be fixed or search');
+            assert(n <= 20, 'NeuroQC:SearchTooLarge', 'Order search over %d steps: pin steps or fix the order (at most 20 free steps).', n);
+            ids = {obj.Slots.id};
+            pinned = [obj.Slots.pinned];
+            pred = zeros(1, n);                    % bitmask of slots that must come before each slot
+            for r = 1:size(obj.Precedence, 1)
+                a = find(strcmp(ids, obj.Precedence{r, 1})); b = find(strcmp(ids, obj.Precedence{r, 2}));
+                pred(b) = bitset(pred(b), a);
+            end
+            memo = containers.Map('KeyType', 'double', 'ValueType', 'double');
+            nextOf = @nextSlots;
+            completions = @count;
+            nOrders = count(0);
+            function s = nextSlots(mask, pos)
+                if pinned(pos) && ~bitget(mask, pos)
+                    cand = pos;                    % a pinned slot keeps its position
+                else
+                    cand = find(~pinned & ~bitget(mask, 1:n));
+                end
+                s = cand(arrayfun(@(t) bitand(pred(t), mask) == pred(t), cand));
+            end
+            function c = count(mask)
+                pos = sum(bitget(mask, 1:n)) + 1;
+                if pos > n, c = 1; return; end
+                if isKey(memo, mask), c = memo(mask); return; end
+                c = 0;
+                for t = nextSlots(mask, pos), c = c + count(bitset(mask, t)); end
+                memo(mask) = c;
             end
         end
 

@@ -61,6 +61,7 @@ function testSearchBudgetRefusesSilently(tc)
 p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', num2cell(0.1:0.1:2));
 p = p.add('lowpass', 'cutoff', num2cell(20:1:45));
 verifyError(tc, @() p.enumerate(nqc_fakeState(false, 500), nqc_contract(), struct('maxLeaves', 100)), 'NeuroQC:SearchTooLarge');
+verifyError(tc, @() p.enumerate(nqc_fakeState(false, 500), nqc_contract(), struct('maxLeaves', 1e6, 'maxVisits', 50)), 'NeuroQC:SearchTooLarge');
 end
 
 % -------------------------------------------------------------- statistics
@@ -147,6 +148,53 @@ leaves = p.enumerate(nqc_fakeState(false, 500), nqc_contract());
 verifyEqual(tc, numel(leaves), 4);
 verifyEqual(tc, numel(unique({leaves.stratum})), 2);
 verifyTrue(tc, all(contains({leaves.stratum}, 'reref.mode=')));
+end
+
+function testManyFreeStepsAreNotBlockedByOrderListing(tc)
+% Audit: 8 unfixed steps have 40320 orders; listing orders first (limit
+% 5000) blocked the search before legality was checked. Illegal prefixes
+% are now cut while walking, so the legal pipelines are found.
+p = neuroqc.plan.Plan();
+p = p.add('resample', 'fs', 250); p = p.add('highpass', 'cutoff', 0.1); p = p.add('lowpass', 'cutoff', 30);
+p = p.add('linenoise'); p = p.add('epoch'); p = p.add('baseline');
+p = p.add('reject_threshold', 'uv', 100); p = p.add('reject_jointprob', 'sd', 4);
+p.OrderMode = 'search';
+[nextOf, nOrders] = p.orderSpace(); %#ok<ASGLU>
+verifyEqual(tc, nOrders, factorial(8));
+[leaves, ~, rep] = p.enumerate(nqc_fakeState(false, 500), nqc_contract(), struct('maxLeaves', 5000));
+% brute force over all 40320 orders with the catalog rules
+P = perms(1:8); legal = 0; S = p.Slots;
+for r = 1:size(P, 1)
+    st = struct('epoched', false, 'srate', 500, 'hasICA', false, 'icRemoved', false, 'removed', false, 'highpass', 0);
+    ok = true;
+    for q = P(r, :)
+        a = S(q).alternatives{1}; prm = a.params;
+        if strcmp(a.type, 'linenoise'), prm = struct('freq', 50, 'halfwidth', 2); end
+        [why, st] = neuroqc.plan.Catalog.apply(a.type, prm, st);
+        if ~isempty(why), ok = false; break; end
+    end
+    legal = legal + ok;
+end
+verifyEqual(tc, numel(leaves), legal);
+verifyEqual(tc, rep.nOrders, factorial(8));
+end
+
+function testOrderSamplingIsUniformOverAllowedOrders(tc)
+% With a before() constraint the allowed orders are counted, not listed,
+% and drawn uniformly.
+p = neuroqc.plan.Plan();
+p = p.add('highpass', 'cutoff', 0.1); p = p.add('lowpass', 'cutoff', 30); p = p.add('linenoise');
+p.OrderMode = 'search'; p = p.before('highpass', 'lowpass');
+[~, nOrders] = p.orderSpace();
+verifyEqual(tc, nOrders, 3);
+o = struct('searchMode', 'sample', 'sampleSize', 3, 'sampleSeed', 2);
+[l, ~, rep] = p.enumerate(nqc_fakeState(false, 500), nqc_contract(), o);
+verifyEqual(tc, numel(l), 3);
+verifyEqual(tc, rep.estimatedLegalPipelines, 3);
+for k = 1:numel(l)
+    t = cellfun(@(i) i.type, l(k).path, 'UniformOutput', false);
+    verifyLessThan(tc, find(strcmp(t, 'highpass')), find(strcmp(t, 'lowpass')));
+end
 end
 
 function testSampledSearchIsLabelledDistinctAndLegal(tc)
