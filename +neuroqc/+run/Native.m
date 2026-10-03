@@ -166,6 +166,8 @@ classdef Native
                     if ~isempty(on), notes{end+1} = sprintf('the asr step only corrects bursts; %s not used', strjoin(on, ', ')); end
                 case 'badchannels'
                     vals.measure = getOr(nv, 'measure', 'kurt'); vals.threshold = getOr(nv, 'threshold', 5);
+                    elec = getOr(nv, 'elec', 1:numel(labs));
+                    if numel(elec) < numel(labs), vals.exclude = labs(setdiff(1:numel(labs), elec)); end
                     if numel(vals.threshold) > 1, notes{end+1} = 'only the upper threshold is used'; vals.threshold = max(vals.threshold); end
                     chk({'elec','threshold','norm','measure','freqrange'});
                 case 'reref'

@@ -518,6 +518,35 @@ for k = 1:2
 end
 end
 
+function testExcludedChannelsAcrossSteps(tc)
+% Real-data case: bad-channel detection removed A1/A2, then the average
+% reference listed them in 'exclude' and every candidate failed. Channels
+% an earlier step removed are skipped; unknown labels are still errors.
+% badchannels 'exclude' keeps EOG out of the test, and the channel it
+% removes is the right one (pop_rejchan indexes the tested channels).
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+rng(1); k = find(strcmp({EEG.chanlocs.labels}, 'PO8'));
+EEG.data(k, :) = EEG.data(k, :) + 2000 * (rand(1, EEG.pnts) > 0.999);   % one spiky channel
+nqc_setBase(EEG);
+c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
+    'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz','P3','P4'}});
+p = neuroqc.plan.Plan();
+p = p.add('badchannels', 'measure', 'prob', 'threshold', 5, 'action', 'remove', 'exclude', {{'EOG1', 'EOG2'}});
+p = p.add('channels', 'labels', {'EOG1'}, 'action', 'remove');
+p = p.add('reref', 'mode', 'average', 'exclude', {{'EOG1', 'EOG2'}});
+p = p.add('epoch'); p = p.add('baseline');
+r = neuroqc.NeuroQC.optimize(p, c);
+verifyEqual(tc, r.cands(1).status, 'ok');
+E = neuroqc.run.Executor.replay(r, 1);
+verifyFalse(tc, any(strcmp({E.chanlocs.labels}, 'PO8')));            % the spiky channel, not a neighbour
+verifyTrue(tc, any(strcmp({E.chanlocs.labels}, 'EOG2')));            % EOG was not tested
+verifyTrue(tc, any(contains(r.cands(1).coms, 'pop_reref')));
+q = neuroqc.plan.Plan(); q = q.add('reref', 'mode', 'average', 'exclude', {{'EOGX'}}); q = q.add('epoch'); q = q.add('baseline');
+r = neuroqc.NeuroQC.optimize(q, c);
+verifyEqual(tc, r.cands(1).status, 'failed');
+verifyTrue(tc, contains(r.cands(1).message, 'not in the dataset: EOGX'));
+end
+
 % ---------------------------------------------------------------- helpers
 function c = nqc_c()
 c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...

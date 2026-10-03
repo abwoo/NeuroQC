@@ -78,10 +78,9 @@ classdef Steps
                 case 'reref'
                     ex = {};
                     if isfield(p, 'exclude') && ~isempty(p.exclude)
-                        xi = find(ismember(lower({EEG.chanlocs.labels}), lower(cellstr(p.exclude))));
-                        assert(numel(xi) == numel(cellstr(p.exclude)), 'NeuroQC:Reref', ...
-                            'reref exclude: channel(s) not found: %s', strjoin(setdiff(lower(cellstr(p.exclude)), lower({EEG.chanlocs.labels})), ', '));
-                        ex = {'exclude', xi};
+                        present = presentChannels(EEG, p.exclude, 'reref exclude');
+                        xi = find(ismember(lower({EEG.chanlocs.labels}), lower(present)));
+                        if ~isempty(xi), ex = {'exclude', xi}; end
                     end
                     if strcmp(p.mode, 'average')
                         [EEG, com] = pop_reref(EEG, [], ex{:});
@@ -167,10 +166,14 @@ classdef Steps
         end
 
         function [EEG, coms, info] = badChannels(EEG, p)
-            args = {'elec', 1:EEG.nbchan, 'threshold', p.threshold, 'norm', 'on', 'measure', p.measure};
+            elec = 1:EEG.nbchan;
+            if isfield(p, 'exclude') && ~isempty(p.exclude)   % e.g. EOG / reference channels are not tested
+                elec = find(~ismember(lower({EEG.chanlocs.labels}), lower(presentChannels(EEG, p.exclude, 'badchannels exclude'))));
+            end
+            args = {'elec', elec, 'threshold', p.threshold, 'norm', 'on', 'measure', p.measure};
             if strcmp(p.measure, 'spec'), args = [args {'freqrange', [1 min(50, EEG.srate/2 - 1)]}]; end
             [EEGrem, bad, ~, com] = pop_rejchan(EEG, args{:});
-            bad = bad(:)';
+            bad = elec(bad(:)');   % pop_rejchan indexes the tested channels (it removes opt.elec(indelec) itself)
             labels = {EEG.chanlocs(bad).labels};
             info.badChannels = labels; info.badIdx = bad;
             if strcmp(p.action, 'remove')
@@ -179,8 +182,8 @@ classdef Steps
                 info.removed = labels;
                 return;
             end
-            coms = {sprintf('%% NeuroQC: pop_rejchan(measure %s, threshold %g, norm on) -> bad channels [%s] interpolated in place', ...
-                p.measure, p.threshold, strjoin(labels, ' '))};
+            coms = {sprintf('%% NeuroQC: pop_rejchan(measure %s, threshold %g, norm on, %d channels tested) -> bad channels [%s] interpolated in place', ...
+                p.measure, p.threshold, numel(elec), strjoin(labels, ' '))};
             info.interpolated = labels;
             if ~isempty(bad)
                 requireLocations(EEG);
@@ -338,6 +341,24 @@ end
 
 function EEG = evalWithEEG(EEG, NEUROQC_CMD__)
 eval(NEUROQC_CMD__);
+end
+
+function L = presentChannels(EEG, wanted, what)
+% The listed channels that are still in the data. A channel of the
+% starting montage that an earlier step removed is skipped (nothing left
+% to exclude); a label that never existed is an error (a typo).
+wanted = cellstr(wanted);
+here = ismember(lower(wanted), lower({EEG.chanlocs.labels}));
+known = {EEG.chanlocs.labels};
+if isfield(EEG, 'etc') && isstruct(EEG.etc) && isfield(EEG.etc, 'neuroqc') && isfield(EEG.etc.neuroqc, 'rootChanlocs')
+    known = [known {EEG.etc.neuroqc.rootChanlocs.labels}];
+end
+unknown = wanted(~ismember(lower(wanted), lower(known)));
+assert(isempty(unknown), 'NeuroQC:Channels', '%s: channel(s) not in the dataset: %s', what, strjoin(unknown, ', '));
+if any(~here)
+    neuroqc.utils.log('%s: %s already removed by an earlier step; nothing to exclude there.', what, strjoin(wanted(~here), ', '));
+end
+L = wanted(here);
 end
 
 function v = fieldOr(s, f)
