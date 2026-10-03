@@ -40,7 +40,10 @@ classdef Session
 
         function fp = fingerprint(EEG)
             % Cheap change detector (no full-data hash): dimensions, rate,
-            % events, ICA size, history text and a sparse data sample.
+            % every event's type, latency and urevent, channel labels, ICA
+            % size and flags, history text and a sparse data sample. An edit
+            % to one event that keeps the event count is detected even when
+            % it is not recorded in EEG.history.
             if isempty(EEG) || ~isstruct(EEG) || ~isfield(EEG, 'data') || isempty(EEG.data)
                 fp = ''; return;
             end
@@ -52,11 +55,41 @@ classdef Session
             nd = numel(EEG.data);
             idx = unique(round(linspace(1, nd, min(nd, 257))));
             sample = double(EEG.data(idx));
-            fp = sprintf('%s|%d|%d|%d|%g|%d|%d|%d|%d|%s|%.10g', fieldStr(EEG, 'setname'), ...
+            labs = '';
+            if isfield(EEG, 'chanlocs') && ~isempty(EEG.chanlocs) && isfield(EEG.chanlocs, 'labels')
+                labs = strjoin(cellfun(@(x) char(string(x)), {EEG.chanlocs.labels}, 'UniformOutput', false), ',');
+            end
+            fp = sprintf('%s|%d|%d|%d|%g|%d|%d|%d|%d|%s|%.10g|%s|%s', fieldStr(EEG, 'setname'), ...
                 EEG.nbchan, EEG.pnts, EEG.trials, EEG.srate, numel(EEG.event), nIca, nFlag, ...
-                numel(h), dec2hex(mod(sum(double(h) .* (1:numel(h))), 2^48)), sum(sample .* (1:numel(sample))));
+                numel(h), textHash(h), sum(sample .* (1:numel(sample))), eventHash(EEG), textHash(labs));
         end
     end
+end
+
+function t = textHash(h)
+h = double(h(:)');
+t = sprintf('%s.%s', dec2hex(mod(sum(h .* (1:numel(h))), 2^48)), dec2hex(mod(sum(h .* mod((1:numel(h)) * 7919, 104729)), 2^48)));
+end
+
+function t = eventHash(EEG)
+% Position-weighted digest of every event's type, latency and urevent.
+t = '0';
+if ~isfield(EEG, 'event') || isempty(EEG.event), return; end
+ev = EEG.event;
+ty = arrayfun(@(e) toText(e.type), ev, 'UniformOutput', false);
+lat = zeros(1, numel(ev)); ure = zeros(1, numel(ev));
+if isfield(ev, 'latency'), lat = arrayfun(@(e) numOr(e.latency), ev); end
+if isfield(ev, 'urevent'), ure = arrayfun(@(e) numOr(e.urevent), ev); end
+w = 1:numel(ev);
+t = sprintf('%s|%.12g|%.12g', textHash(strjoin(ty, char(1))), sum(lat .* w), sum(ure .* w));
+end
+
+function t = toText(x)
+if isempty(x), t = ''; else, t = char(string(x)); end
+end
+
+function v = numOr(x)
+if isnumeric(x) && isscalar(x), v = double(x); else, v = 0; end
 end
 
 function s = fieldStr(EEG, f)

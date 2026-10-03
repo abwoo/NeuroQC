@@ -68,6 +68,60 @@ cur = evalin('base', 'EEG');
 verifyEqual(tc, numel(strfind(cur.history, 'pop_reref')), 2);
 end
 
+function testFingerprintSeesEventEdits(tc)
+% Audit: changing one event's type (same count, no history entry) gave the
+% same fingerprint, so stale-result protection missed it.
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
+f0 = neuroqc.live.Session.fingerprint(EEG);
+E = EEG; E.event(5).type = '99';
+verifyNotEqual(tc, neuroqc.live.Session.fingerprint(E), f0);
+E = EEG; E.event(5).latency = E.event(5).latency + 1;
+verifyNotEqual(tc, neuroqc.live.Session.fingerprint(E), f0);
+E = EEG; E.chanlocs(3).labels = 'X3';
+verifyNotEqual(tc, neuroqc.live.Session.fingerprint(E), f0);
+verifyEqual(tc, neuroqc.live.Session.fingerprint(EEG), f0);
+end
+
+function testCapturedNativeStepCanBeAppliedAndReedited(tc)
+% Audit: after "Fix via EEGLAB dialog" the step is native and "Apply now"
+% failed with "No EEGLAB dialog for native".
+nqc_setBase(nqc_synth(struct('seconds', 60, 'nPerCond', 10)));
+evalin('base', 'DEBUG_EEGLAB_MENUS = 1;');
+cleanup = onCleanup(@() evalin('base', 'clear DEBUG_EEGLAB_MENUS')); %#ok<NASGU>
+com = 'EEG = pop_eegfiltnew(EEG, ''locutoff'',0.5,''plotfreqz'',0);';
+neuroqc.run.Native.applyCommand(com);
+cur = evalin('base', 'EEG');
+verifyTrue(tc, contains(cur.history, 'pop_eegfiltnew(EEG, ''locutoff'',0.5'));
+verifyEqual(tc, evalin('base', 'ALLEEG(CURRENTSET).history'), cur.history);   % stored, not only in base EEG
+verifyEqual(tc, neuroqc.run.Native.typeOfCommand(com), 'filter');           % re-edit opens the filter dialog
+verifyEqual(tc, neuroqc.run.Native.typeOfCommand('EEG = pop_reref(EEG, []);'), 'reref');
+end
+
+function testPanelClearsResultsWhenThePlanChanges(tc)
+% Audit: after removing a plan step the old results stayed visible and
+% could be adopted as if they belonged to the new plan.
+nqc_setBase(nqc_synth(struct('seconds', 90, 'nPerCond', 20)));
+app = neuroqc.gui.Panel();
+cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.TypeDrop.Value = 'highpass'; app.addStep();
+app.planEdited(struct('Indices', [1 3], 'NewData', 'cutoff = 0.1'));
+app.TypeDrop.Value = 'epoch'; app.addStep();
+app.TypeDrop.Value = 'baseline'; app.addStep();
+app.CondField.Value = 'target: 11; standard: 31';
+app.CompField.Value = 'P3: 0.3 0.5 @ Pz P3 P4';
+app.run(false);
+verifyNotEmpty(tc, app.Result);
+app.PlanTable.Selection = [1 1];
+app.removeStep();
+verifyEmpty(tc, app.Result);
+verifyEmpty(tc, app.ResultTable.Data);
+verifyTrue(tc, contains(app.StatusLabel.Text, 'cleared'));
+app.TypeDrop.Value = 'reject_threshold'; app.addStep(); app.run(false);
+verifyNotEmpty(tc, app.Result);
+app.invalidate('Settings changed');      % what every contract/limit field calls on edit
+verifyEmpty(tc, app.Result);
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');

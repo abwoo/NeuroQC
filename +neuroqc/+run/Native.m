@@ -44,6 +44,27 @@ classdef Native
             neuroqc.run.Native.applyCall(neuroqc.run.Native.menuCall(type), type);
         end
 
+        function applyCommand(command)
+            % Run a captured command (a fixed 'native' plan step) on the
+            % current dataset, wrapped like an EEGLAB menu callback, so the
+            % operation is stored and recorded in EEG.history.
+            cmd = strtrim(char(command));
+            assert(~isempty(regexp(cmd, '^\s*\[?\s*EEG\>', 'once')), 'NeuroQC:Native', ...
+                'Only a command that returns EEG can be applied: %s', cmd);
+            if ~endsWith(cmd, ';'), cmd = [cmd ';']; end
+            call = sprintf('%s LASTCOM = ''%s'';', cmd, strrep(cmd, '''', ''''''));
+            neuroqc.run.Native.applyCall(call, 'native');
+        end
+
+        function type = typeOfCommand(command)
+            % The dialog that produces a captured command ('' if none).
+            e = neuroqc.live.History.classify(command);
+            map = {'pop_resample','resample'; 'pop_eegfiltnew','filter'; 'pop_clean_rawdata','asr'; ...
+                'pop_rejchan','badchannels'; 'pop_interp','restore'; 'pop_reref','reref'; 'pop_runica','ica'};
+            k = find(strcmp(map(:, 1), e.fn), 1);
+            type = ''; if ~isempty(k), type = map{k, 2}; end
+        end
+
         function applyCall(call, type)
             % Evaluate an EEGLAB call on the current dataset in the base
             % workspace, wrapped exactly like an EEGLAB menu callback.

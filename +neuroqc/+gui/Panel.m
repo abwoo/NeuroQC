@@ -116,6 +116,12 @@ classdef Panel < handle
             obj.ResultTable = uitable(rg, 'RowName', {}, 'ColumnName', ...
                 {'id','status','objective','diff CI','not distinguished','P(best)','min ret','interp','amp err','art','pipeline / reason'}, ...
                 'ColumnWidth', {35, 70, 65, 120, 45, 50, 55, 50, 55, 45, 'auto'});
+            % any change to what the search depends on makes shown results stale
+            settings = [{obj.CondField, obj.EpochField, obj.CompField, obj.BaseField, obj.ObjectiveField}, ...
+                struct2cell(obj.LimitFields)'];
+            for k = 1:numel(settings)
+                settings{k}.ValueChangedFcn = @(~, ~) obj.invalidate('Settings changed');
+            end
         end
 
         % ------------------------------------------------------------- live
@@ -148,6 +154,10 @@ classdef Panel < handle
             ev = arrayfun(@(k) sprintf('%s (%d)', s.eventTypes{k}, s.eventCounts(k)), 1:numel(s.eventTypes), 'UniformOutput', false);
             obj.EventsLabel.Text = ['Event types: ' strjoin(ev, ', ')];
             if ~force, neuroqc.utils.log('Current EEGLAB dataset changed: %s (%d history entries).', s.setname, numel(h)); end
+            if ~isempty(obj.Result) && ~strcmp(fp, obj.Result.rootFingerprint)
+                obj.StatusLabel.Text = sprintf(['Shown results were computed on "%s", not on the current dataset; ', ...
+                    'Adopt rebuilds from that starting copy. Run again for the current one.'], obj.Result.state.setname);
+            end
         end
 
         % ------------------------------------------------------------- plan
@@ -162,8 +172,19 @@ classdef Panel < handle
             obj.OrderDrop.Value = obj.Plan.OrderMode;
         end
 
+        function invalidate(obj, why)
+            % Results belong to the plan, contract and limits they were
+            % computed with; any change makes them stale.
+            if isempty(obj.Result), return; end
+            obj.Result = [];
+            obj.ResultTable.Data = {};
+            obj.StatusLabel.Text = sprintf('%s: previous results cleared - run the search again.', why);
+            neuroqc.utils.log('%s: previous results cleared (neuroqc_result in the base workspace is the old run).', why);
+        end
+
         function addStep(obj)
             obj.Plan = obj.Plan.add(obj.TypeDrop.Value);
+            obj.invalidate('Plan changed');
             obj.showPlan();
             d = neuroqc.plan.Catalog.get(obj.TypeDrop.Value);
             neuroqc.utils.log('Added %s. Unmentioned parameters are searched over their suggestions: %s', ...
@@ -179,16 +200,17 @@ classdef Panel < handle
 
         function removeStep(obj)
             k = obj.selected(); if isempty(k), return; end
-            obj.Plan = obj.Plan.remove(obj.Plan.Slots(k).id); obj.showPlan();
+            obj.Plan = obj.Plan.remove(obj.Plan.Slots(k).id); obj.invalidate('Plan changed'); obj.showPlan();
         end
 
         function moveStep(obj, d)
             k = obj.selected(); if isempty(k), return; end
-            obj.Plan = obj.Plan.move(obj.Plan.Slots(k).id, d); obj.showPlan();
+            obj.Plan = obj.Plan.move(obj.Plan.Slots(k).id, d); obj.invalidate('Plan changed'); obj.showPlan();
         end
 
         function setOrder(obj, v)
             obj.Plan.OrderMode = v;
+            obj.invalidate('Plan changed');
         end
 
         function planEdited(obj, e)
@@ -202,6 +224,7 @@ classdef Panel < handle
                     p = parseSettings(e.NewData);
                     obj.Plan.Slots(k).alternatives{1}.params = p;
                 end
+                obj.invalidate('Plan changed');
                 obj.showPlan();
             catch ME
                 uialert(obj.Fig, ME.message, 'NeuroQC'); obj.showPlan();
@@ -212,7 +235,17 @@ classdef Panel < handle
             k = obj.selected(); if isempty(k), return; end
             slot = obj.Plan.Slots(k);
             type = slot.alternatives{1}.type;
-            ok = {'resample','highpass','lowpass','linenoise','asr','badchannels','restore','reref','ica'};
+            id = [slot.id '_native'];
+            if strcmp(type, 'native')
+                % re-edit: open the dialog that produced the command again
+                type = neuroqc.run.Native.typeOfCommand(slot.alternatives{1}.params.command);
+                id = slot.id;
+                if isempty(type)
+                    uialert(obj.Fig, 'No EEGLAB dialog is known for this command; remove the step and add it again.', 'NeuroQC');
+                    return;
+                end
+            end
+            ok = {'resample','highpass','lowpass','linenoise','filter','asr','badchannels','restore','reref','ica'};
             if ~any(strcmp(type, ok))
                 uialert(obj.Fig, sprintf(['%s cannot be reproduced by one dialog command (EEGLAB records ', ...
                     'marking and removal separately, or the step comes from the contract). Set its value in ', ...
@@ -222,9 +255,9 @@ classdef Panel < handle
             try
                 com = neuroqc.run.Native.capture(type);
                 if isempty(com), return; end
-                id = [slot.id '_native'];
                 obj.Plan.Slots(k).alternatives = {struct('type', 'native', 'params', struct('command', com))};
                 obj.Plan.Slots(k).id = id;
+                obj.invalidate('Plan changed');
                 obj.showPlan();
             catch ME
                 uialert(obj.Fig, ME.message, 'NeuroQC');
@@ -233,10 +266,14 @@ classdef Panel < handle
 
         function applyNow(obj)
             k = obj.selected(); if isempty(k), return; end
-            type = obj.Plan.Slots(k).alternatives{1}.type;
+            alt = obj.Plan.Slots(k).alternatives{1};
             try
                 before = neuroqc.live.Session.fingerprint(neuroqc.live.Session.current());
-                neuroqc.run.Native.applyNow(type);
+                if strcmp(alt.type, 'native')
+                    neuroqc.run.Native.applyCommand(alt.params.command);   % the fixed command, no dialog
+                else
+                    neuroqc.run.Native.applyNow(alt.type);
+                end
                 obj.refreshLive(false);
                 if strcmp(before, neuroqc.live.Session.fingerprint(neuroqc.live.Session.current()))
                     neuroqc.utils.log('Dialog cancelled or no change; the dataset is unchanged.');
@@ -336,7 +373,16 @@ classdef Panel < handle
         function adopt(obj)
             k = obj.selectedResult(); if isempty(k), return; end
             stop(obj.Timer); cleanup = onCleanup(@() start(obj.Timer)); %#ok<NASGU>
-            neuroqc.NeuroQC.adopt(obj.Result, k);
+            try
+                neuroqc.NeuroQC.adopt(obj.Result, k);
+            catch ME
+                if ~any(strcmp(ME.identifier, {'NeuroQC:Adopt','NeuroQC:ReplayMismatch','NeuroQC:StaleState'}))
+                    uialert(obj.Fig, ME.message, 'NeuroQC'); return;
+                end
+                choice = uiconfirm(obj.Fig, ME.message, 'NeuroQC: adopt anyway?', ...
+                    'Options', {'Adopt anyway', 'Cancel'}, 'DefaultOption', 2, 'CancelOption', 2, 'Icon', 'warning');
+                if strcmp(choice, 'Adopt anyway'), neuroqc.NeuroQC.adopt(obj.Result, k, true); end
+            end
         end
 
         function printScript(obj)
