@@ -209,18 +209,32 @@ classdef Rank
             s = RandStream('mt19937ar', 'Seed', opts.seed);
             peak = isfield(cands(1).m, 'objectives') && any(~strcmp({cands(1).m.objectives.kind}, 'scalar'));
             B = opts.nBoot; if peak, B = opts.nBootPeakOuter; end
-            nC = numel(ref.ids); W = cell(1, nC);
+            nC = numel(ref.ids); W = cell(1, nC); scale = ones(1, nC);
             for c = 1:nC
                 N = ref.n(c);
-                idx = randi(s, N, N, B);
-                W{c} = full(sparse(idx, repmat(1:B, N, 1), 1, N, B));
+                if peak
+                    % Peak measures already carry an inner bootstrap (bSME).
+                    % Resampling WITH replacement around it overstates how
+                    % much bSME varies (simulated: SD of a difference 11 ms
+                    % vs 7.4 ms across replications), which left no power.
+                    % Half-samples without replacement, rescaled to the full
+                    % sample (bSME ~ 1/sqrt(n)), give the right spread
+                    % (7.0 ms); the same half-samples for every candidate.
+                    m = floor(N / 2);
+                    W{c} = zeros(N, B);
+                    for b = 1:B, W{c}(randperm(s, N, m), b) = 1; end
+                    scale(c) = sqrt(m / N);
+                else
+                    idx = randi(s, N, N, B);
+                    W{c} = full(sparse(idx, repmat(1:B, N, 1), 1, N, B));
+                end
             end
             nO = numel(ref.objectives);
             per = zeros(numel(cands), B, nO);
             for k = 1:numel(cands)
                 objs = cands(k).m.objectives;
                 for o = 1:nO
-                    per(k, :, o) = neuroqc.eval.Measure.smeBoot(objs(o), W, opts, 7919 * o);
+                    per(k, :, o) = neuroqc.eval.Measure.smeBoot(objs(o), W, opts, 7919 * o, scale);
                 end
             end
             boot = cell(1, numel(objNames));

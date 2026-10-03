@@ -130,6 +130,26 @@ R = neuroqc.eval.Rank.run(c5, ref, o);
 verifyEqual(tc, R.table.status, {'rejected'});
 end
 
+function testPeakComparisonSpreadMatchesReplications(tc)
+% For peak measures the paired resampling must reproduce how much the
+% difference between two candidates' bSME varies across independent
+% replications. Resampling with replacement around the inner bootstrap
+% overstated it by ~50% (no power); half-samples rescaled to n do not.
+rs = RandStream('mt19937ar', 'Seed', 80); fs = 250; t = (0.2:1/fs:0.6) * 1000; N = 60;
+o = neuroqc.eval.Rank.defaults(); ref = nqc_ref(N, {'P3.lat'}, {'ms'});
+sdBoot = zeros(1, 40); dpt = zeros(1, 40);
+for s = 1:40
+    base = 5 * exp(-0.5 * ((t - 400) / 60) .^ 2) + 4 * randn(rs, N, numel(t));
+    c1 = nqc_cand(base + 6 * randn(rs, N, numel(t)), 'kind', {'peakLatency'}, 'times', t);
+    c2 = nqc_cand(base + 9 * randn(rs, N, numel(t)), 'kind', {'peakLatency'}, 'times', t);
+    B = neuroqc.eval.Rank.bootstrap([c1 c2], ref, o);
+    sdBoot(s) = std(B{1}(2, :) - B{1}(1, :));
+    dpt(s) = c2.m.composite - c1.m.composite;
+end
+fprintf('peak latency: SD of the difference across replications %.2f ms, paired resampling %.2f ms\n', std(dpt), mean(sdBoot));
+verifyEqual(tc, mean(sdBoot), std(dpt), 'RelTol', 0.25);
+end
+
 function testEquivalenceNeedsAMarginAndEvidence(tc)
 % "Not distinguished" is not equivalence. With a margin, equivalence is
 % claimed when the 90% CI of the difference lies within it: often for

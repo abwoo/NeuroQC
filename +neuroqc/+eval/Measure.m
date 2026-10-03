@@ -116,10 +116,12 @@ classdef Measure
             end
         end
 
-        function v = smeBoot(o, Wc, opts, salt)
+        function v = smeBoot(o, Wc, opts, salt, scale)
             % SME of objective o under each outer bootstrap draw (paired:
             % Wc{c} holds the same trial counts for every candidate).
+            % scale(c) rescales condition c (half-samples -> full sample).
             % Returns 1 x B, RMS over conditions.
+            if nargin < 5, scale = ones(1, numel(Wc)); end
             B = size(Wc{1}, 2); acc = zeros(1, B);
             for c = 1:numel(Wc)
                 X = o.X{c}; M = double(~isnan(X(:, 1))); X0 = X; X0(isnan(X0)) = 0;
@@ -144,7 +146,7 @@ classdef Measure
                     end
                 end
                 sm2(:, Nb < 2) = Inf;
-                acc = acc + sm2;
+                acc = acc + sm2 * scale(c) ^ 2;
             end
             v = sqrt(acc / numel(Wc));
         end
