@@ -306,6 +306,12 @@ classdef Plan
                     continue;
                 end
                 [grid, searched, defining] = paramGrid(alt.type, alt.params, contract);
+                if strcmp(alt.type, 'native')
+                    list{end+1} = struct('slot', slot.id, 'type', 'native', 'params', grid{1}, ...
+                        'key', instKey('native', grid{1}), 'label', instLabel('native', grid{1}), ...
+                        'searched', {searched}, 'defining', referenceOf(grid{1}.command)); %#ok<AGROW>
+                    continue;
+                end
                 for g = 1:numel(grid)
                     p = grid{g};
                     dtxt = '';
@@ -533,7 +539,20 @@ for g = 1:numel(idx)
     end
     if isempty(shown), key = sprintf('%s: %s', P.fn, com); else, key = sprintf('%s(%s)', P.fn, strjoin(shown, ',')); end
     list{g} = struct('slot', slotId, 'type', 'native', 'params', p, 'key', key, 'label', key, ...
-        'searched', {cellfun(@matlab.lang.makeValidName, searched, 'UniformOutput', false)}, 'defining', '');
+        'searched', {cellfun(@matlab.lang.makeValidName, searched, 'UniformOutput', false)}, 'defining', referenceOf(com));
+end
+end
+
+function d = referenceOf(command)
+% A native pop_reref defines what is measured, like the reref step: its
+% reference (and excluded channels) puts the candidate in a stratum.
+d = '';
+for stmt = neuroqc.run.Native.statements(command)
+    e = neuroqc.live.History.classify(stmt{1});
+    if strcmp(e.step, 'reref')
+        a = neuroqc.run.Native.argsOf(stmt{1}, 'pop_reref');
+        d = sprintf('pop_reref=%s', valText(a));
+    end
 end
 end
 

@@ -500,6 +500,24 @@ p = p.setSkippable('filter', false);
 verifyEqual(tc, numel(p.Slots(1).alternatives), 2);
 end
 
+function testEeglabReferencesAreStrataAndCheckedCorrectly(tc)
+% Audit: a reference set in EEGLAB's pop_reref dialog was neither
+% stratified nor modelled in the signal check (its channels were ignored).
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0));
+nqc_setBase(EEG);
+p = neuroqc.plan.Plan();
+p = p.addEeglab('EEG = pop_reref(EEG, []);', 'ref', 'arg2', {[], {'P7', 'P8'}});
+p = p.add('epoch'); p = p.add('baseline');
+r = neuroqc.NeuroQC.optimize(p, nqc_c());
+verifyEqual(tc, numel(unique({r.leaves.stratum})), 2);          % never ranked against each other
+verifyEqual(tc, numel(r.ranking.byStratum), 2);
+verifyEqual(tc, r.signalCheck, 'injection');
+for k = 1:2
+    verifyLessThan(tc, r.cands(k).signal.amplitudeError, 0.01);  % a change of reference is not distortion
+    verifyGreaterThan(tc, r.cands(k).signal.waveformCorr, 0.999);
+end
+end
+
 % ---------------------------------------------------------------- helpers
 function c = nqc_c()
 c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...

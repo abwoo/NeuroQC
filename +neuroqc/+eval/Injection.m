@@ -99,9 +99,17 @@ classdef Injection
                 mode = inst.params.mode; chans = cellstr(inst.params.channels);
                 if isfield(inst.params, 'exclude'), ex = cellstr(inst.params.exclude); end
             elseif strcmp(inst.type, 'native')
+                % an EEGLAB pop_reref command: its reference and excluded
+                % channels, resolved to labels on the data as they are now
+                labs = {S.chanlocs.labels};
                 for stmt = neuroqc.run.Native.statements(inst.params.command)
                     e = neuroqc.live.History.classify(stmt{1});
-                    if strcmp(e.step, 'reref') && isfield(e.params, 'mode'), mode = e.params.mode; end
+                    if ~strcmp(e.step, 'reref'), continue; end
+                    a = neuroqc.run.Native.argsOf(stmt{1}, 'pop_reref');
+                    ref = []; if ~isempty(a), ref = a{1}; end
+                    if isempty(ref), mode = 'average'; else, mode = 'channels'; chans = toLabels(ref, labs); end
+                    k = find(cellfun(@(x) ischar(x) && strcmpi(x, 'exclude'), a(2:end)), 1);
+                    if ~isempty(k) && numel(a) > k + 1, ex = toLabels(a{k + 2}, labs); end
                 end
             end
             if isempty(mode), return; end
@@ -162,6 +170,12 @@ classdef Injection
 end
 
 % ---------------------------------------------------------------------
+function L = toLabels(x, labs)
+% channel indices or labels -> labels
+if isnumeric(x), L = labs(x); else, L = cellstr(x); end
+L = L(:)';
+end
+
 function g = expectedTimeCourse(S, times, contract, truth)
 % Average over the kept epochs of every injected template that falls in
 % each epoch, so overlapping epochs (events closer than the epoch length)
