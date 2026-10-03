@@ -45,16 +45,27 @@ dataset and never modifies it during a search. Each candidate runs on its own co
 - **History and state.** The left side shows the live `EEG.history`, parsed line by line, with a
   provenance label on every item: recorded in the history, executed by NeuroQC, session-only command,
   inferred from the data, or cannot be verified. The top shows the dataset's state and any warnings.
-- **Plan.** Add steps in the order they should run. In the *settings* column, a single value is
-  fixed and `{a, b, c}` is searched. Parameters you don't mention are searched over the catalog's
-  suggestions; *Catalog help* lists them.
-- **Fix via EEGLAB dialog.** Opens the native dialog. The command it returns becomes a fixed step,
-  replayed verbatim.
+- **Analysis contract, from EEGLAB's own dialogs.** Conditions are picked from the dataset's event
+  list (*Add from events…*); the trials that count from markers, an EEGLAB data selection
+  (`pop_select`) or event selection (`pop_selectevent`); the epoch from `pop_epoch`; the baseline from
+  `pop_rmbase` (ms converted to s); the ROI from EEGLAB's channel selection. *View ERP* opens
+  `pop_timtopo`, *Chan. locations…* opens `pop_chanedit`. The text fields stay editable and show
+  the trials per condition under the rule.
+- **Plan.** Add steps in the order they should run. The *effective* column shows every parameter as
+  it will run, including the defaults that will be searched. Values come from the step's EEGLAB
+  dialog: *Values from EEGLAB dialog…* adds each dialog's values to the step's search; *Fix via
+  EEGLAB dialog* keeps the dialog's whole command (also mark→reject and ICLabel→flag→remove
+  workflows); *Add config (EEGLAB)…* configures it again, and the arguments that differ are
+  searched one by one (*Parameters…* shows them). *Skipping allowed*, *Must come before…* and the
+  *pin* column control alternatives and order.
 - **Apply now in EEGLAB.** Runs the step on the current dataset through EEGLAB's own menu code path
   (`EEG.history`, `ALLCOM`, new dataset), so the plan starts after it.
-- **Run search.** Prints every command and score in the Command Window and stores the result in
-  `neuroqc_result`.
-- **Adopt.** Stores a candidate as a new EEGLAB dataset whose `EEG.history` reproduces it.
+- **Run search / Options… / Resume…** Every command and score is printed in the Command Window and
+  the result is stored in `neuroqc_result`. Options: data unit, checkpoint folder, sampled search,
+  parallel, external QC table.
+- **Results.** Selecting a row shows its full pipeline, reason, measures and commands below the
+  table. *Inspect selected* opens a rebuilt candidate (not adopted) or the source in EEGLAB's
+  viewers; *Adopt* stores a candidate as a new EEGLAB dataset whose `EEG.history` reproduces it.
 
 **Script**
 
