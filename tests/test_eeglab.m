@@ -517,6 +517,28 @@ P1 = app.previewAt(1);
 verifyTrue(tc, any(strcmp({P1.chanlocs.labels}, 'O1')));          % the first step sees the dataset
 end
 
+function testTrialRuleFollowsItsRecording(tc)
+% A trial rule of event ids belongs to its recording: it survives
+% processing of that recording (e.g. a filter) but is reset, with a
+% message, when another recording becomes current.
+A = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+B = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'seed', 3));
+nqc_setBase(A);
+app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
+app.setTrialRule(struct('mode', 'urevents', 'ids', [A.event(1:10).urevent]));
+[~, A2] = evalc('pop_eegfiltnew(A, ''locutoff'', 0.5, ''plotfreqz'', 0)');
+nqc_setBase(A2); app.refreshLive(false);
+verifyEqual(tc, app.TrialRule.mode, 'urevents');                  % same recording, processed: kept
+nqc_setBase(B); app.refreshLive(false);
+verifyEqual(tc, app.TrialRule.mode, 'all');                       % another recording: reset
+verifyTrue(tc, contains(app.StatusLabel.Text, 'reset to all trials'));
+app.setTrialRule(struct('mode', 'time_ranges', 'ranges', [30 Inf]));
+nqc_setBase(A); app.refreshLive(false);
+verifyEqual(tc, app.TrialRule.mode, 'time_ranges');               % a time range is kept...
+verifyTrue(tc, contains(app.TrialLabel.Text, 'set on another recording'));   % ...and shown as such
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');

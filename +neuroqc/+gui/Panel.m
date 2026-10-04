@@ -20,6 +20,7 @@ classdef Panel < handle
         PlanTable; TypeDrop; OrderDrop; ConstraintLabel
         CondField; EpochField; BaseField; CompField; EventsLabel
         TrialRule = struct('mode', 'all')
+        TrialRuleSource = ''      % the recording the trial rule was set on (recordingId)
         AutoFilled = struct('CondField', '', 'EpochField', '', 'BaseField', '')   % what the data filled in
         TrialLabel; SummaryLabel
         LimitFields = struct()
@@ -222,6 +223,7 @@ classdef Panel < handle
                 'Reference: %s | ICA: %s | %s\nFilters: %s'], mat2str(live.currentSet), s.setname, stored, ...
                 s.nbchan, s.srate, shape, s.nEvents, s.reference, s.ica.summary, locs, orDash(s.filters.text));
             obj.autoFill(s);
+            obj.checkTrialRule(EEG, s);
             if isempty(s.warnings), obj.WarnArea.Value = {'No inconsistencies between data and history.'};
             else, obj.WarnArea.Value = s.warnings(:); end
             h = s.history;
@@ -961,9 +963,41 @@ classdef Panel < handle
         function setTrialRule(obj, rule)
             c = neuroqc.eval.Contract('trials', rule); c.validateTrialRule();
             obj.TrialRule = rule;
+            obj.TrialRuleSource = '';
+            EEG = neuroqc.live.Session.current();
+            if ~isempty(EEG), obj.TrialRuleSource = recordingId(EEG); end
             obj.TrialLabel.Text = trialText(rule);
             neuroqc.utils.log('Trial rule: %s', obj.TrialLabel.Text);
             obj.settingsChanged();
+        end
+
+        function checkTrialRule(obj, EEG, s)
+            % A trial rule belongs to the recording it was set on. Event ids
+            % (urevents) mean other trials in another recording, so that rule
+            % is reset; marker rules need their markers; time ranges are
+            % kept but shown as coming from the other recording.
+            r = obj.TrialRule;
+            if strcmp(r.mode, 'all') || isempty(obj.TrialRuleSource), return; end
+            if strcmp(recordingId(EEG), obj.TrialRuleSource), return; end
+            reset = '';
+            switch r.mode
+                case 'urevents'
+                    reset = 'its event ids refer to the trials of the previous recording';
+                case 'marker_ranges'
+                    missing = setdiff({char(string(r.startCode)), char(string(r.endCode))}, s.eventTypes);
+                    if ~isempty(missing), reset = sprintf('marker(s) %s are not in this recording', strjoin(missing, ', ')); end
+            end
+            if ~isempty(reset)
+                msg = sprintf('Trial rule reset to all trials: %s.', reset);
+                obj.TrialRule = struct('mode', 'all'); obj.TrialRuleSource = '';
+                obj.TrialLabel.Text = 'all trials';
+            else
+                msg = sprintf('Trial rule kept from the previous recording (%s): check that it fits this one.', trialText(r));
+                obj.TrialLabel.Text = [trialText(r) '  (set on another recording)'];
+            end
+            neuroqc.utils.log('%s', msg);
+            obj.StatusLabel.Text = msg;
+            obj.invalidate('Settings changed');
         end
 
         function updateSummary(obj)
@@ -1190,6 +1224,17 @@ for k = 1:size(comps, 1)
         strjoin(cellfun(@quoteItem, comps{k, 3}, 'UniformOutput', false), ' '), tail);
 end
 t = strjoin(parts, '; ');
+end
+
+function id = recordingId(EEG)
+% Which recording the data come from, unchanged by filtering, epoching or
+% rejection of the same recording: its file and its original event table.
+f = '';
+if isfield(EEG, 'filename') && ~isempty(EEG.filename), f = fullfile(char(EEG.filepath), char(EEG.filename)); end
+ev = []; if isfield(EEG, 'urevent') && ~isempty(EEG.urevent), ev = EEG.urevent; elseif EEG.trials == 1, ev = EEG.event; end
+lat = 0; n = numel(ev);
+if n > 0 && isfield(ev, 'latency'), lat = sum(double([ev.latency]) .* (1:n)); end
+id = sprintf('%s|%d|%.12g', f, n, lat);
 end
 
 function t = trialText(r)
