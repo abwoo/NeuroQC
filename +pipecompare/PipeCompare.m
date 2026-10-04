@@ -89,7 +89,7 @@ classdef PipeCompare
             end
             L = [L {'    };', 'EEG = pipecompare.PipeCompare.apply(EEG, steps, contract);', 'end', '', ...
                 sprintf('%% The EEGLAB commands this pipeline ran on %s:', result.state.setname)}, ...
-                regexprep(scriptLines(result, idx), '(^|\n)', '$1% ')];
+                cellfun(@(x) ['% ' strrep(x, newline, [newline '% '])], scriptLines(result, idx), 'UniformOutput', false)];
             fid = fopen(file, 'w'); assert(fid > 0, 'PipeCompare:Export', 'Cannot write %s', file);
             fprintf(fid, '%s\n', L{:}); fclose(fid);
             pipecompare.utils.log('Wrote %s', file);

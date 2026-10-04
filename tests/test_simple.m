@@ -144,13 +144,13 @@ d.MeasureDrop.Value = 'custom'; d.measureChanged();
 verifyEqual(tc, d.Grid.RowHeight{3}, 22);                       % window and electrodes row shown
 verifyEqual(tc, d.CustomLabel.Text, 'Window (ms)');
 verifyEqual(tc, d.update(), 0);                                 % nothing entered yet
-d.WindowField.Value = '250 500'; d.Channels = {'pz', 'CPz'};
+d.WindowField.Value = '250 500'; d.Channels = {'pz', 'Cz'};
 n = d.update();
 verifyEqual(tc, n, 12);
 o = d.options();
 verifyEqual(tc, o.window, [0.25 0.5], 'AbsTol', 1e-12);
 k = d.contract(o);
-verifyEqual(tc, k.components.roi, {'Pz', 'CPz'});               % the dataset's own spelling
+verifyEqual(tc, k.components.roi, {'Pz', 'Cz'});               % the dataset's own spelling
 d.MeasureDrop.Value = 'band'; d.measureChanged();
 verifyEqual(tc, d.CustomLabel.Text, 'Band (Hz)');
 verifyEqual(tc, d.Channels, pipecompare.simple.Presets.eegChannels(EEG));   % all EEG channels, as the preset bands
