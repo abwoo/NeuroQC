@@ -133,8 +133,8 @@ pipecompare_setup                         % run from the PipeCompare folder
    ends the search and keeps the pipelines already finished.
 5. The result window says which pipeline to use and why, naming each pipeline by its settings
    (for example *high-pass 0.5 Hz, low-pass 30 Hz*). **Use this pipeline** stores it as a new
-   EEGLAB dataset; **Save script…** writes it as a MATLAB function; **Details…** opens the full
-   result table.
+   EEGLAB dataset; **Save script…** writes it as a MATLAB function that you can run on your other
+   recordings; **Details…** opens the full result table.
 
 For any EEGLAB step, order search, several components or different constraints, open
 **Advanced…** in the dialog, or **Tools > PipeCompare > Advanced panel…**. The panel defines ERP
@@ -190,7 +190,7 @@ p = p.add('reject_threshold', 'uv', {100, 150});
 r = pipecompare.PipeCompare.optimize(p, c, struct('checkpoint', 'pc_run1'));
 
 pipecompare.PipeCompare.adopt(r);                          % recommended pipeline -> new dataset
-pipecompare.PipeCompare.writeScript(r, 3, 'pipeline3.m');  % candidate 3 as a MATLAB function
+pipecompare.PipeCompare.writeScript(r, 3, 'pipeline3.m');  % candidate 3 as a function for any recording
 r = pipecompare.PipeCompare.resume('pc_run1');             % continue an interrupted search
 ```
 
@@ -245,7 +245,8 @@ descriptive and not used in the ranking. The full derivations are in
   reason for each exclusion.
 - The recommended pipeline and why it was chosen.
 - The full EEGLAB command sequence for every candidate.
-- A standalone MATLAB function that reproduces a chosen candidate (`writeScript`).
+- A MATLAB function that runs a chosen candidate's steps on any recording, deciding bad channels,
+  components and rejected epochs from that recording's data (`writeScript`).
 - Adoption of a candidate as a new EEGLAB dataset whose `EEG.history` replays it (`adopt`).
 
 ## Limitations

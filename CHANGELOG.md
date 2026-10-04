@@ -22,6 +22,11 @@ release has a git tag `vX.Y.Z`.
   off when fewer than two pipelines would be compared. The list adds *your own window and
   electrodes* (ERP) and *your own band and electrodes*; `pop_pipecompare` takes them as
   `'measure', 'custom'` with `'window'` and `'channels'`, or `'measure', 'band'` with `'band'`.
+- *Save script…* / `writeScript` writes a function that runs the pipeline's steps on any
+  recording (`pipecompare.PipeCompare.apply`): bad channels, ICLabel components and rejected
+  epochs are decided from that recording's data. Previously the file replayed this dataset's
+  channel, component and epoch numbers, which gave wrong results on other recordings without an
+  error. The exact commands follow as comments.
 
 - A plan with ASR or ICLabel IC removal is now illegal when the clean_rawdata or ICLabel plugin is
   missing, with that reason, before the search starts; previously every candidate failed during it.
