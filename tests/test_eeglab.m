@@ -634,6 +634,47 @@ r = neuroqc.NeuroQC.optimize(q, c);
 verifyEmpty(tc, r.ranking.table.note{1});
 end
 
+function testScriptRefusesWhenThereIsNoSingleRecommendation(tc)
+% With several strata (or nothing feasible) there is no recommendation:
+% writeScript(r, [], f) must say so and write nothing, like adopt.
+r = struct('ranking', struct('recommended', [], 'byStratum', struct('recommended', {3, 5})), ...
+    'labels', {{}}, 'rootComs', {{}}, 'cands', []);
+f = [tempname '.m'];
+verifyError(tc, @() neuroqc.NeuroQC.writeScript(r, [], f), 'NeuroQC:Adopt');
+verifyFalse(tc, isfile(f));
+verifyError(tc, @() neuroqc.NeuroQC.script(r), 'NeuroQC:Adopt');
+r.ranking.byStratum = r.ranking.byStratum([]);
+verifyError(tc, @() neuroqc.NeuroQC.writeScript(r, [], f), 'NeuroQC:Adopt');
+verifyFalse(tc, isfile(f));
+end
+
+function testScriptIncludesThePreparationLines(tc)
+% script() must rebuild the candidate from the starting dataset as it is
+% in EEGLAB, so it carries NeuroQC's preparation (here volts -> uV).
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+EEG.data = EEG.data * 1e-6;                                % stored in volts
+nqc_setBase(EEG);
+c = nqc_contract();
+p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', 0.5); p = p.add('epoch'); p = p.add('baseline');
+r = neuroqc.NeuroQC.optimize(p, c, struct('dataUnit', 'V'));
+txt = neuroqc.NeuroQC.script(r, 1);
+verifyTrue(tc, contains(txt, 'volts -> microvolts'));
+[~, out] = evalc('runScript(EEG, txt)');
+m = neuroqc.eval.Measure.candidate(out, c, r.ref);
+verifyEqual(tc, [m.objectives.agg], [r.cands(1).m.objectives.agg], 'RelTol', 1e-9);
+end
+
+function testCheckpointIdentityFollowsTheData(tc)
+% The identity hash is the same for the same search and changes with one
+% sample of the data (it is computed block by block).
+EEG = nqc_synth(struct('seconds', 30, 'nPerCond', 5));
+r = struct('root', EEG, 'rootComs', {{}}, 'contract', nqc_contract(), 'labels', {{'a'}}, 'options', struct());
+a = neuroqc.run.Executor.identity(r);
+verifyEqual(tc, neuroqc.run.Executor.identity(r), a);
+r.root.data(3, 100) = r.root.data(3, 100) + 1e-3;
+verifyNotEqual(tc, neuroqc.run.Executor.identity(r), a);
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');
@@ -746,4 +787,9 @@ for k = 1:50
     if strcmp(char(g.Scrollable), state), return; end
     pause(0.1);
 end
+end
+
+function EEG = runScript(EEG, NQC_TXT__)
+% run script() output on EEG, as a user would paste it
+eval(NQC_TXT__);
 end

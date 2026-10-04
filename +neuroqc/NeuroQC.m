@@ -54,19 +54,26 @@ classdef NeuroQC
         function writeScript(result, idx, file)
             % Write a runnable EEGLAB function that reproduces candidate idx
             % from the starting dataset (NeuroQC preparation lines included).
-            if isempty(idx), idx = result.ranking.recommended; end
+            % idx = [] means the recommended candidate; with several strata
+            % (no single recommendation) or none feasible it is an error and
+            % no file is written.
+            idx = neuroqc.run.Executor.pickCandidate(result, idx);
             [~, name] = fileparts(file);
             L = [{sprintf('function EEG = %s(EEG)', name), ...
                 sprintf('%% NeuroQC %s candidate %d: %s', neuroqc.NeuroQC.Version, idx, result.labels{idx})}, ...
-                result.rootComs, result.cands(idx).coms, {'end'}];
+                scriptLines(result, idx), {'end'}];
             fid = fopen(file, 'w'); assert(fid > 0, 'NeuroQC:Export', 'Cannot write %s', file);
             fprintf(fid, '%s\n', L{:}); fclose(fid);
             neuroqc.utils.log('Wrote %s', file);
         end
 
         function txt = script(result, idx)
-            if nargin < 2 || isempty(idx), idx = result.ranking.recommended; end
-            txt = strjoin(result.cands(idx).coms, newline);
+            % The EEGLAB commands that rebuild candidate idx from the starting
+            % dataset, NeuroQC's preparation lines (e.g. volts -> microvolts)
+            % included: the same lines writeScript writes.
+            if nargin < 2, idx = []; end
+            idx = neuroqc.run.Executor.pickCandidate(result, idx);
+            txt = strjoin(scriptLines(result, idx), newline);
             if nargout == 0, fprintf('%s\n', txt); end
         end
 
@@ -80,3 +87,7 @@ classdef NeuroQC
     end
 end
 
+function L = scriptLines(result, idx)
+% preparation of the starting copy, then the candidate's own commands
+L = [result.rootComs(:)' result.cands(idx).coms(:)'];
+end

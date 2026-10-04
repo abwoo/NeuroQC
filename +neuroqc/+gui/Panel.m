@@ -729,7 +729,7 @@ classdef Panel < handle
                 if ~ischar(folder), return; end
             end
             try
-                stop(obj.Timer); cleanup = onCleanup(@() start(obj.Timer)); %#ok<NASGU>
+                stop(obj.Timer); cleanup = onCleanup(@() restartTimer(obj.Timer)); %#ok<NASGU>
                 obj.StatusLabel.Text = 'Resuming... progress in the Command Window'; drawnow;
                 r = neuroqc.NeuroQC.resume(folder);
                 obj.Result = r; assignin('base', 'neuroqc_result', r);
@@ -1126,8 +1126,13 @@ classdef Panel < handle
                 end
                 obj.StatusLabel.Text = 'Running... progress in the Command Window'; drawnow;
                 stop(obj.Timer);
-                cleanup = onCleanup(@() start(obj.Timer));
+                cleanup = onCleanup(@() restartTimer(obj.Timer));
                 r = neuroqc.NeuroQC.optimize(obj.Plan, c, opts);
+                if ~isvalid(obj) || ~isvalid(obj.Fig)      % the window was closed during the search
+                    if ~dry, assignin('base', 'neuroqc_result', r); end
+                    neuroqc.utils.log('Panel closed during the search; the result is in neuroqc_result.');
+                    return;
+                end
                 if dry
                     obj.StatusLabel.Text = sprintf('%d pipelines, %d step runs (shared prefixes)', r.report.nLeaves, r.report.nNodes);
                     return;
@@ -1138,8 +1143,9 @@ classdef Panel < handle
                 obj.StatusLabel.Text = 'Done. Result in variable neuroqc_result.';
                 neuroqc.utils.log('Result stored in the base variable neuroqc_result.');
             catch ME
-                obj.StatusLabel.Text = 'Error (see dialog)';
                 neuroqc.utils.log('ERROR: %s', ME.message);
+                if ~isvalid(obj) || ~isvalid(obj.Fig), return; end
+                obj.StatusLabel.Text = 'Error (see dialog)';
                 uialert(obj.Fig, ME.message, 'NeuroQC');
             end
         end
@@ -1223,7 +1229,7 @@ classdef Panel < handle
 
         function adopt(obj)
             k = obj.selectedResult(); if isempty(k), return; end
-            stop(obj.Timer); cleanup = onCleanup(@() start(obj.Timer)); %#ok<NASGU>
+            stop(obj.Timer); cleanup = onCleanup(@() restartTimer(obj.Timer)); %#ok<NASGU>
             try
                 neuroqc.NeuroQC.adopt(obj.Result, k);
             catch ME
@@ -1543,3 +1549,10 @@ else, t = class(v);
 end
 end
 
+
+function restartTimer(t)
+% Resume the live refresh after a long action, unless the panel (and its
+% timer) was closed meanwhile: closing the window during a search must
+% not end in an error from the cleanup.
+if ~isempty(t) && isvalid(t) && strcmp(t.Running, 'off'), start(t); end
+end
