@@ -114,10 +114,10 @@ pipecompare_setup                         % run from the PipeCompare folder
 
 1. Load a dataset in EEGLAB.
 2. Open **Tools > PipeCompare > Compare pipelines…**
-3. Choose:
-   - the data type: event-related or continuous;
-   - the measure: an ERP component and the event types it is time-locked to, or a frequency band;
-   - the recipe: which steps to compare.
+3. Choose what to measure: an ERP component (with the event types it is time-locked to) or a
+   frequency band, or your own time window or band with the electrodes you pick. The list only
+   offers what the data support. *Standard* is preselected as the recipe, which sets the steps
+   to compare:
 
    | Recipe | Steps compared |
    |---|---|
@@ -136,10 +136,10 @@ pipecompare_setup                         % run from the PipeCompare folder
    EEGLAB dataset; **Save script…** writes it as a MATLAB function; **Details…** opens the full
    result table.
 
-For custom time windows and regions of interest, any EEGLAB step, order search or different
-constraints, open **Advanced…** in the dialog, or **Tools > PipeCompare > Advanced panel…**. The
-panel defines ERP measures only; band power with other bands, channels or steps is set up from a
-script (see [Scripting interface](#scripting-interface)). See [docs/PANEL.md](docs/PANEL.md) for a
+For any EEGLAB step, order search, several components or different constraints, open
+**Advanced…** in the dialog, or **Tools > PipeCompare > Advanced panel…**. The panel defines ERP
+measures only; band power with other steps is set up from a script (see
+[Scripting interface](#scripting-interface)). See [docs/PANEL.md](docs/PANEL.md) for a
 description of every control.
 
 ### From the command line
@@ -152,6 +152,10 @@ EEG = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'target', 'standard'}, 'r
 
 % Continuous data: compare pipelines for alpha-band power in 2 s segments
 EEG = pop_pipecompare(EEG, 'measure', 'alpha', 'recipe', 'filters');
+
+% Your own window (s) and electrodes; or 'measure', 'band', 'band', [8 12]
+EEG = pop_pipecompare(EEG, 'measure', 'custom', 'window', [0.25 0.5], 'channels', {'Cz', 'CPz'}, ...
+    'events', {'target'}, 'recipe', 'standard');
 ```
 
 Replace `'target'` and `'standard'` with the event types in your dataset. The dataset is returned

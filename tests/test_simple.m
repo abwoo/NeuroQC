@@ -1,6 +1,6 @@
 function tests = test_simple
 %TEST_SIMPLE Simple mode: presets (ERP CORE values), recipes adapted to the
-%   data, the dialog (nothing preselected, live count), pop_pipecompare
+%   data, the dialog (what to measure, live count), pop_pipecompare
 %   from a script, and the results window.
 tests = functiontests(localfunctions);
 end
@@ -45,6 +45,19 @@ b = pipecompare.simple.Presets.contract(EEG, 'alpha', {});
 verifyTrue(tc, b.isSegmented());
 verifyEqual(tc, b.bands.freq, [8 13]);
 verifyEqual(tc, b.segment, 2);
+own = struct('window', [0.25 0.9], 'band', [], 'channels', {{'pz'}});
+w = pipecompare.simple.Presets.contract(EEG, 'custom', {'11'}, 2, false, own);
+verifyEqual(tc, w.components.roi, {'Pz'});
+verifyEqual(tc, w.components.window, [0.25 0.9]);
+verifyEqual(tc, w.epoch, [-0.2 1.1], 'AbsTol', 1e-12);          % the epoch holds the window
+own.channels = {};
+verifyError(tc, @() pipecompare.simple.Presets.contract(EEG, 'custom', {'11'}, 2, false, own), 'PipeCompare:Simple');
+own = struct('window', [], 'band', [0.5 3], 'channels', {{}});
+f = pipecompare.simple.Presets.contract(EEG, 'band', {}, 2, false, own);
+verifyEqual(tc, f.bands.roi, pipecompare.simple.Presets.eegChannels(EEG));
+verifyEqual(tc, f.segment, 4);                                  % two cycles of 0.5 Hz
+own.band = [8 EEG.srate];
+verifyError(tc, @() pipecompare.simple.Presets.contract(EEG, 'band', {}, 2, false, own), 'PipeCompare:Simple');
 end
 
 function testRecipesAdaptToTheData(tc)
@@ -80,33 +93,73 @@ verifyEqual(tc, {c.conditions.name}, {'11+31'});
 verifyEqual(tc, c.conditions.events, {'11', '31'});
 end
 
-function testDialogPreselectsNothingAndCountsLive(tc)
+function testDialogAsksOnlyWhatToMeasure(tc)
 EEG = tc.TestData.EEG;
 d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>
-verifyEqual(tc, d.TypeDrop.Value, d.ErpType);                   % the data have events
-verifyTrue(tc, contains(d.TypeWhy.Text, '11 (30)'));
+verifyTrue(tc, contains(d.TypeWhy.Text, 'ERP measures or band power'));   % read from the data, not asked
 verifyEqual(tc, d.MeasureDrop.Value, d.Choose);
+verifyTrue(tc, all(ismember({'P3', 'custom', 'alpha', 'band'}, d.MeasureDrop.ItemsData)));
+verifyTrue(tc, ismember('ERP: P3 (Pz, 300-600 ms)', d.MeasureDrop.Items));
 verifyEmpty(tc, d.EventList.Value);
-verifyEqual(tc, d.RecipeDrop.Value, '');
+verifyEqual(tc, d.RecipeDrop.Value, 'standard');                % preselected
 verifyEqual(tc, char(d.RunButton.Enable), 'off');
-d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.RecipeDrop.Value = 'filters';
-[n, msg] = d.update();
-verifyEqual(tc, n, 12);                                         % 4 high-pass x 3 low-pass edges
-verifyTrue(tc, startsWith(msg, '12 pipelines'));
-verifyEqual(tc, char(d.RunButton.Enable), 'on');
-d.RecipeDrop.Value = 'standard';
+verifyEqual(tc, d.Grid.RowHeight{3}, 0);                        % no custom row for a preset
+d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
 [n, msg] = d.update();
 verifyEqual(tc, n, 4 * 3 * 3 * 3);                              % filters x ICLabel threshold x rejection threshold
 verifyTrue(tc, contains(msg, '(1 ICA decomposition)'));
 verifyEqual(tc, char(d.RunButton.Enable), 'on');
-d.TypeDrop.Value = d.BandType; d.typeChanged();
-verifyEqual(tc, d.MeasureDrop.Value, d.Choose);                 % changing the type clears the measure
-verifyTrue(tc, ismember('alpha', d.MeasureDrop.Items));
+d.RecipeDrop.Value = 'filters';
+[n, msg] = d.update();
+verifyEqual(tc, n, 12);                                         % 4 high-pass x 3 low-pass edges
+verifyTrue(tc, startsWith(msg, '12 pipelines'));
+d.MeasureDrop.Value = 'alpha'; d.measureChanged();
+verifyEqual(tc, char(d.EventList.Enable), 'off');               % band power needs no events
+o = d.options();
+verifyEmpty(tc, o.events);
+% epoched data: ERP only; filters cannot be compared after epoching
+[~, Ep] = evalc('pop_epoch(EEG, {''11'', ''31''}, [-0.2 0.8])');
+d3 = pipecompare.gui.SimpleDialog(Ep); c3 = onCleanup(@() delete(d3)); %#ok<NASGU>
+verifyFalse(tc, any(ismember({'alpha', 'band'}, d3.MeasureDrop.ItemsData)));
+verifyEqual(tc, sort(d3.EventList.Value), {'11', '31'});        % the time-locking types
+d3.MeasureDrop.Value = 'P3'; d3.RecipeDrop.Value = 'filters'; d3.measureChanged();
+[n, msg] = d3.update();
+verifyEqual(tc, n, 1);
+verifyTrue(tc, startsWith(msg, 'Only 1 pipeline: nothing to compare.'));
+verifyEqual(tc, char(d3.RunButton.Enable), 'off');
+% continuous, boundary markers only: band power
 E2 = EEG; E2.event = E2.event([]); E2.urevent = [];
 E2.event = struct('type', 'boundary', 'latency', 100, 'duration', 0);
 d2 = pipecompare.gui.SimpleDialog(E2); c2 = onCleanup(@() delete(d2)); %#ok<NASGU>
-verifyEqual(tc, d2.TypeDrop.Value, d2.BandType);                % continuous, boundary markers only
+verifyFalse(tc, ismember('P3', d2.MeasureDrop.ItemsData));
+verifyTrue(tc, ismember('alpha', d2.MeasureDrop.ItemsData));
 verifyEmpty(tc, d2.EventList.Items);
+end
+
+function testDialogOwnWindowAndBand(tc)
+EEG = tc.TestData.EEG;
+d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>
+d.EventList.Value = {'11', '31'}; d.RecipeDrop.Value = 'filters';
+d.MeasureDrop.Value = 'custom'; d.measureChanged();
+verifyEqual(tc, d.Grid.RowHeight{3}, 22);                       % window and electrodes row shown
+verifyEqual(tc, d.CustomLabel.Text, 'Window (ms)');
+verifyEqual(tc, d.update(), 0);                                 % nothing entered yet
+d.WindowField.Value = '250 500'; d.Channels = {'pz', 'CPz'};
+n = d.update();
+verifyEqual(tc, n, 12);
+o = d.options();
+verifyEqual(tc, o.window, [0.25 0.5], 'AbsTol', 1e-12);
+k = d.contract(o);
+verifyEqual(tc, k.components.roi, {'Pz', 'CPz'});               % the dataset's own spelling
+d.MeasureDrop.Value = 'band'; d.measureChanged();
+verifyEqual(tc, d.CustomLabel.Text, 'Band (Hz)');
+verifyEqual(tc, d.Channels, pipecompare.simple.Presets.eegChannels(EEG));   % all EEG channels, as the preset bands
+d.WindowField.Value = '8 12';
+verifyGreaterThan(tc, d.update(), 1);
+k = d.contract(d.options());
+verifyEqual(tc, k.bands.freq, [8 12]);
+d.MeasureDrop.Value = 'custom'; d.measureChanged();
+verifyEmpty(tc, d.Channels);                                    % a window starts with no electrodes
 end
 
 function testTooFewEventsAreFlaggedBeforeRun(tc)
@@ -140,6 +193,10 @@ verifyEqual(tc, evalin('base', 'pipecompare_result.labels'), r.labels);
 verifyEqual(tc, evalin('base', 'pipecompare_result.labels'), r.labels);
 [~, ~, rb] = pop_pipecompare(EEG, 'measure', 'alpha', 'recipe', 'filters', 'show', 'off');
 verifyTrue(tc, rb.ref.segmented);
+[~, com] = pop_pipecompare(EEG, 'measure', 'custom', 'window', [0.25 0.5], 'channels', {'Pz'}, ...
+    'events', {'11', '31'}, 'recipe', 'filters', 'show', 'off');
+verifyTrue(tc, startsWith(com, 'EEG = pop_pipecompare(EEG, ''measure'',''custom'',''window'',[0.25'));
+verifyTrue(tc, contains(com, '''channels'',{''Pz''},''events'',{''11'',''31''}'));
 other = EEG; other.data(1) = other.data(1) + 1;
 verifyError(tc, @() pop_pipecompare(other, 'measure', 'P3', 'events', {'11'}, 'recipe', 'filters', 'show', 'off'), ...
     'PipeCompare:Simple');                                          % only the current dataset

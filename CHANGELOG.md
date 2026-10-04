@@ -17,6 +17,11 @@ release has a git tag `vX.Y.Z`.
 - Simple mode: `boundary` markers are not offered as events; on epoched data the time-locking
   types are preselected; selected types can be scored as one condition (`'pool'`); a condition
   with fewer than 10 events is flagged before *Run* instead of excluding every pipeline after it.
+- Simple-mode dialog: one *Measure* list with what the data support (the data-type menu and the
+  segment field are gone; segments stay settable from scripts), *Standard* preselected, and *Run*
+  off when fewer than two pipelines would be compared. The list adds *your own window and
+  electrodes* (ERP) and *your own band and electrodes*; `pop_pipecompare` takes them as
+  `'measure', 'custom'` with `'window'` and `'channels'`, or `'measure', 'band'` with `'band'`.
 
 - A plan with ASR or ICLabel IC removal is now illegal when the clean_rawdata or ICLabel plugin is
   missing, with that reason, before the search starts; previously every candidate failed during it.

@@ -2,11 +2,17 @@
 
 ## Simple mode (*Compare pipelines…*, `pop_pipecompare`)
 
-Three choices; the measure and the recipe are not preselected:
+Two choices (what to measure; for ERP, the event types); the recipe is preselected:
 
-1. **Data**, judged from the data: epoched, or continuous with events → event-related (ERP);
-   continuous without events → band power. The reason is shown, and you can change it.
-2. **Measure.** ERP: the time-locking event types and a component. Each type is one condition,
+1. **Data**, described from the data: epoched data offer ERP measures, continuous data with
+   events ERP measures and band power, continuous data without events band power.
+2. **Measure**, one list of what the data support: the ERP components, *your own window and
+   electrodes*, the bands, and *your own band and electrodes*. For your own measure, type two
+   numbers (window in ms after the event, e.g. `300 600`, or band in Hz, e.g. `8 12`) and pick
+   the electrodes with *Electrodes…* (EEGLAB's channel list; a band starts with all EEG
+   channels). Your own window uses a −200 ms epoch start and a −200–0 ms baseline, and the band
+   lengthens the segments to hold two cycles of its low edge. ERP: the time-locking event
+   types. Each type is one condition,
    or tick *Score the selected event types as one condition* when several codes mean one
    condition (e.g. one code per block). `boundary` markers are not offered; on epoched data the
    types the epochs are time-locked to are preselected. A condition with fewer events than the
@@ -17,8 +23,9 @@ Three choices; the measure and the recipe are not preselected:
    ms (response-locked). Each condition's waveform is scored at these sites; difference waves
    are formed later in your analysis. Band power: delta 1–4, theta 4–8, alpha 8–13, beta 13–30
    Hz over all EEG channels, in 2 s segments.
-3. **Compare**: *filters only* (high-pass × low-pass edges) or *standard* (+ ICLabel threshold
-   and epoch rejection), each over the catalog's default lists. *Standard* detects bad channels
+3. **Compare**: *standard* (preselected) or *filters only* (high-pass × low-pass edges; with fewer
+   than two pipelines, as on epoched data, *Run* stays off). *Standard* adds the ICLabel threshold
+   and epoch rejection; each searches the catalog's default lists. *Standard* detects bad channels
    once (kurtosis, z = 5) and fits ICA once, before the filters, so every filter choice shares
    one decomposition (fitted on a 1 Hz high-passed copy; filtering and unmixing are linear, so
    their order does not change the data). ASR is compared from the panel or a script. The number
