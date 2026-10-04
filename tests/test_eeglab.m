@@ -393,8 +393,12 @@ g = app.Fig.Children(1);
 app.Fig.Position = [60 60 1000 640]; settle(g, 'on');            % the resize callback runs asynchronously
 verifyEqual(tc, char(g.Scrollable), 'on');                                         % parts keep their size, window scrolls
 verifyEqual(tc, g.RowHeight{3}, 470);
-app.Fig.Position = [60 60 1380 860]; settle(g, 'off');
-verifyEqual(tc, char(g.Scrollable), 'off');
+app.Fig.Position = [60 60 1380 860];
+% the window manager may shrink a window to the screen: the layout must
+% follow the size the window really has
+big = @() app.Fig.Position(4) >= 840 && app.Fig.Position(3) >= 1300;
+settle(g, neuroqc.utils.ternary(big(), 'off', 'on'));
+verifyEqual(tc, char(g.Scrollable), neuroqc.utils.ternary(big(), 'off', 'on'));
 end
 
 function testNothingIsPrefilledAndDefaultsComeFromTheData(tc)
@@ -707,6 +711,46 @@ for k = 1:numel(items)
 end
 evalc('eegplugin_neuroqc(f, ts, cs)');                            % a second call adds nothing
 verifyNumElements(tc, findobj(f, 'Tag', 'neuroqc_menu'), 1);
+end
+
+function testQuickSignatureAndFullFingerprint(tc)
+% The panel's per-second check (quickPrint) does not depend on the event
+% contents; the full fingerprint (at least every 5 s, and before a search
+% or Adopt) does. Its cost does not grow with the events.
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
+q = neuroqc.live.Session.quickPrint(EEG); f = neuroqc.live.Session.fingerprint(EEG);
+E = EEG; E.event(3).type = 'edited';                               % same count, other content
+verifyEqual(tc, neuroqc.live.Session.quickPrint(E), q);
+verifyNotEqual(tc, neuroqc.live.Session.fingerprint(E), f);
+E = EEG; E.event(end) = [];                                        % a count changes
+verifyNotEqual(tc, neuroqc.live.Session.quickPrint(E), q);
+E = EEG; E.data(1) = E.data(1) + 1;                                % a sampled data value changes
+verifyNotEqual(tc, neuroqc.live.Session.quickPrint(E), q);
+n = 20000; E = EEG;
+E.event = struct('type', repmat({'x'}, 1, n), 'latency', num2cell(sort(randi(E.pnts, 1, n))), 'urevent', num2cell(1:n));
+t0 = tic; for k = 1:5, neuroqc.live.Session.quickPrint(E); end; tq = toc(t0);
+t0 = tic; for k = 1:5, neuroqc.live.Session.fingerprint(E); end; tf = toc(t0);
+verifyLessThan(tc, tq, tf / 5);                                    % measured: ~1 ms vs ~55 ms
+end
+
+function testMultiverseSummaryNamesTheInfluentialChoice(tc)
+% Every allowed pipeline is run, so the spread of each measure over the
+% feasible pipelines and the choice behind it are known: here the
+% high-pass edge (0.1 vs 1.5 Hz) moves the P3 mean amplitude far more
+% than the low-pass edge (30 vs 40 Hz).
+EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30));
+nqc_setBase(EEG);
+c = nqc_contract();
+p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', {0.1, 1.5}); p = p.add('lowpass', 'cutoff', {30, 40});
+p = p.add('epoch'); p = p.add('baseline');
+lim = struct('maxAmplitudeError', 1, 'minWaveformCorr', 0, 'minTopoCorr', 0, 'maxLatencyShiftMs', 1000, 'maxArtifactPct', 1);
+r = neuroqc.NeuroQC.optimize(p, c, lim);
+T = r.robustness;
+verifyEqual(tc, height(T), 1);                                     % one measure, one condition
+verifyEqual(tc, T.nPipelines, 4);
+verifyEqual(tc, T.mostInfluentialChoice{1}, 'highpass.cutoff');
+verifyGreaterThan(tc, T.share, 0.9);
+verifyEqual(tc, T.range, T.max - T.min);
 end
 
 function testCaptureReturnsCommandWithoutTouchingData(tc)

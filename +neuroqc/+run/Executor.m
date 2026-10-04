@@ -46,7 +46,7 @@ classdef Executor
             labels = arrayfun(@(l) l.key, leaves, 'UniformOutput', false);
             result = struct('plan', plan, 'contract', contract, 'options', opts, 'state', state, ...
                 'rootFingerprint', live.fingerprint, 'leaves', leaves, 'tree', tree, 'report', rep, ...
-                'labels', {labels}, 'cands', [], 'ranking', [], 'marginal', [], 'root', [], 'ref', [], ...
+                'labels', {labels}, 'cands', [], 'ranking', [], 'marginal', [], 'robustness', [], 'root', [], 'ref', [], ...
                 'rootComs', {{}}, 'versions', versions(), 'identity', '');
             if opts.dryRun, return; end
             [root, rootComs] = neuroqc.run.Executor.prepareRoot(EEG, contract, opts);
@@ -139,6 +139,7 @@ classdef Executor
             R = neuroqc.eval.Rank.run(allc, ref, opts);
             result.ranking = R;
             result.marginal = neuroqc.eval.Rank.marginal(R, leaves, result.report.searched);
+            result.robustness = neuroqc.eval.Rank.robustness(allc, R, leaves, result.report.searched, ref);
             neuroqc.eval.Rank.print(R, result.labels);
             notes = unique([allc.unmatched]);
             if ~isempty(notes)
@@ -148,6 +149,11 @@ classdef Executor
             if ~isempty(result.marginal) && height(result.marginal) > 0
                 neuroqc.utils.log('Effect of each searched choice (medians over evaluated candidates; best among feasible):');
                 disp(result.marginal);
+            end
+            if ~isempty(result.robustness) && height(result.robustness) > 0
+                neuroqc.utils.log(['Multiverse summary: each measure over the feasible pipelines, and the searched ', ...
+                    'choice that accounts for most of its spread (share = eta^2). Sensitivity only; not used for the ranking.']);
+                disp(result.robustness);
             end
             neuroqc.utils.log('Finished in %.1f s.', toc(env.tStart));
         end

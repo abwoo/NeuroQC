@@ -155,8 +155,26 @@ every epoch that is still in the data. A candidate that ends with epochs marked 
 therefore carries a note, so a marking-only step is not mistaken for a rejection.
 [`neuroqc.run.Executor`, note column of the ranking]
 
+## 7. Multiverse summary (sensitivity, not ranking)
+
+Every allowed pipeline is run, so the plan's whole "multiverse" of processing choices is available,
+not a sample of it (Steegen et al., 2016; for ERP processing, Clayson et al., 2021). For each
+measure and condition, and within each stratum, the result reports the spread of the point estimate
+over the feasible pipelines (min, median, max, range). It also names the searched choice that
+accounts for most of that spread. For a choice with values *v* (with *n*ᵥ pipelines and mean
+estimate *x̄*ᵥ), the share is
+
+  η² = Σᵥ *n*ᵥ (*x̄*ᵥ − *x̄*)² / Σᵢ (*x*ᵢ − *x̄*)²,
+
+the fraction of the spread that lies between that choice's values. The summary describes how much
+the measured quantity depends on processing. It is not used to rank or recommend pipelines, and it
+contains no comparison between conditions. [`neuroqc.eval.Rank.robustness`, `result.robustness`]
+
 ## References
 
+- Clayson, P. E., Baldwin, S. A., Rocha, H. A., & Larson, M. J. (2021). The data-processing
+  multiverse of event-related potentials (ERPs): A roadmap for the optimization and standardization
+  of ERP processing and reduction pipelines. *NeuroImage, 245*, 118712.
 - Davison, A. C., & Hinkley, D. V. (1997). *Bootstrap Methods and Their Application*. Cambridge
   University Press.
 - Delorme, A., & Makeig, S. (2004). EEGLAB: an open source toolbox for analysis of single-trial EEG
@@ -180,6 +198,8 @@ therefore carries a note, so a marking-only step is not mistaken for a rejection
   198*, 181–197.
 - Romano, J. P., & Wolf, M. (2005). Stepwise multiple testing as formalized data snooping.
   *Econometrica, 73*(4), 1237–1282.
+- Steegen, S., Tuerlinckx, F., Gelman, A., & Vanpaemel, W. (2016). Increasing transparency through
+  a multiverse analysis. *Perspectives on Psychological Science, 11*(5), 702–712.
 - White, H. (2000). A reality check for data snooping. *Econometrica, 68*(5), 1097–1126.
 - Widmann, A., Schröger, E., & Maess, B. (2015). Digital filter design for electrophysiological
   data – a practical approach. *Journal of Neuroscience Methods, 250*, 34–46.

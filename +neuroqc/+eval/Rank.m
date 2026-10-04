@@ -218,16 +218,7 @@ classdef Rank
             st = R.table.status; comp = R.table.objective; ret = R.table.minRetention;
             for s = 1:numel(searched)
                 slot = searched(s).slot; param = searched(s).param;
-                vals = cell(numel(leaves), 1);
-                for i = 1:numel(leaves)
-                    vals{i} = 'absent';
-                    for q = 1:numel(leaves(i).path)
-                        in = leaves(i).path{q};
-                        if ~strcmp(in.slot, slot), continue; end
-                        if strcmp(param, '(alternative)'), vals{i} = in.type;
-                        elseif isfield(in.params, param), vals{i} = valText(in.params.(param)); end
-                    end
-                end
+                vals = choiceValues(leaves, slot, param);
                 u = unique(vals, 'stable');
                 for v = 1:numel(u)
                     sel = strcmp(vals, u{v});
@@ -241,6 +232,48 @@ classdef Rank
             if isempty(rows), T = table(); return; end
             T = cell2table(rows, 'VariableNames', {'parameter','value','n','nFeasible', ...
                 'medianObjective','medianMinRetention','bestFeasibleObjective'});
+        end
+
+        function T = robustness(cands, R, leaves, searched, ref)
+            % Multiverse summary: how much each measure's point estimate
+            % (per condition) varies over the feasible pipelines, and which
+            % searched choice accounts for most of that variation. Every
+            % allowed pipeline has been run, so this is the full multiverse
+            % of the plan (Steegen et al., 2016; for ERPs, Clayson et al.,
+            % 2021), not a sample. Within each stratum only: estimates under
+            % different references measure different quantities.
+            % share = eta^2 of the choice = sum_v n_v (mean_v - mean)^2 /
+            % sum_i (x_i - mean)^2 over the feasible pipelines: the fraction
+            % of the spread that differs between that choice's values. It
+            % describes sensitivity; it is not used for the ranking.
+            rows = {};
+            st = R.table.status; strat = R.table.stratum;
+            for su = unique(strat(strcmp(st, 'feasible')), 'stable')'
+                feas = find(strcmp(st, 'feasible') & strcmp(strat, su{1}));
+                if numel(feas) < 2, continue; end
+                for o = 1:numel(ref.objectives)
+                    for c = 1:numel(ref.names)
+                        x = arrayfun(@(i) cands(i).m.objectives(o).estimate(c), feas);
+                        ok = isfinite(x); x = x(ok); f = feas(ok);
+                        if numel(x) < 2, continue; end
+                        top = '-'; share = NaN; ss = sum((x - mean(x)) .^ 2);
+                        for q = 1:numel(searched)
+                            v = choiceValues(leaves(f), searched(q).slot, searched(q).param);
+                            [u, ~, g] = unique(v);
+                            if numel(u) < 2 || ss <= 0, continue; end
+                            between = sum(accumarray(g, 1) .* (accumarray(g, x(:)) ./ accumarray(g, 1) - mean(x)) .^ 2);
+                            if isnan(share) || between / ss > share
+                                share = between / ss; top = sprintf('%s.%s', searched(q).slot, searched(q).param);
+                            end
+                        end
+                        rows(end+1, :) = {su{1}, ref.objectives{o}, ref.names{c}, ref.units{o}, numel(x), ...
+                            min(x), median(x), max(x), max(x) - min(x), top, share}; %#ok<AGROW>
+                    end
+                end
+            end
+            if isempty(rows), T = table(); return; end
+            T = cell2table(rows, 'VariableNames', {'stratum','measure','condition','unit','nPipelines', ...
+                'min','median','max','range','mostInfluentialChoice','share'});
         end
 
         function print(R, labels)
@@ -372,6 +405,21 @@ end
 
 function i = sortBy(idx, val)
 [~, o] = sort(val(idx)); i = idx(o); i = i(:);
+end
+
+function vals = choiceValues(leaves, slot, param)
+% the value each pipeline takes for one searched choice ('absent' when its
+% step is skipped; the step type for an alternative)
+vals = cell(numel(leaves), 1);
+for i = 1:numel(leaves)
+    vals{i} = 'absent';
+    for q = 1:numel(leaves(i).path)
+        in = leaves(i).path{q};
+        if ~strcmp(in.slot, slot), continue; end
+        if strcmp(param, '(alternative)'), vals{i} = in.type;
+        elseif isfield(in.params, param), vals{i} = valText(in.params.(param)); end
+    end
+end
 end
 
 function t = valText(v)

@@ -38,6 +38,36 @@ classdef Session
             end
         end
 
+        function [EEG, q] = peek()
+            % The current dataset and its quick signature (quickPrint), with
+            % nothing else computed: what the panel checks every second.
+            EEG = []; q = '';
+            if ~evalin('base', 'exist(''EEG'',''var'')'), return; end
+            EEG = evalin('base', 'EEG');
+            if numel(EEG) ~= 1, q = sprintf('%d datasets', numel(EEG)); return; end
+            q = neuroqc.live.Session.quickPrint(EEG);
+        end
+
+        function q = quickPrint(EEG)
+            % A signature whose cost does not grow with the number of events
+            % or the length of the history: dimensions, rate, setname, event
+            % count, history length, ICA size and flags, and 64 data values.
+            % It misses an edit that changes an event's content but not the
+            % count; fingerprint() catches that (the panel runs it at least
+            % every 5 s, a search and Adopt always).
+            if isempty(EEG) || ~isstruct(EEG) || ~isfield(EEG, 'data') || isempty(EEG.data)
+                q = ''; return;
+            end
+            nIca = 0; if isfield(EEG, 'icaweights'), nIca = size(EEG.icaweights, 1); end
+            nFlag = 0;
+            if isfield(EEG, 'reject') && isfield(EEG.reject, 'gcompreject'), nFlag = sum(EEG.reject.gcompreject); end
+            nd = numel(EEG.data);
+            idx = unique(round(linspace(1, nd, min(nd, 64))));
+            nh = 0; if isfield(EEG, 'history'), nh = numel(EEG.history); end
+            q = sprintf('%s|%d|%d|%d|%g|%d|%d|%d|%d|%.10g', fieldStr(EEG, 'setname'), EEG.nbchan, EEG.pnts, ...
+                EEG.trials, EEG.srate, numel(EEG.event), nh, nIca, nFlag, sum(double(EEG.data(idx)) .* (1:numel(idx))));
+        end
+
         function fp = fingerprint(EEG)
             % Cheap change detector (no full-data hash): dimensions, rate,
             % every event's type, latency and urevent, channel labels, ICA
