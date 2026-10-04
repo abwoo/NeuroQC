@@ -3,6 +3,23 @@
 All notable changes. Versions follow `PipeCompare.Version` (`NeuroQC.Version` up to 0.7.1); each
 release has a git tag `vX.Y.Z`.
 
+## Unreleased
+
+- A plan with ASR or ICLabel IC removal is now illegal when the clean_rawdata or ICLabel plugin is
+  missing, with that reason, before the search starts; previously every candidate failed during it.
+- ASR is also illegal when its filter cannot be built: without the Signal Processing Toolbox,
+  clean_rawdata has it only for 100, 128, 200, 256, 300, 500 and 512 Hz, and at other rates it
+  returned the data unchanged, so ASR candidates silently did nothing.
+- Simple mode, *Standard*: bad channels are detected once (kurtosis, z = 5) and ICA is fitted once,
+  before the filters, so all filter choices share one decomposition: 108 pipelines and 1 ICA
+  instead of 432 pipelines and 48 ICAs. *Full* is removed from the simple mode (it was always above
+  the search limit); ASR stays available in the panel and from scripts.
+- Simple mode shows a progress window (pipelines done, time left) with *Stop*; stopping keeps the
+  pipelines already run and the result covers those. Scripts get the same through the new
+  `progress` option of `optimize`.
+- The simple-mode result window says in one sentence which pipeline to use and why; columns and
+  buttons use plain words (*Use this pipeline*, *Details…*).
+
 ## 0.8.0 (2026-10-04)
 
 **Renamed: NeuroQC is now PipeCompare.** This is an incompatible change:

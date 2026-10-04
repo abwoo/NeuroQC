@@ -23,7 +23,7 @@ Each item has four status columns:
 | `linenoise` | `pop_eegfiltnew` (revfilt) | ✓ | ✓ | ✓ | injection | FIR band-stop at the mains frequency detected in the recording (50/60 Hz) unless set; CleanLine/Zapline only as native steps |
 | `highpass` | `pop_eegfiltnew` | ✓ | ✓ | ✓ real data | injection | |
 | `lowpass` | `pop_eegfiltnew` | ✓ | ✓ | ✓ real data | injection | |
-| `asr` | `pop_clean_rawdata` | ✓ | ✓ | ✓ | injection, decision-matched: the window-by-window reconstructions ASR chose on the real data are recorded and applied (`pipecompare.run.AsrRecord`, checked to reproduce EEGLAB's output exactly; otherwise re-run and flagged) | needs clean_rawdata; Euclidean ASR, burst correction only |
+| `asr` | `pop_clean_rawdata` | ✓ | ✓ | ✓ | injection, decision-matched: the window-by-window reconstructions ASR chose on the real data are recorded and applied (`pipecompare.run.AsrRecord`, checked to reproduce EEGLAB's output exactly; otherwise re-run and flagged) | needs clean_rawdata (and the Signal Processing Toolbox at rates without a precomputed ASR filter); Euclidean ASR, burst correction only |
 | `badchannels` | `pop_rejchan` (+ `pop_interp`) | ✓ | ✓ | ✓ | injection, matched | |
 | `channels` | `pop_select` / `pop_interp` | ✓ | ✓ | ✓ real data | injection, matched | interpolation needs channel locations |
 | `restore` | `pop_interp` | ✓ | ✓ | ✓ | injection, matched | |
@@ -54,7 +54,7 @@ Each item has four status columns:
 |---|---|---|---|
 | Mean amplitude, analytic SME | ✓ | ✓ (vs. empirical SD) | ✓ real data |
 | Gain-corrected objective (SME / signal gain) | ✓ | ✓ (invariance to scaling) | ✓ real data |
-| Simple mode `pop_pipecompare`: ERP CORE presets, recipes adapted to the data, live count, result window | ✓ | ✓ (presets against the paper's tables; dialog; script call; window) | manual (MANUAL_GUI_CHECK 19–22) |
+| Simple mode `pop_pipecompare`: ERP CORE presets, recipes adapted to the data, live count, result window | ✓ | ✓ (presets against the paper's tables; dialog; script call; window) | manual (MANUAL_GUI_CHECK 19–23) |
 | Band power of continuous data: segments (eeg_regepochs), log band power SME, sinusoid signal check, moving-block bootstrap | ✓ | ✓ (end to end; error rate with AR(1) segments) | — |
 | Peak amplitude / latency, bootstrapped SME | ✓ | ✓ (vs. replications) | ✓ synthetic |
 | Composite objective or one chosen measure; unit safety | ✓ | ✓ | ✓ |

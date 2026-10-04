@@ -35,6 +35,38 @@ p = pipecompare.plan.Plan(); p = p.add('icremove');
 verifyError(tc, @() p.enumerate(nqc_fakeState(false, 500), c), 'PipeCompare:NoLegalPipeline'); % no ICA
 end
 
+function testMissingPluginFailsAtPlanTime(tc)
+d = fileparts(which('pop_clean_rawdata'));
+assumeNotEmpty(tc, d, 'clean_rawdata plugin not installed');
+old = path; rmpath(d); restore = onCleanup(@() path(old));
+p = pipecompare.plan.Plan(); p = p.add('asr');
+try
+    p.enumerate(nqc_fakeState(false, 500), nqc_contract());
+    verifyFail(tc, 'a plan with ASR and no clean_rawdata enumerated');
+catch err
+    verifyEqual(tc, err.identifier, 'PipeCompare:NoLegalPipeline');
+    verifySubstring(tc, err.message, 'clean_rawdata plugin');
+end
+end
+
+function testAsrWithoutSignalToolboxFailsAtPlanTime(tc)
+% clean_rawdata returns the data unchanged when ASR has no filter for the
+% rate, so the plan refuses ASR there instead of comparing a no-op.
+assumeTrue(tc, exist('pop_clean_rawdata', 'file') == 2, 'clean_rawdata plugin not installed');
+old = path; restore = onCleanup(@() path(old));
+d = fileparts(which('yulewalk'));
+if ~isempty(d), rmpath(d); end
+p = pipecompare.plan.Plan(); p = p.add('asr');
+verifyNotEmpty(tc, p.enumerate(nqc_fakeState(false, 500), nqc_contract()));   % filter precomputed for 500 Hz
+try
+    p.enumerate(nqc_fakeState(false, 250), nqc_contract());
+    verifyFail(tc, 'a plan with ASR at 250 Hz and no yulewalk enumerated');
+catch err
+    verifyEqual(tc, err.identifier, 'PipeCompare:NoLegalPipeline');
+    verifySubstring(tc, err.message, 'Signal Processing Toolbox');
+end
+end
+
 function testOrderSearchWithPinAndBefore(tc)
 c = nqc_contract();
 p = pipecompare.plan.Plan();

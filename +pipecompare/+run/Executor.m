@@ -26,12 +26,17 @@ classdef Executor
     %     verbose       'normal' (commands, warnings, results) | 'full'
     %                   (everything EEGLAB prints)
     %     dryRun        enumerate and report, run nothing
+    %     progress      function stop = f(n), called with the number of
+    %                   candidates just evaluated (0 = only asking); when it
+    %                   returns true, no further step runs and the
+    %                   candidates not run are 'failed' ("not run"), so the
+    %                   ranking covers the finished ones. Serial runs only.
 
     methods (Static)
         function result = run(plan, contract, opts)
             if nargin < 3, opts = struct(); end
             opts = pipecompare.utils.withDefaults(opts, struct('dryRun', false, 'injectUv', 5, ...
-                'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal'));
+                'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
             [EEG, live] = pipecompare.live.Session.current();
             assert(~isempty(EEG), 'PipeCompare:NoDataset', 'No dataset is loaded in EEGLAB.');
             if ~live.stored
@@ -124,6 +129,7 @@ classdef Executor
             for li = tree(1).leaves
                 if done(li), continue; end
                 c = evaluateLeaf(env, li, root, S, acc0); pre(end+1, 1) = c; saveLeaf(env, c); %#ok<AGROW>
+                tick(env, 1);
             end
             if opts.parallel && canParallel()
                 cands = pipecompare.run.Executor.runParallel(env, root, S, ctx0, acc0);
@@ -135,6 +141,16 @@ classdef Executor
             allc = repmat(emptyCand(), numel(leaves), 1);
             if isfield(result, 'prevCands'), allc = result.prevCands; result = rmfield(result, 'prevCands'); end
             for k = 1:numel(cands), allc(cands(k).id) = cands(k); end
+            notRun = find([allc.id] == 0);   % only after a stop (opts.progress)
+            for li = notRun
+                allc(li).id = li; allc(li).key = leaves(li).key; allc(li).stratum = leaves(li).stratum;
+                allc(li).status = 'failed'; allc(li).message = 'not run: the search was stopped';
+            end
+            if ~isempty(notRun)
+                pipecompare.utils.log('Stopped: %d of %d candidates were not run; the ranking covers the others.', ...
+                    numel(notRun), numel(allc));
+            end
+            result.notRun = numel(notRun);
             result.cands = allc;
             R = pipecompare.eval.Rank.run(allc, ref, opts);
             result.ranking = R;
@@ -156,6 +172,7 @@ classdef Executor
                 disp(result.robustness);
             end
             pipecompare.utils.log('Finished in %.1f s.', toc(env.tStart));
+            if isfield(result.options, 'progress'), result.options.progress = []; end   % do not keep the caller's window
         end
 
         function out = runSubtree(env, node, E, S, ctx, acc)
@@ -166,6 +183,7 @@ classdef Executor
             for child = tree(node).children
                 under = leavesUnder(tree, child);
                 if all(env.done(under)), continue; end
+                if tick(env, 0), continue; end   % stopped: nothing more runs
                 in = tree(child).inst;
                 t0 = tic;
                 try
@@ -190,6 +208,7 @@ classdef Executor
                     c = evaluateLeaf(env, li, E2, S2, acc2);
                     out(end+1, 1) = c; %#ok<AGROW>
                     saveLeaf(env, c);
+                    tick(env, 1);
                 end
                 out = [out; pipecompare.run.Executor.runSubtree(env, child, E2, S2, ctx2, acc2)]; %#ok<AGROW>
             end
@@ -223,12 +242,14 @@ classdef Executor
                 for li = tree(child).leaves
                     if env.done(li), continue; end
                     c = evaluateLeaf(env, li, E, S, acc); out(end+1, 1) = c; saveLeaf(env, c); %#ok<AGROW>
+                    tick(env, 1);
                 end
                 node = child;
             end
             kids = tree(node).children;
             if isempty(kids), return; end
             pipecompare.utils.log('Parallel: %d independent subtrees on the pool.', numel(kids));
+            env.opts.progress = [];   % a caller's window cannot be reached from the workers
             parts = cell(1, numel(kids));
             parfor k = 1:numel(kids)
                 sub = env;
@@ -604,6 +625,13 @@ if strcmp(c.status, 'ok')
 else
     pipecompare.utils.log('candidate %d failed: %s', li, c.message);
 end
+end
+
+function stop = tick(env, n)
+% Tell the caller's opts.progress that n more candidates are evaluated and
+% return its request to stop.
+stop = false;
+if isfield(env.opts, 'progress') && ~isempty(env.opts.progress), stop = env.opts.progress(n); end
 end
 
 function saveLeaf(env, cand)
