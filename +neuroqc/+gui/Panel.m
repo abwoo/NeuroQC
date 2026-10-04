@@ -15,6 +15,8 @@ classdef Panel < handle
         Fig
         Timer
         LastFingerprint = ''
+        LastQuick = ''            % Session.quickPrint at the last refresh
+        Ticks = 0                 % refresh-timer ticks since the last full check
         % widgets
         DatasetLabel; WarnArea; HistTable
         PlanTable; TypeDrop; OrderDrop; ConstraintLabel
@@ -206,6 +208,17 @@ classdef Panel < handle
         % ------------------------------------------------------------- live
         function refreshLive(obj, force)
             if isempty(obj.Fig) || ~isvalid(obj.Fig), return; end
+            % Two levels: every second only the quick signature (its cost does
+            % not grow with events or history); the full fingerprint when it
+            % changed, and otherwise every 5 s, so an edit that keeps every
+            % count is still seen within 5 s.
+            if ~force
+                try, [~, q] = neuroqc.live.Session.peek(); catch, q = ''; end
+                obj.Ticks = obj.Ticks + 1;
+                if strcmp(q, obj.LastQuick) && obj.Ticks < 5, return; end
+                obj.LastQuick = q;
+            end
+            obj.Ticks = 0;
             try
                 [EEG, live] = neuroqc.live.Session.current();
             catch ME

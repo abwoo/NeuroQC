@@ -181,6 +181,9 @@ legal order; `p.pin(id)` keeps a step in place and `p.before(a, b)` constrains t
      are simultaneous over all candidates (bootstrap max statistic; White, 2000; Romano & Wolf,
      2005), so a larger search does not produce more false "worse" verdicts. *Not distinguished* is
      absence of evidence, not equivalence.
+   - A multiverse summary reports, for each measure and condition, the spread of its value over the
+     feasible pipelines and the searched choice behind most of it (`result.robustness`; Steegen et
+     al., 2016). It shows sensitivity to processing and is not used for the ranking.
    - A candidate that ends with epochs marked for rejection but not removed (e.g. an ERPLAB artifact
      detection step without a removal) carries a note: marks do not remove epochs.
    - Candidates that differ in the reference are ranked in separate strata, never against each other.
@@ -206,6 +209,10 @@ legal order; `p.pin(id)` keeps a step in place and `p.before(a, b)` constrains t
   rarely separate candidates; mean-amplitude measures are more informative for choosing a pipeline.
 - Every candidate also runs on the signal copy (same operations and decisions), so a search costs
   roughly twice the EEGLAB computation of the pipelines themselves, filter-only plans included.
+- The panel follows the current EEGLAB dataset with a cheap check every second and a full
+  fingerprint (every event, the whole history) at least every 5 s, so an edit that changes no
+  count (e.g. one event's type) may take up to 5 s to show. A search and Adopt always use the full
+  fingerprint.
 - Depth-first execution keeps one copy of the dataset and one of the signal copy per plan depth in
   memory (per worker in parallel mode); the expected peak is printed when it exceeds 2 GB. Resample
   early in the plan to reduce it.
