@@ -1,20 +1,20 @@
 classdef Steps
     %STEPS Execute one plan step with native EEGLAB functions.
     %
-    %   [EEG, coms, info] = neuroqc.run.Steps.run(inst, EEG, ctx)
+    %   [EEG, coms, info] = pipecompare.run.Steps.run(inst, EEG, ctx)
     %
     %   coms are the EEGLAB commands that reproduce the step; the executor
     %   appends them to the candidate's EEG.history. info carries the
     %   data-dependent decisions the step took (bad channels, ICA matrices,
     %   removed components, rejected epochs) and counts for the evaluation.
     %
-    %   EEG = neuroqc.run.Steps.replayDecision(inst, EEG, info, ctx)
+    %   EEG = pipecompare.run.Steps.replayDecision(inst, EEG, info, ctx)
     %
     %   Applies the SAME decisions to another dataset with the same
-    %   structure (used by neuroqc.eval.Injection to measure how a known
+    %   structure (used by pipecompare.eval.Injection to measure how a known
     %   signal is transferred by exactly the operations applied to the
     %   real data). ASR replays its recorded window-by-window
-    %   reconstructions (neuroqc.run.AsrRecord, verified against EEGLAB's
+    %   reconstructions (pipecompare.run.AsrRecord, verified against EEGLAB's
     %   output); captured mark/remove workflows replay the epochs and
     %   components they removed. Other native commands are re-run and
     %   reported as not decision-matched.
@@ -33,7 +33,7 @@ classdef Steps
                         % original rate was not exactly representable; only a
                         % floating-point residue is corrected (ICLabel needs it).
                         EEG.srate = p.fs; EEG = eeg_checkset(EEG);
-                        coms{end+1} = sprintf('EEG.srate = %g; EEG = eeg_checkset(EEG); %% NeuroQC: exact rate after resampling', p.fs);
+                        coms{end+1} = sprintf('EEG.srate = %g; EEG = eeg_checkset(EEG); %% PipeCompare: exact rate after resampling', p.fs);
                     end
                 case 'highpass'
                     [EEG, com] = pop_eegfiltnew(EEG, 'locutoff', p.cutoff, 'plotfreqz', 0);
@@ -46,37 +46,37 @@ classdef Steps
                         'hicutoff', p.freq + p.halfwidth, 'revfilt', 1, 'plotfreqz', 0);
                     coms = {com};
                 case 'asr'
-                    assert(exist('pop_clean_rawdata', 'file') == 2, 'NeuroQC:Dependency', 'clean_rawdata plugin not installed');
+                    assert(exist('pop_clean_rawdata', 'file') == 2, 'PipeCompare:Dependency', 'clean_rawdata plugin not installed');
                     E0 = EEG;
                     [EEG, com] = pop_clean_rawdata(EEG, 'FlatlineCriterion', 'off', 'ChannelCriterion', 'off', ...
                         'LineNoiseCriterion', 'off', 'Highpass', 'off', 'BurstCriterion', p.cutoff, ...
                         'WindowCriterion', 'off', 'BurstRejection', 'off', 'Distance', 'Euclidian', ...
-                        'MaxMem', neuroqc.run.AsrRecord.MaxMemMB);
+                        'MaxMem', pipecompare.run.AsrRecord.MaxMemMB);
                     coms = {com};
                     info.asr = recordAsr(E0, EEG, p.cutoff);
                 case 'badchannels'
-                    [EEG, coms, info] = neuroqc.run.Steps.badChannels(EEG, p);
+                    [EEG, coms, info] = pipecompare.run.Steps.badChannels(EEG, p);
                 case 'channels'
-                    [EEG, coms, info] = neuroqc.run.Steps.listedChannels(EEG, p);
+                    [EEG, coms, info] = pipecompare.run.Steps.listedChannels(EEG, p);
                 case 'restore'
                     % back to the starting montage, then the channels removed
-                    % before NeuroQC (EEG.etc.neuroqc.preRemoved)
+                    % before PipeCompare (EEG.etc.pipecompare.preRemoved)
                     target = rootChanlocs(EEG);
                     missing = setdiff(lower({target.labels}), lower({EEG.chanlocs.labels}));
                     pre = [];
-                    if isfield(EEG.etc.neuroqc, 'preRemoved'), pre = EEG.etc.neuroqc.preRemoved; end
+                    if isfield(EEG.etc.pipecompare, 'preRemoved'), pre = EEG.etc.pipecompare.preRemoved; end
                     if ~isempty(missing) || isempty(pre)
                         requireLocations(target(ismember(lower({target.labels}), missing)), 'restore');
                         EEG = pop_interp(EEG, target, 'spherical');
-                        coms = {'EEG = pop_interp(EEG, EEG.etc.neuroqc.rootChanlocs, ''spherical'');'};
+                        coms = {'EEG = pop_interp(EEG, EEG.etc.pipecompare.rootChanlocs, ''spherical'');'};
                     end
                     if ~isempty(pre)
                         absent = ~ismember(lower({pre.labels}), lower({EEG.chanlocs.labels}));
                         if any(absent)
                             requireLocations(pre(absent), 'restore');
                             EEG = pop_interp(EEG, pre(absent), 'spherical');
-                            coms{end+1} = sprintf(['EEG = pop_interp(EEG, EEG.etc.neuroqc.preRemoved(%s), ''spherical''); ', ...
-                                '%% NeuroQC: channels removed before the plan'], mat2str(find(absent)));
+                            coms{end+1} = sprintf(['EEG = pop_interp(EEG, EEG.etc.pipecompare.preRemoved(%s), ''spherical''); ', ...
+                                '%% PipeCompare: channels removed before the plan'], mat2str(find(absent)));
                             missing = [missing lower({pre(absent).labels})];
                         end
                     end
@@ -92,37 +92,37 @@ classdef Steps
                         [EEG, com] = pop_reref(EEG, [], ex{:});
                     else
                         ch = cellstr(p.channels);
-                        assert(~isempty(ch), 'NeuroQC:Reref', 'reref mode channels needs channel labels');
+                        assert(~isempty(ch), 'PipeCompare:Reref', 'reref mode channels needs channel labels');
                         [EEG, com] = pop_reref(EEG, ch, ex{:});
                     end
                     coms = {com};
                     info.reref = p;
                 case 'ica'
-                    [EEG, coms] = neuroqc.run.Steps.ica(EEG, p, ctx);
+                    [EEG, coms] = pipecompare.run.Steps.ica(EEG, p, ctx);
                     info.ica = struct('icaweights', EEG.icaweights, 'icasphere', EEG.icasphere, 'icachansind', EEG.icachansind);
                 case 'icremove'
-                    [EEG, coms, info] = neuroqc.run.Steps.icRemove(EEG, p);
+                    [EEG, coms, info] = pipecompare.run.Steps.icRemove(EEG, p);
                 case 'epoch'
                     c = ctx.contract;
                     [EEG, ~, com] = pop_epoch(EEG, c.allEvents(), c.epoch, 'epochinfo', 'yes');
                     coms = {com};
                 case 'baseline'
                     c = ctx.contract;
-                    assert(~isempty(c.baseline), 'NeuroQC:Baseline', 'The contract defines no baseline window.');
+                    assert(~isempty(c.baseline), 'PipeCompare:Baseline', 'The contract defines no baseline window.');
                     % clamp to the epoch limits (they can differ from the
                     % contract by less than one sample after resampling)
                     b = 1000 * c.baseline;
                     assert(b(1) >= 1000 * EEG.xmin - 1000 / EEG.srate && b(2) <= 1000 * EEG.xmax + 1000 / EEG.srate, ...
-                        'NeuroQC:Baseline', 'Baseline [%g %g] ms lies outside the epochs [%g %g] ms', b, 1000 * [EEG.xmin EEG.xmax]);
+                        'PipeCompare:Baseline', 'Baseline [%g %g] ms lies outside the epochs [%g %g] ms', b, 1000 * [EEG.xmin EEG.xmax]);
                     b = [max(b(1), 1000 * EEG.xmin) min(b(2), 1000 * EEG.xmax)];
                     [EEG, com] = pop_rmbase(EEG, b, []);
                     coms = {com};
                 case {'reject_threshold','reject_jointprob','reject_kurtosis'}
-                    [EEG, coms, info] = neuroqc.run.Steps.rejectEpochs(EEG, inst.type, p);
+                    [EEG, coms, info] = pipecompare.run.Steps.rejectEpochs(EEG, inst.type, p);
                 case 'native'
-                    [EEG, coms, info] = neuroqc.run.Steps.native(EEG, p.command);
+                    [EEG, coms, info] = pipecompare.run.Steps.native(EEG, p.command);
                 otherwise
-                    error('NeuroQC:UnknownStep', 'Unknown step %s', inst.type);
+                    error('PipeCompare:UnknownStep', 'Unknown step %s', inst.type);
             end
             coms = coms(~cellfun(@isempty, coms));
         end
@@ -130,7 +130,7 @@ classdef Steps
         function [EEG, matched] = replayDecision(inst, EEG, info, ctx)
             % Same decisions on a structurally identical dataset.
             matched = true;
-            EEG = neuroqc.eval.Injection.noteReference(EEG, inst);
+            EEG = pipecompare.eval.Injection.noteReference(EEG, inst);
             switch inst.type
                 case 'badchannels'
                     if strcmp(inst.params.action, 'remove')
@@ -162,19 +162,19 @@ classdef Steps
                     else
                         % re-run; that is the same operation when every
                         % statement is a fixed transform (no data-driven choice)
-                        EEG = neuroqc.run.Steps.run(inst, EEG, ctx);
-                        matched = all(cellfun(@isFixedTransform, neuroqc.run.Native.statements(inst.params.command)));
+                        EEG = pipecompare.run.Steps.run(inst, EEG, ctx);
+                        matched = all(cellfun(@isFixedTransform, pipecompare.run.Native.statements(inst.params.command)));
                     end
                 case 'asr'
                     if isfield(info, 'asr') && ~isempty(info.asr)
                         % the windows and reconstructions ASR chose on the real data
-                        EEG.data = cast(neuroqc.run.AsrRecord.apply(info.asr, EEG.data), 'like', EEG.data);
+                        EEG.data = cast(pipecompare.run.AsrRecord.apply(info.asr, EEG.data), 'like', EEG.data);
                     else
                         matched = false;
-                        EEG = neuroqc.run.Steps.run(inst, EEG, ctx);
+                        EEG = pipecompare.run.Steps.run(inst, EEG, ctx);
                     end
                 otherwise
-                    EEG = neuroqc.run.Steps.run(inst, EEG, ctx);
+                    EEG = pipecompare.run.Steps.run(inst, EEG, ctx);
             end
         end
 
@@ -195,7 +195,7 @@ classdef Steps
                 info.removed = labels;
                 return;
             end
-            coms = {sprintf('%% NeuroQC: pop_rejchan(measure %s, threshold %g, norm on, %d channels tested) -> bad channels [%s] interpolated in place', ...
+            coms = {sprintf('%% PipeCompare: pop_rejchan(measure %s, threshold %g, norm on, %d channels tested) -> bad channels [%s] interpolated in place', ...
                 p.measure, p.threshold, numel(elec), strjoin(labels, ' '))};
             info.interpolated = labels;
             if ~isempty(bad)
@@ -209,7 +209,7 @@ classdef Steps
             % Channels you name (e.g. known-bad O1/O2): remove or interpolate.
             labels = cellstr(p.labels);
             [ok, idx] = ismember(lower(labels), lower({EEG.chanlocs.labels}));
-            assert(all(ok), 'NeuroQC:Channels', 'Channel(s) not in the data: %s', strjoin(labels(~ok), ', '));
+            assert(all(ok), 'PipeCompare:Channels', 'Channel(s) not in the data: %s', strjoin(labels(~ok), ', '));
             info.listedIdx = idx(:)';
             switch p.action
                 case 'remove'
@@ -220,7 +220,7 @@ classdef Steps
                     [EEG, com] = pop_interp(EEG, idx(:)', 'spherical');
                     coms = {com}; info.interpolated = labels;
                 otherwise
-                    error('NeuroQC:Channels', 'channels action must be remove or interpolate');
+                    error('PipeCompare:Channels', 'channels action must be remove or interpolate');
             end
         end
 
@@ -245,7 +245,7 @@ classdef Steps
                 coms = {sprintf(['EEGica = pop_eegfiltnew(EEG, ''locutoff'', %g, ''plotfreqz'', 0); %s ', ...
                     'EEG.icaweights = EEGica.icaweights; EEG.icasphere = EEGica.icasphere; ', ...
                     'EEG.icachansind = EEGica.icachansind; EEG.icawinv = []; EEG.icaact = []; ', ...
-                    'EEG = eeg_checkset(EEG); clear EEGica; %% NeuroQC: ICA fitted on a %g Hz high-passed copy'], ...
+                    'EEG = eeg_checkset(EEG); clear EEGica; %% PipeCompare: ICA fitted on a %g Hz high-passed copy'], ...
                     p.fitHighpass, c2, p.fitHighpass)};
             else
                 [EEG, com] = pop_runica(EEG, opts{:});
@@ -254,11 +254,11 @@ classdef Steps
         end
 
         function [EEG, coms, info] = icRemove(EEG, p)
-            assert(exist('pop_iclabel', 'file') == 2, 'NeuroQC:Dependency', 'ICLabel plugin not installed');
+            assert(exist('pop_iclabel', 'file') == 2, 'PipeCompare:Dependency', 'ICLabel plugin not installed');
             [EEG, c1] = pop_iclabel(EEG, 'default');
             cats = {'Brain','Muscle','Eye','Heart','Line Noise','Channel Noise','Other'};
             classes = cellstr(p.classes);
-            assert(all(ismember(classes, cats)) && ~ismember('Brain', classes), 'NeuroQC:ICLabel', ...
+            assert(all(ismember(classes, cats)) && ~ismember('Brain', classes), 'PipeCompare:ICLabel', ...
                 'classes must be ICLabel artifact classes: %s', strjoin(cats(2:end), ', '));
             T = nan(7, 2);
             T(ismember(cats, classes), :) = repmat([p.threshold 1], sum(ismember(cats, classes)), 1);
@@ -283,13 +283,13 @@ classdef Steps
             switch type
                 case 'reject_threshold'
                     [EEG, ~, c1] = pop_eegthresh(EEG, 1, chans, -p.uv, p.uv, EEG.xmin, EEG.xmax, 0, 0);
-                    marks = EEG.reject.rejthresh; E = neuroqc.utils.fieldOr(EEG.reject, 'rejthreshE');
+                    marks = EEG.reject.rejthresh; E = pipecompare.utils.fieldOr(EEG.reject, 'rejthreshE');
                 case 'reject_jointprob'
                     [EEG, ~, ~, ~, c1] = pop_jointprob(EEG, 1, chans, p.sd, p.sd, 0, 0, 0, [], 0);
-                    marks = EEG.reject.rejjp; E = neuroqc.utils.fieldOr(EEG.reject, 'rejjpE');
+                    marks = EEG.reject.rejjp; E = pipecompare.utils.fieldOr(EEG.reject, 'rejjpE');
                 case 'reject_kurtosis'
                     [EEG, ~, ~, ~, c1] = pop_rejkurt(EEG, 1, chans, p.sd, p.sd, 0, 0, 0, [], 0);
-                    marks = EEG.reject.rejkurt; E = neuroqc.utils.fieldOr(EEG.reject, 'rejkurtE');
+                    marks = EEG.reject.rejkurt; E = pipecompare.utils.fieldOr(EEG.reject, 'rejkurtE');
             end
             idx = find(marks);
             % which channels drive the rejections (a hint for bad channels)
@@ -299,12 +299,12 @@ classdef Steps
                 keep = order(cnt > 0); keep = keep(1:min(5, numel(keep)));
                 info.topChannels = strjoin(arrayfun(@(c) sprintf('%s (%d)', EEG.chanlocs(c).labels, ...
                     sum(E(c, idx) ~= 0)), keep(:)', 'UniformOutput', false), ', ');
-                neuroqc.utils.log('%d/%d epochs rejected; channels most often over the limit: %s', ...
+                pipecompare.utils.log('%d/%d epochs rejected; channels most often over the limit: %s', ...
                     numel(idx), n0, info.topChannels);
             end
             coms = {c1};
             if ~isempty(idx)
-                assert(numel(idx) < n0, 'NeuroQC:AllRejected', 'every epoch would be rejected');
+                assert(numel(idx) < n0, 'PipeCompare:AllRejected', 'every epoch would be rejected');
                 [EEG, c2] = pop_rejepoch(EEG, idx, 0);
                 coms{end+1} = c2;
             end
@@ -318,18 +318,18 @@ classdef Steps
             % workflow), the removals it took on these data are recorded
             % (info.decisions) so the signal check can apply the same
             % removals instead of re-deciding on its own copy.
-            st = neuroqc.run.Native.statements(command);
+            st = pipecompare.run.Native.statements(command);
             coms = cell(1, numel(st));
             info = struct('decisions', struct('kind', {}, 'idx', {}), 'rejected', 0, 'icsRemoved', 0);
             decided = true;
             for k = 1:numel(st)
                 cmd = st{k};
                 assert(isempty(regexp(cmd, '\<(ALLEEG|CURRENTSET|STUDY|CURRENTSTUDY)\>', 'once')), ...
-                    'NeuroQC:Native', 'The command refers to other datasets (ALLEEG/STUDY); it cannot be replayed on candidates.');
+                    'PipeCompare:Native', 'The command refers to other datasets (ALLEEG/STUDY); it cannot be replayed on candidates.');
                 % Display-only options must not open windows during a search.
                 cmd = regexprep(cmd, '''plotfreqz''\s*,\s*1', '''plotfreqz'',0');
                 cmd = regexprep(cmd, '''interrupt''\s*,\s*''on''', '''interrupt'',''off''');
-                e = neuroqc.live.History.classify(cmd);
+                e = pipecompare.live.History.classify(cmd);
                 if strcmp(e.step, 'reject_epochs') && EEG.trials > 1
                     n0 = EEG.trials; gone = []; known = false;
                     if strcmp(e.fn, 'pop_rejepoch') && numel(e.args) >= 2
@@ -351,7 +351,7 @@ classdef Steps
                     else
                         EEG = evalWithEEG(EEG, cmd);   % an epoch without events: cannot be told apart
                     end
-                    assert(EEG.trials > 0, 'NeuroQC:AllRejected', 'every epoch would be rejected');
+                    assert(EEG.trials > 0, 'PipeCompare:AllRejected', 'every epoch would be rejected');
                     if known && EEG.trials == n0 - numel(gone)
                         info.decisions(end+1) = struct('kind', 'epochs', 'idx', gone);
                     else
@@ -375,14 +375,14 @@ classdef Steps
     end
 end
 
-function EEG = evalWithEEG(EEG, NEUROQC_CMD__)
-eval(NEUROQC_CMD__);
+function EEG = evalWithEEG(EEG, PIPECOMPARE_CMD__)
+eval(PIPECOMPARE_CMD__);
 end
 
-function v = evalExprWithEEG(EEG, NEUROQC_EXPR__) %#ok<INUSL>
+function v = evalExprWithEEG(EEG, PIPECOMPARE_EXPR__) %#ok<INUSL>
 % value of an argument expression of a captured command (e.g.
 % EEG.reject.rejthresh), in a workspace that only contains EEG
-v = eval(NEUROQC_EXPR__);
+v = eval(PIPECOMPARE_EXPR__);
 end
 
 function tf = isFixedTransform(stmt)
@@ -390,7 +390,7 @@ function tf = isFixedTransform(stmt)
 % resampling, re-referencing, baseline, epoching, channel selection or
 % interpolation by explicit lists): re-running them on another dataset
 % applies exactly the same operation.
-e = neuroqc.live.History.classify(stmt);
+e = pipecompare.live.History.classify(stmt);
 % Filters are linear time-invariant operators fixed by their design
 % parameters (Widmann, Schroger & Maess, 2015); selections by events or
 % channel lists depend on the events, which the signal copy shares.
@@ -406,13 +406,13 @@ function L = presentChannels(EEG, wanted, what)
 wanted = cellstr(wanted);
 here = ismember(lower(wanted), lower({EEG.chanlocs.labels}));
 known = {EEG.chanlocs.labels};
-if isfield(EEG, 'etc') && isstruct(EEG.etc) && isfield(EEG.etc, 'neuroqc') && isfield(EEG.etc.neuroqc, 'rootChanlocs')
-    known = [known {EEG.etc.neuroqc.rootChanlocs.labels}];
+if isfield(EEG, 'etc') && isstruct(EEG.etc) && isfield(EEG.etc, 'pipecompare') && isfield(EEG.etc.pipecompare, 'rootChanlocs')
+    known = [known {EEG.etc.pipecompare.rootChanlocs.labels}];
 end
 unknown = wanted(~ismember(lower(wanted), lower(known)));
-assert(isempty(unknown), 'NeuroQC:Channels', '%s: channel(s) not in the dataset: %s', what, strjoin(unknown, ', '));
+assert(isempty(unknown), 'PipeCompare:Channels', '%s: channel(s) not in the dataset: %s', what, strjoin(unknown, ', '));
 if any(~here)
-    neuroqc.utils.log('%s: %s already removed by an earlier step; nothing to exclude there.', what, strjoin(wanted(~here), ', '));
+    pipecompare.utils.log('%s: %s already removed by an earlier step; nothing to exclude there.', what, strjoin(wanted(~here), ', '));
 end
 L = wanted(here);
 end
@@ -422,16 +422,16 @@ function rec = recordAsr(E0, E1, cutoff)
 % EEGLAB's own output (otherwise the signal check re-runs ASR, flagged).
 rec = [];
 try
-    r = neuroqc.run.AsrRecord.record(E0, cutoff);
-    Y = neuroqc.run.AsrRecord.apply(r, E0.data);
+    r = pipecompare.run.AsrRecord.record(E0, cutoff);
+    Y = pipecompare.run.AsrRecord.apply(r, E0.data);
     err = max(abs(Y(:) - double(E1.data(:)))) / max(1, max(abs(double(E1.data(:)))));
     if isequal(size(Y), size(E1.data)) && err < 1e-6
         rec = r;
     else
-        neuroqc.utils.log('ASR decisions not reproduced exactly (relative difference %.2g); the signal check re-runs ASR.', err);
+        pipecompare.utils.log('ASR decisions not reproduced exactly (relative difference %.2g); the signal check re-runs ASR.', err);
     end
 catch ME
-    neuroqc.utils.log('ASR decisions not recorded (%s); the signal check re-runs ASR.', ME.message);
+    pipecompare.utils.log('ASR decisions not recorded (%s); the signal check re-runs ASR.', ME.message);
 end
 end
 
@@ -441,12 +441,12 @@ function requireLocations(locs, what)
 % report it interpolated.
 ok = @(v) isnumeric(v) && isscalar(v) && isfinite(v);
 has = arrayfun(@(c) isfield(c, 'X') && ok(c.X) && ok(c.Y) && ok(c.Z), locs);
-assert(all(has), 'NeuroQC:Chanlocs', ['%s: no channel location for %s, so it cannot be interpolated ', ...
+assert(all(has), 'PipeCompare:Chanlocs', ['%s: no channel location for %s, so it cannot be interpolated ', ...
     '(Edit > Channel locations, or exclude/remove it).'], what, strjoin({locs(~has).labels}, ', '));
 end
 
 function target = rootChanlocs(EEG)
-assert(isfield(EEG, 'etc') && isfield(EEG.etc, 'neuroqc') && isfield(EEG.etc.neuroqc, 'rootChanlocs'), ...
-    'NeuroQC:Restore', 'Root channel montage not recorded');
-target = EEG.etc.neuroqc.rootChanlocs;
+assert(isfield(EEG, 'etc') && isfield(EEG.etc, 'pipecompare') && isfield(EEG.etc.pipecompare, 'rootChanlocs'), ...
+    'PipeCompare:Restore', 'Root channel montage not recorded');
+target = EEG.etc.pipecompare.rootChanlocs;
 end

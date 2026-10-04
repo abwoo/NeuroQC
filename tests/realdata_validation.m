@@ -1,8 +1,8 @@
 function out = realdata_validation(file, contract)
-%REALDATA_VALIDATION Technical validation of NeuroQC on a real recording.
+%REALDATA_VALIDATION Technical validation of PipeCompare on a real recording.
 %   out = realdata_validation(file, contract)
-%   file: a real .set file (never committed; pass it or set NEUROQC_REAL_SET).
-%   contract: neuroqc.eval.Contract. The default is a TECHNICAL contract
+%   file: a real .set file (never committed; pass it or set PIPECOMPARE_REAL_SET).
+%   contract: pipecompare.eval.Contract. The default is a TECHNICAL contract
 %   (most frequent event codes, a generic 300-500 ms window): it exercises
 %   the machinery on real data and is not a scientific analysis.
 %
@@ -11,8 +11,8 @@ function out = realdata_validation(file, contract)
 %   keep / remove / interpolate of the two most variable channels are
 %   compared, not decided in advance;
 %   injection on real data; timing of the search.
-if nargin < 1 || isempty(file), file = getenv('NEUROQC_REAL_SET'); end
-assert(isfile(file), 'Set NEUROQC_REAL_SET or pass a .set file.');
+if nargin < 1 || isempty(file), file = getenv('PIPECOMPARE_REAL_SET'); end
+assert(isfile(file), 'Set PIPECOMPARE_REAL_SET or pass a .set file.');
 before = dir(file);
 [p, n, e] = fileparts(file);
 EEG = pop_loadset('filename', [n e], 'filepath', p);
@@ -25,7 +25,7 @@ if nargin < 2 || isempty(contract)
     labs = {EEG.chanlocs.labels};
     roi = labs(ismember(lower(labs), {'pz','p3','p4','poz'}));        % parietal if present
     if numel(roi) < 2, roi = labs(1:min(4, end)); end                  % otherwise any channels: technical only
-    contract = neuroqc.eval.Contract('conditions', {['c' codes{1}], codes(1); ['c' codes{2}], codes(2)}, ...
+    contract = pipecompare.eval.Contract('conditions', {['c' codes{1}], codes(1); ['c' codes{2}], codes(2)}, ...
         'epoch', [-0.2 0.8], 'baseline', [-0.2 0], 'components', {'late', [0.3 0.5], roi});
 end
 % the working copy becomes the current dataset; the user's session (ALLEEG,
@@ -37,7 +37,7 @@ end
 restoreSession = onCleanup(@() restoreBase(saved)); %#ok<NASGU>
 assignin('base', 'NQC_TMP', EEG);
 evalin('base', 'global ALLCOM; [ALLEEG, EEG, CURRENTSET] = eeg_store([], NQC_TMP, 0); clear NQC_TMP;');
-neuroqc.NeuroQC.state();
+pipecompare.PipeCompare.state();
 
 labs = {EEG.chanlocs.labels};
 isEog = ~cellfun(@isempty, regexpi(labs, 'eog|eye', 'once'));
@@ -45,7 +45,7 @@ if isfield(EEG.chanlocs, 'type'), isEog = isEog | strcmpi(arrayfun(@(c) char(str
 eog = labs(isEog);
 v = var(double(EEG.data(:, 1:min(end, round(60 * EEG.srate)))), 0, 2); v(isEog) = -Inf;
 [~, o] = sort(v, 'descend'); pair = labs(o(1:2));                      % the two most variable channels
-pl = neuroqc.plan.Plan();
+pl = pipecompare.plan.Plan();
 if EEG.srate > 250, pl = pl.add('resample', 'fs', 250); end
 pl = pl.add('highpass', 'cutoff', {0.1, 0.5});
 pl = pl.add('lowpass', 'cutoff', 30);
@@ -55,14 +55,14 @@ pl = pl.add('reref', 'mode', 'average', 'exclude', eog);
 pl = pl.add('epoch'); pl = pl.add('baseline');
 pl = pl.add('reject_threshold', 'uv', {100, 150}, 'exclude', eog);
 t0 = tic;
-r = neuroqc.NeuroQC.optimize(pl, contract);
+r = pipecompare.PipeCompare.optimize(pl, contract);
 out.seconds = toc(t0);
 out.result = r;
 
 % epoch alignment on every evaluated candidate's replay of the first ok one
 k = find(strcmp({r.cands.status}, 'ok'), 1);
 if ~isempty(k)
-    E = neuroqc.run.Executor.replay(r, k);
+    E = pipecompare.run.Executor.replay(r, k);
     bad = 0;
     for ep = 1:E.trials
         lat = E.epoch(ep).eventlatency; if ~iscell(lat), lat = {lat}; end

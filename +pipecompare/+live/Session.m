@@ -1,9 +1,9 @@
 classdef Session
     %SESSION Live access to the dataset that is current in EEGLAB.
     %
-    %   [EEG, info] = neuroqc.live.Session.current()
+    %   [EEG, info] = pipecompare.live.Session.current()
     %
-    %   NeuroQC has no "load data" step. It always works on the dataset
+    %   PipeCompare has no "load data" step. It always works on the dataset
     %   EEGLAB itself would act on: the base-workspace variable EEG (the
     %   one EEGLAB menus read and write). info reports CURRENTSET and
     %   whether base EEG still equals ALLEEG(CURRENTSET) (it differs when
@@ -21,19 +21,19 @@ classdef Session
                 return;
             end
             if numel(EEG) > 1
-                error('NeuroQC:MultipleDatasets', ...
+                error('PipeCompare:MultipleDatasets', ...
                     'Several datasets are selected in EEGLAB; select a single dataset.');
             end
             if evalin('base', 'exist(''CURRENTSET'',''var'')')
                 info.currentSet = evalin('base', 'CURRENTSET');
             end
-            info.fingerprint = neuroqc.live.Session.fingerprint(EEG);
+            info.fingerprint = pipecompare.live.Session.fingerprint(EEG);
             if isscalar(info.currentSet) && info.currentSet >= 1 && ...
                     evalin('base', 'exist(''ALLEEG'',''var'')')
                 n = evalin('base', 'numel(ALLEEG)');
                 if info.currentSet <= n
                     stored = evalin('base', sprintf('ALLEEG(%d)', info.currentSet));
-                    info.stored = strcmp(neuroqc.live.Session.fingerprint(stored), info.fingerprint);
+                    info.stored = strcmp(pipecompare.live.Session.fingerprint(stored), info.fingerprint);
                 end
             end
         end
@@ -45,7 +45,7 @@ classdef Session
             if ~evalin('base', 'exist(''EEG'',''var'')'), return; end
             EEG = evalin('base', 'EEG');
             if numel(EEG) ~= 1, q = sprintf('%d datasets', numel(EEG)); return; end
-            q = neuroqc.live.Session.quickPrint(EEG);
+            q = pipecompare.live.Session.quickPrint(EEG);
         end
 
         function q = quickPrint(EEG)

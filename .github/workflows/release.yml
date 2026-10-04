@@ -1,0 +1,50 @@
+name: release
+
+# A pushed tag vX.Y.Z (or a manual run for an existing tag) builds the
+# EEGLAB plugin zip - one top folder named <Plugin><X.Y.Z>, which EEGLAB
+# reads as the plugin's name and version - and publishes it as a GitHub
+# release whose notes are that version's CHANGELOG section.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release, e.g. v0.7.1"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build plugin zip and publish release
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Build plugin zip
+        run: |
+          VER="${TAG#v}"
+          NAME=PipeCompare
+          [ -f eegplugin_pipecompare.m ] || NAME=NeuroQC   # releases before the rename (<= 0.7.1)
+          DIR="$NAME$VER"
+          mkdir -p "dist/$DIR"
+          git archive HEAD | tar -x -C "dist/$DIR"
+          rm -rf "dist/$DIR/.github" "dist/$DIR/.gitignore"
+          (cd dist && zip -qr "$DIR.zip" "$DIR")
+          awk -v v="$VER" '$0 ~ "^## " v " " {f=1; next} /^## / {f=0} f' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "See CHANGELOG.md." > notes.md
+          echo "ZIP=dist/$DIR.zip" >> "$GITHUB_ENV"
+          echo "TITLE=$NAME $VER" >> "$GITHUB_ENV"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$TAG" "$ZIP" --title "$TITLE" --notes-file notes.md --verify-tag

@@ -7,8 +7,8 @@ function setupOnce(tc)
 addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
 assert(exist('pop_epoch', 'file') == 2, 'EEGLAB must be on the path');
 % Optional: a real processed dataset (never committed), e.g.
-% setenv('NEUROQC_REAL_SET', '/path/to/file.set')
-tc.TestData.realSet = getenv('NEUROQC_REAL_SET');
+% setenv('PIPECOMPARE_REAL_SET', '/path/to/file.set')
+tc.TestData.realSet = getenv('PIPECOMPARE_REAL_SET');
 end
 
 function testHistoryOrderedNoDedupe(tc)
@@ -29,7 +29,7 @@ h = sprintf([ ...
     'EEG = pop_runica(EEG, ''icatype'', ''runica'', ''extended'',1);\n' ...
     'EEG = pop_eegthresh(EEG,1,[1:30],-100,100,-0.2,0.996,0,0);\n' ...
     'EEG = pop_rejepoch( EEG, [3 7], 0);']);
-e = neuroqc.live.History.parse(h);
+e = pipecompare.live.History.parse(h);
 steps = {e.step};
 verifyEqual(tc, sum(strcmp(steps, 'reref')), 2);
 verifyEqual(tc, sum(strcmp(steps, 'ica')), 2);
@@ -52,21 +52,21 @@ end
 function testHistoryCharMatrixAndPositional(tc)
 h = char({'EEG = pop_eegfiltnew(EEG, 0.5, []);', 'EEG = pop_eegfiltnew(EEG, [], 40);', ...
     'EEG = pop_resample( EEG, 250);'});
-e = neuroqc.live.History.parse(h);
+e = pipecompare.live.History.parse(h);
 verifyEqual(tc, {e.step}, {'highpass','lowpass','resample'});
 verifyEqual(tc, e(3).params.fs, 250);
 end
 
 function testRealDatasetHistory(tc)
-assumeTrue(tc, ~isempty(tc.TestData.realSet) && isfile(tc.TestData.realSet), 'set NEUROQC_REAL_SET to run');
+assumeTrue(tc, ~isempty(tc.TestData.realSet) && isfile(tc.TestData.realSet), 'set PIPECOMPARE_REAL_SET to run');
 EEG = pop_loadset(tc.TestData.realSet);
-s = neuroqc.live.DataState.fromEEG(EEG);
+s = pipecompare.live.DataState.fromEEG(EEG);
 % every pop_* call that the history contains is kept (no deduplication)
 h = char(EEG.history); h = h(:)';
 for fn = {'pop_runica', 'pop_reref', 'pop_epoch', 'pop_eegfiltnew'}
     verifyEqual(tc, sum(strcmp({s.history.fn}, fn{1})), numel(regexp(h, ['\<' fn{1} '\s*\('])), fn{1});
 end
-neuroqc.live.DataState.print(s);
+pipecompare.live.DataState.print(s);
 end
 
 % ------------------------------------------------------------------- plan
@@ -77,7 +77,7 @@ h = sprintf(['EEG = pop_eegfiltnew(EEG, ''locutoff'', 0.5, ...\n' ...
     'EEG = pop_reref(EEG, []); %% comment with ... inside\n' ...
     'EEG = pop_select(EEG, ''rmchannel'', {''O1'', ... first\n' ...
     '    ''O2''});']);
-e = neuroqc.live.History.parse(h);
+e = pipecompare.live.History.parse(h);
 verifyEqual(tc, {e.step}, {'bandpass', 'reref', 'channels'});
 verifyEqual(tc, e(1).params.hicutoff, 30);
 verifyEqual(tc, [e.line], [1 3 4]);   % line numbers of the first physical line
@@ -85,7 +85,7 @@ end
 
 function testRepeatedOperationsStayDistinct(tc)
 h = sprintf('EEG = pop_eegfiltnew(EEG, ''locutoff'', 0.1);\nEEG = pop_eegfiltnew(EEG, ''locutoff'', 1);\nEEG = pop_eegfiltnew(EEG, ''locutoff'', 0.1);');
-e = neuroqc.live.History.parse(h);
+e = pipecompare.live.History.parse(h);
 verifyEqual(tc, numel(e), 3);
 verifyEqual(tc, arrayfun(@(x) x.params.locutoff, e), [0.1 1 0.1]);
 end
@@ -93,13 +93,13 @@ end
 function testProvenanceCategories(tc)
 EEG = nqc_synth(struct('seconds', 30, 'nPerCond', 5));
 EEG.history = sprintf(['EEG = pop_loadset(''x.set'');\nEEG = pop_reref(EEG, []);\n' ...
-    'EEG = pop_subcomp(EEG, [], 0);\nEEG.etc.neuroqc.rootChanlocs = EEG.chanlocs; %% NeuroQC: montage']);
+    'EEG = pop_subcomp(EEG, [], 0);\nEEG.etc.pipecompare.rootChanlocs = EEG.chanlocs; %% PipeCompare: montage']);
 EEG.icaweights = eye(EEG.nbchan); EEG.icasphere = eye(EEG.nbchan); EEG.icachansind = 1:EEG.nbchan;
 EEG = eeg_checkset(EEG);
 global ALLCOM %#ok<GVMIS>
 saved = ALLCOM; cleanup = onCleanup(@() restoreAllcom(saved));
 ALLCOM = {'EEG = pop_resample( EEG, 100);'};
-s = neuroqc.live.DataState.fromEEG(EEG);
+s = pipecompare.live.DataState.fromEEG(EEG);
 cats = {s.provenance.category};
 verifyTrue(tc, any(strcmp(cats, 'recorded in EEG.history')));
 verifyTrue(tc, any(strcmp(cats, 'inferred from the data')));            % ICA matrices, no ICA call

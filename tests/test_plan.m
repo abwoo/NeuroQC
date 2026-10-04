@@ -11,7 +11,7 @@ end
 function testPlanFixedAndSearched(tc)
 st = nqc_fakeState(false, 500);
 c = nqc_contract();
-p = neuroqc.plan.Plan();
+p = pipecompare.plan.Plan();
 p = p.add('highpass');                       % unfixed -> 4 suggestions
 p = p.add('lowpass', 'cutoff', 30);          % fixed
 p = p.add('epoch'); p = p.add('baseline');
@@ -27,17 +27,17 @@ end
 
 function testPlanLegality(tc)
 c = nqc_contract();
-p = neuroqc.plan.Plan(); p = p.add('baseline'); p = p.add('epoch');
-verifyError(tc, @() p.enumerate(nqc_fakeState(false, 500), c), 'NeuroQC:NoLegalPipeline');
-p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1);
-verifyError(tc, @() p.enumerate(nqc_fakeState(true, 500), c), 'NeuroQC:NoLegalPipeline'); % already epoched
-p = neuroqc.plan.Plan(); p = p.add('icremove');
-verifyError(tc, @() p.enumerate(nqc_fakeState(false, 500), c), 'NeuroQC:NoLegalPipeline'); % no ICA
+p = pipecompare.plan.Plan(); p = p.add('baseline'); p = p.add('epoch');
+verifyError(tc, @() p.enumerate(nqc_fakeState(false, 500), c), 'PipeCompare:NoLegalPipeline');
+p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1);
+verifyError(tc, @() p.enumerate(nqc_fakeState(true, 500), c), 'PipeCompare:NoLegalPipeline'); % already epoched
+p = pipecompare.plan.Plan(); p = p.add('icremove');
+verifyError(tc, @() p.enumerate(nqc_fakeState(false, 500), c), 'PipeCompare:NoLegalPipeline'); % no ICA
 end
 
 function testOrderSearchWithPinAndBefore(tc)
 c = nqc_contract();
-p = neuroqc.plan.Plan();
+p = pipecompare.plan.Plan();
 p = p.add('highpass', 'cutoff', 0.1); p = p.add('lowpass', 'cutoff', 30);
 p = p.add('linenoise'); p = p.add('epoch'); p = p.add('baseline');
 p.OrderMode = 'search';
@@ -51,17 +51,17 @@ end
 
 function testChoiceWithNone(tc)
 c = nqc_contract();
-p = neuroqc.plan.Plan(); p = p.add('epoch');
+p = pipecompare.plan.Plan(); p = p.add('epoch');
 p = p.addChoice('reject', {'reject_threshold', 'uv', 100}, {'reject_jointprob', 'sd', 4}, 'none');
 leaves = p.enumerate(nqc_fakeState(false, 500), c);
 verifyEqual(tc, numel(leaves), 3);
 end
 
 function testSearchBudgetRefusesSilently(tc)
-p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', num2cell(0.1:0.1:2));
+p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', num2cell(0.1:0.1:2));
 p = p.add('lowpass', 'cutoff', num2cell(20:1:45));
-verifyError(tc, @() p.enumerate(nqc_fakeState(false, 500), nqc_contract(), struct('maxLeaves', 100)), 'NeuroQC:SearchTooLarge');
-verifyError(tc, @() p.enumerate(nqc_fakeState(false, 500), nqc_contract(), struct('maxLeaves', 1e6, 'maxVisits', 50)), 'NeuroQC:SearchTooLarge');
+verifyError(tc, @() p.enumerate(nqc_fakeState(false, 500), nqc_contract(), struct('maxLeaves', 100)), 'PipeCompare:SearchTooLarge');
+verifyError(tc, @() p.enumerate(nqc_fakeState(false, 500), nqc_contract(), struct('maxLeaves', 1e6, 'maxVisits', 50)), 'PipeCompare:SearchTooLarge');
 end
 
 % -------------------------------------------------------------- statistics
@@ -69,7 +69,7 @@ end
 function testEnumerationEqualsBruteForce(tc)
 % Independent brute force: all permutations x all parameter values.
 c = nqc_contract();
-p = neuroqc.plan.Plan();
+p = pipecompare.plan.Plan();
 p = p.add('highpass', 'cutoff', {0.1, 0.5}); p = p.add('lowpass', 'cutoff', {20, 30, 40});
 p = p.add('linenoise', 'freq', {50, 60}); p.OrderMode = 'search';
 leaves = p.enumerate(nqc_fakeState(false, 500), c);
@@ -92,12 +92,12 @@ verifyEqual(tc, sort({leaves.key})', sort(unique(keys))');
 end
 
 function testFixedOrderConflictIsExplainedNotRearranged(tc)
-p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('baseline'); p = p.add('epoch');
+p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('baseline'); p = p.add('epoch');
 try
     p.enumerate(nqc_fakeState(false, 500), nqc_contract());
     verifyFail(tc, 'an invalid fixed order must be refused');
 catch ME
-    verifyEqual(tc, ME.identifier, 'NeuroQC:NoLegalPipeline');
+    verifyEqual(tc, ME.identifier, 'PipeCompare:NoLegalPipeline');
     verifyTrue(tc, contains(ME.message, 'nothing was rearranged'));
     verifyTrue(tc, contains(ME.message, 'step 2 "baseline"'));
     verifyTrue(tc, contains(ME.message, 'needs epoched data'));
@@ -107,7 +107,7 @@ end
 function testFixedValuesAreNeverOverwritten(tc)
 % Property: in every generated pipeline, each value the user fixed is
 % exactly the value given; searched values come only from the given lists.
-p = neuroqc.plan.Plan();
+p = pipecompare.plan.Plan();
 p = p.add('resample', 'fs', 250);
 p = p.add('highpass', 'cutoff', {0.1, 0.3});
 p = p.add('lowpass', 'cutoff', 30);
@@ -131,17 +131,17 @@ end
 end
 
 function testUnmentionedParametersAreSearched(tc)
-p = neuroqc.plan.Plan(); p = p.add('icremove'); % threshold unmentioned -> suggestions
+p = pipecompare.plan.Plan(); p = p.add('icremove'); % threshold unmentioned -> suggestions
 st = nqc_fakeState(false, 500); st.ica.present = true;
 leaves = p.enumerate(st, nqc_contract());
-d = neuroqc.plan.Catalog.get('icremove');
+d = pipecompare.plan.Catalog.get('icremove');
 verifyEqual(tc, numel(leaves), numel(d.params(1).suggest));
 end
 
 function testReferenceSearchIsStratified(tc)
 % The reference may be searched; candidates are labelled with a stratum so
 % they are never ranked against a different reference.
-p = neuroqc.plan.Plan();
+p = pipecompare.plan.Plan();
 p = p.addChoice('ref', {'reref', 'mode', 'average'}, {'reref', 'mode', 'channels', 'channels', {'TP9','TP10'}});
 p = p.add('highpass', 'cutoff', {0.1, 0.5});
 leaves = p.enumerate(nqc_fakeState(false, 500), nqc_contract());
@@ -154,7 +154,7 @@ function testManyFreeStepsAreNotBlockedByOrderListing(tc)
 % Audit: 8 unfixed steps have 40320 orders; listing orders first (limit
 % 5000) blocked the search before legality was checked. Illegal prefixes
 % are now cut while walking, so the legal pipelines are found.
-p = neuroqc.plan.Plan();
+p = pipecompare.plan.Plan();
 p = p.add('resample', 'fs', 250); p = p.add('highpass', 'cutoff', 0.1); p = p.add('lowpass', 'cutoff', 30);
 p = p.add('linenoise'); p = p.add('epoch'); p = p.add('baseline');
 p = p.add('reject_threshold', 'uv', 100); p = p.add('reject_jointprob', 'sd', 4);
@@ -170,7 +170,7 @@ for r = 1:size(P, 1)
     for q = P(r, :)
         a = S(q).alternatives{1}; prm = a.params;
         if strcmp(a.type, 'linenoise'), prm = struct('freq', 50, 'halfwidth', 2); end
-        [why, st] = neuroqc.plan.Catalog.apply(a.type, prm, st);
+        [why, st] = pipecompare.plan.Catalog.apply(a.type, prm, st);
         if ~isempty(why), ok = false; break; end
     end
     legal = legal + ok;
@@ -182,7 +182,7 @@ end
 function testAllowedOrdersAreCountedAndAllRun(tc)
 % With a before() constraint the allowed orders are counted (not listed)
 % and every one of them is generated - nothing is sampled or dropped.
-p = neuroqc.plan.Plan();
+p = pipecompare.plan.Plan();
 p = p.add('highpass', 'cutoff', 0.1); p = p.add('lowpass', 'cutoff', 30); p = p.add('linenoise');
 p.OrderMode = 'search'; p = p.before('highpass', 'lowpass');
 [~, nOrders] = p.orderSpace();
@@ -202,17 +202,17 @@ function testStepsThatNeedLocationsAreExcludedWithoutThem(tc)
 % failing one by one in the middle of the search.
 st = nqc_fakeState(false, 250); st.nLocated = 0;
 c = nqc_contract();
-p = neuroqc.plan.Plan(); p = p.add('badchannels', 'measure', 'kurt', 'threshold', 5);   % interpolate (default)
+p = pipecompare.plan.Plan(); p = p.add('badchannels', 'measure', 'kurt', 'threshold', 5);   % interpolate (default)
 try
-    p.enumerate(st, c); verifyFail(tc, 'expected NeuroQC:NoLegalPipeline');
+    p.enumerate(st, c); verifyFail(tc, 'expected PipeCompare:NoLegalPipeline');
 catch ME
-    verifyEqual(tc, ME.identifier, 'NeuroQC:NoLegalPipeline');
+    verifyEqual(tc, ME.identifier, 'PipeCompare:NoLegalPipeline');
     verifyTrue(tc, contains(ME.message, 'needs channel locations'));
 end
-p2 = neuroqc.plan.Plan(); p2 = p2.add('badchannels', 'measure', 'kurt', 'threshold', 5, 'action', 'remove');
+p2 = pipecompare.plan.Plan(); p2 = p2.add('badchannels', 'measure', 'kurt', 'threshold', 5, 'action', 'remove');
 verifyNumElements(tc, p2.enumerate(st, c), 1);
-p3 = neuroqc.plan.Plan(); p3 = p3.add('ica'); p3 = p3.add('icremove', 'threshold', 0.9);
-verifyError(tc, @() p3.enumerate(st, c), 'NeuroQC:NoLegalPipeline');
+p3 = pipecompare.plan.Plan(); p3 = p3.add('ica'); p3 = p3.add('icremove', 'threshold', 0.9);
+verifyError(tc, @() p3.enumerate(st, c), 'PipeCompare:NoLegalPipeline');
 st.nLocated = 30;
 verifyNumElements(tc, p.enumerate(st, c), 1);
 verifyNumElements(tc, p3.enumerate(st, c), 1);
@@ -221,9 +221,9 @@ end
 function testDifferentFixedArgumentsAreDifferentPipelines(tc)
 % Two configurations that differ only in a fixed argument (high-pass 0.1
 % vs 0.5, both searching the low-pass) are four pipelines, none dropped.
-p = neuroqc.plan.Plan();
+p = pipecompare.plan.Plan();
 p = p.addEeglab('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',20);', 'filt', 'hicutoff', {20, 30});
-alt = neuroqc.run.Native.eeglabAlt('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.5,''hicutoff'',20);');
+alt = pipecompare.run.Native.eeglabAlt('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.5,''hicutoff'',20);');
 alt.params.args(2).values = {20, 30};
 p = p.addAlternative('filt', alt);
 leaves = p.enumerate(nqc_fakeState(false, 500), nqc_contract());
@@ -234,7 +234,7 @@ end
 function testEeglabCommandArgumentsAreSearchParameters(tc)
 % A command from an EEGLAB dialog keeps every argument; named and
 % positional arguments can be searched; values are written back exactly.
-p = neuroqc.plan.Plan();
+p = pipecompare.plan.Plan();
 p = p.addEeglab('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',30,''filtorder'',3300,''plotfreqz'',0);', 'filter', ...
     'hicutoff', {20, 30}, 'locutoff', {0.1, 1/3});
 p = p.add('epoch'); p = p.add('baseline');
@@ -244,18 +244,18 @@ verifyEqual(tc, numel(leaves), 8);
 cmds = arrayfun(@(l) l.path{1}.params.command, leaves, 'UniformOutput', false);
 verifyTrue(tc, all(contains(cmds, '''filtorder'',3300')));          % unsearched dialog settings kept
 verifyTrue(tc, any(contains(cmds, '0.3333333333333333')));          % exact value written back
-e = neuroqc.run.Native.argsOf(cmds{find(contains(cmds, '0.33333'), 1)}, 'pop_eegfiltnew');
+e = pipecompare.run.Native.argsOf(cmds{find(contains(cmds, '0.33333'), 1)}, 'pop_eegfiltnew');
 verifyEqual(tc, e{2}, 1/3);                                         % bit-identical
 verifyTrue(tc, any(contains(cmds, '''locutoff'',0.1,')));           % and short when it can be
 rej = arrayfun(@(l) l.path{4}.params.command, leaves, 'UniformOutput', false);
 verifyEqual(tc, numel(unique(rej)), 2);
 verifyTrue(tc, all(contains(rej, ',-60,')));                        % the other positional limit kept
-a = neuroqc.run.Native.eeglabAlt('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',30);');
-[m, changed] = neuroqc.run.Native.mergeEeglab(a, neuroqc.run.Native.eeglabAlt('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.5,''hicutoff'',40);'));
+a = pipecompare.run.Native.eeglabAlt('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',30);');
+[m, changed] = pipecompare.run.Native.mergeEeglab(a, pipecompare.run.Native.eeglabAlt('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.5,''hicutoff'',40);'));
 verifyEqual(tc, changed, {'locutoff', 'hicutoff'});
 verifyEqual(tc, m.params.args(1).values, {0.1, 0.5});
-[~, changed] = neuroqc.run.Native.mergeEeglab(a, neuroqc.run.Native.eeglabAlt('EEG = pop_reref(EEG, []);'));
+[~, changed] = pipecompare.run.Native.mergeEeglab(a, pipecompare.run.Native.eeglabAlt('EEG = pop_reref(EEG, []);'));
 verifyEmpty(tc, changed);                                            % another call: not merged
-verifyEmpty(tc, neuroqc.run.Native.eeglabAlt(sprintf('EEG = pop_iclabel(EEG, ''default'');\nEEG = pop_subcomp(EEG, [], 0);')));
+verifyEmpty(tc, pipecompare.run.Native.eeglabAlt(sprintf('EEG = pop_iclabel(EEG, ''default'');\nEEG = pop_subcomp(EEG, [], 0);')));
 end
 

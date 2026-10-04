@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in NeuroQC!
+Thanks for your interest in PipeCompare!
 
 The code is published under the **MIT License**, but code PRs are not accepted at this stage
 (fork and adapt freely). The most useful contributions today are bug reports and documentation

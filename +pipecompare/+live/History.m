@@ -1,7 +1,7 @@
 classdef History
     %HISTORY Parse EEG.history into an ordered list of entries.
     %
-    %   entries = neuroqc.live.History.parse(EEG.history)
+    %   entries = pipecompare.live.History.parse(EEG.history)
     %
     %   Every statement is kept, in order, with its line number and raw
     %   text. Nothing is deduplicated: a second pop_reref or pop_runica is
@@ -18,16 +18,16 @@ classdef History
 
     methods (Static)
         function entries = parse(history)
-            entries = neuroqc.live.History.emptyEntries();
-            lines = neuroqc.live.History.toLines(history);
+            entries = pipecompare.live.History.emptyEntries();
+            lines = pipecompare.live.History.toLines(history);
             for li = 1:numel(lines)
                 line = lines{li};
                 if isempty(strtrim(line)), continue; end
-                stmts = neuroqc.live.History.splitStatements(line);
+                stmts = pipecompare.live.History.splitStatements(line);
                 for si = 1:numel(stmts)
                     st = strtrim(stmts{si});
                     if isempty(st), continue; end
-                    e = neuroqc.live.History.classify(st);
+                    e = pipecompare.live.History.classify(st);
                     e.line = li;
                     e.raw = line;
                     entries(end+1) = e; %#ok<AGROW>
@@ -57,8 +57,8 @@ classdef History
             while k <= numel(raw)
                 line = raw{k}; j = k;
                 while j < numel(raw)
-                    code = neuroqc.live.History.stripComment(line);
-                    pos = neuroqc.live.History.continuationAt(code);
+                    code = pipecompare.live.History.stripComment(line);
+                    pos = pipecompare.live.History.continuationAt(code);
                     if pos == 0, break; end
                     line = [code(1:pos-1) ' ' strtrim(raw{j+1})];
                     j = j + 1;
@@ -73,7 +73,7 @@ classdef History
             % Split one history line on top-level ';' and drop trailing
             % comments. Quotes and brackets are respected.
             stmts = {};
-            [code, ~] = neuroqc.live.History.stripComment(line);
+            [code, ~] = pipecompare.live.History.stripComment(line);
             if isempty(strtrim(code))
                 if ~isempty(strtrim(line)), stmts = {strtrim(line)}; end % pure comment line
                 return;
@@ -86,7 +86,7 @@ classdef History
                         if k < n && code(k+1) == qc, k = k + 2; continue; end
                         inQ = false;
                     end
-                elseif neuroqc.live.History.opensString(code, k)
+                elseif pipecompare.live.History.opensString(code, k)
                     inQ = true; qc = ch;
                 elseif any(ch == '([{')
                     depth = depth + 1;
@@ -113,7 +113,7 @@ classdef History
                         if k < n && code(k+1) == qc, k = k + 2; continue; end
                         inQ = false;
                     end
-                elseif neuroqc.live.History.opensString(code, k)
+                elseif pipecompare.live.History.opensString(code, k)
                     inQ = true; qc = ch;
                 elseif k + 2 <= n && strcmp(code(k:k+2), '...')
                     pos = k; return;
@@ -132,7 +132,7 @@ classdef History
                         if k < n && line(k+1) == qc, k = k + 2; continue; end
                         inQ = false;
                     end
-                elseif neuroqc.live.History.opensString(line, k)
+                elseif pipecompare.live.History.opensString(line, k)
                     inQ = true; qc = ch;
                 elseif ch == '%'
                     code = line(1:k-1); comment = line(k:end); return;
@@ -166,7 +166,7 @@ classdef History
                         if k < n && argText(k+1) == qc, k = k + 2; continue; end
                         inQ = false;
                     end
-                elseif neuroqc.live.History.opensString(argText, k)
+                elseif pipecompare.live.History.opensString(argText, k)
                     inQ = true; qc = ch;
                 elseif any(ch == '([{')
                     depth = depth + 1;
@@ -204,7 +204,7 @@ classdef History
                             if k < numel(rest) && rest(k+1) == qc, k = k + 2; continue; end
                             inQ = false;
                         end
-                    elseif neuroqc.live.History.opensString(rest, k)
+                    elseif pipecompare.live.History.opensString(rest, k)
                         inQ = true; qc = ch;
                     elseif ch == '(' || ch == '[' || ch == '{'
                         depth = depth + 1;
@@ -215,21 +215,21 @@ classdef History
                     k = k + 1;
                 end
                 if close > 0
-                    args = neuroqc.live.History.splitArgs(rest(2:close-1));
+                    args = pipecompare.live.History.splitArgs(rest(2:close-1));
                 else
-                    args = neuroqc.live.History.splitArgs(rest(2:end));
+                    args = pipecompare.live.History.splitArgs(rest(2:end));
                 end
             end
         end
 
         function e = classify(stmt)
-            e = neuroqc.live.History.emptyEntries();
+            e = pipecompare.live.History.emptyEntries();
             e(1).statement = stmt;
             e.kind = 'unknown'; e.step = ''; e.fn = ''; e.params = struct(); e.note = '';
             if startsWith(strtrim(stmt), '%')
                 e.kind = 'comment'; return;
             end
-            [fn, args, lhs] = neuroqc.live.History.callParts(stmt);
+            [fn, args, lhs] = pipecompare.live.History.callParts(stmt);
             e.fn = fn; e.args = args;
             if isempty(fn)
                 if ~isempty(regexp(stmt, '^\s*EEG\.[\w\.]+\s*=', 'once'))
@@ -240,7 +240,7 @@ classdef History
             if isempty(lhs) && ~isempty(regexp(stmt, '^\s*[A-Za-z]\w*(\.\w+)+\s*=', 'once'))
                 e.kind = 'admin'; e.note = 'direct field assignment'; return;
             end
-            nv = neuroqc.live.History.nameValues(args);
+            nv = pipecompare.live.History.nameValues(args);
             switch fn
                 case {'pop_loadset','pop_biosig','pop_fileio','pop_loadbv','pop_loadcnt', ...
                         'pop_loadeeg','pop_readegi','pop_mffimport','pop_importdata', ...
@@ -281,7 +281,7 @@ classdef History
                     if numel(args) >= 2, e.params.fs = str2double(args{2}); end
                 case 'pop_eegfiltnew'
                     e.kind = 'process';
-                    p = neuroqc.live.History.filterParams(args);
+                    p = pipecompare.live.History.filterParams(args);
                     e.params = p;
                     if p.revfilt
                         e.step = 'linenoise';
@@ -371,7 +371,7 @@ classdef History
             % or pop_eegfiltnew(EEG, 'locutoff', x, 'hicutoff', y, 'revfilt', 1)
             p = struct('locutoff', NaN, 'hicutoff', NaN, 'revfilt', false);
             if numel(args) >= 2 && any(args{2}(1) == '''"')
-                nv = neuroqc.live.History.nameValues(args);
+                nv = pipecompare.live.History.nameValues(args);
                 if isfield(nv, 'locutoff'), p.locutoff = toNum(nv.locutoff); end
                 if isfield(nv, 'hicutoff'), p.hicutoff = toNum(nv.hicutoff); end
                 if isfield(nv, 'revfilt'), p.revfilt = isTrue(nv.revfilt); end
@@ -407,7 +407,7 @@ classdef History
 
         function print(entries)
             if isempty(entries)
-                neuroqc.utils.log('EEG.history is empty.');
+                pipecompare.utils.log('EEG.history is empty.');
                 return;
             end
             fprintf('  %-4s %-8s %-18s %s\n', 'line', 'kind', 'step', 'statement');

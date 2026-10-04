@@ -1,8 +1,8 @@
 classdef Catalog
-    %CATALOG The processing steps NeuroQC can place in a plan.
+    %CATALOG The processing steps PipeCompare can place in a plan.
     %
     %   Each step is executed by native EEGLAB functions (see
-    %   neuroqc.run.Steps). For every parameter the catalog defines:
+    %   pipecompare.run.Steps). For every parameter the catalog defines:
     %
     %     default  value used when you do not mention the parameter and it
     %              has no search list
@@ -57,7 +57,7 @@ classdef Catalog
                     d.params = [P('labels', {}, {}, false, 'channel labels you name (e.g. known-bad O1, O2)'), ...
                         P('action', 'interpolate', {}, false, '''remove'' or ''interpolate''')];
                 case 'restore'
-                    d.label = 'Restore removed channels (spherical interpolation): the starting montage plus channels removed before NeuroQC (chaninfo.removedchans, with locations)'; d.dialog = 'pop_interp';
+                    d.label = 'Restore removed channels (spherical interpolation): the starting montage plus channels removed before PipeCompare (chaninfo.removedchans, with locations)'; d.dialog = 'pop_interp';
                 case 'reref'
                     d.label = 'Re-reference'; d.dialog = 'pop_reref';
                     d.params = [P('mode', 'average', {}, true, '''average'' or ''channels'''), ...
@@ -88,8 +88,8 @@ classdef Catalog
                     d.label = 'Native EEGLAB command (fixed)';
                     d.params = P('command', '', {}, true, 'command returned by an EEGLAB dialog');
                 otherwise
-                    error('NeuroQC:UnknownStep', 'Unknown step "%s". Known steps: %s', ...
-                        type, strjoin(neuroqc.plan.Catalog.types(), ', '));
+                    error('PipeCompare:UnknownStep', 'Unknown step "%s". Known steps: %s', ...
+                        type, strjoin(pipecompare.plan.Catalog.types(), ', '));
             end
         end
 
@@ -139,7 +139,7 @@ classdef Catalog
                     end
                 case 'restore'
                     if ~st.anyLocations, reason = ['restoring channels' ' needs channel locations (Edit > Channel locations): spherical interpolation (Perrin et al., 1989) works on electrode positions, and the dataset has none']; return; end
-                    if ~st.removed, reason = 'restore needs channels removed earlier in the plan or before NeuroQC (EEG.chaninfo.removedchans)'; return; end
+                    if ~st.removed, reason = 'restore needs channels removed earlier in the plan or before PipeCompare (EEG.chaninfo.removedchans)'; return; end
                     st.removed = false;
                 case 'reref'
                     if ~any(strcmp(p.mode, {'average','channels'})), reason = 'reref mode must be average or channels'; return; end
@@ -163,8 +163,8 @@ classdef Catalog
                 case 'native'
                     % Infer the effect from the EEGLAB functions the
                     % statements call (a captured workflow has several).
-                    for stmt = neuroqc.run.Native.statements(p.command)
-                        e = neuroqc.live.History.classify(stmt{1});
+                    for stmt = pipecompare.run.Native.statements(p.command)
+                        e = pipecompare.live.History.classify(stmt{1});
                         if strcmp(e.fn, 'pop_chanedit'), st.anyLocations = true; end   % locations set in the plan
                         if any(strcmp(e.fn, {'pop_interp','pop_iclabel'})) && ~st.anyLocations
                             reason = sprintf('native %s needs channel locations (Edit > Channel locations)', e.fn); return;

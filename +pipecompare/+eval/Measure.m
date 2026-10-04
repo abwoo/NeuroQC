@@ -1,8 +1,8 @@
 classdef Measure
     %MEASURE Trial-level scores and their measurement error, per objective.
     %
-    %   ref = neuroqc.eval.Measure.reference(rootEEG, contract)
-    %   m   = neuroqc.eval.Measure.candidate(EEG, contract, ref, opts)
+    %   ref = pipecompare.eval.Measure.reference(rootEEG, contract)
+    %   m   = pipecompare.eval.Measure.candidate(EEG, contract, ref, opts)
     %
     %   Every candidate is scored the same way. Data still continuous are
     %   epoched with the contract window; the contract baseline is removed
@@ -19,7 +19,7 @@ classdef Measure
     %   SME falls when noise is removed and rises when trials are lost, so it
     %   prices the noise-vs-trial-count trade-off directly. It does NOT tell
     %   whether the signal survived; that is the job of
-    %   neuroqc.eval.Injection.
+    %   pipecompare.eval.Injection.
     %
     %   Trials are identified by the urevent index of their time-locking
     %   event, so the same physical trial is paired across candidates.
@@ -31,12 +31,12 @@ classdef Measure
 
         function ref = reference(EEG, contract)
             % trial identities only: the ROI may be restored later in the plan
-            T = neuroqc.eval.Measure.trials(EEG, contract, true);
+            T = pipecompare.eval.Measure.trials(EEG, contract, true);
             conds = contract.conditions;
             ref = struct('ids', {cell(1, numel(conds))}, 'names', {{conds.name}});
             for c = 1:numel(conds)
                 ref.ids{c} = unique(T.id(T.cond == c))';
-                assert(numel(ref.ids{c}) >= 2, 'NeuroQC:Contract', ...
+                assert(numel(ref.ids{c}) >= 2, 'PipeCompare:Contract', ...
                     'Condition %s has %d eligible trial(s) in the current dataset.', conds(c).name, numel(ref.ids{c}));
             end
             ref.n = cellfun(@numel, ref.ids);
@@ -49,8 +49,8 @@ classdef Measure
 
         function m = candidate(EEG, contract, ref, opts)
             if nargin < 4, opts = struct(); end
-            opts = neuroqc.utils.withDefaults(opts, neuroqc.eval.Measure.defaults());
-            T = neuroqc.eval.Measure.trials(EEG, contract);
+            opts = pipecompare.utils.withDefaults(opts, pipecompare.eval.Measure.defaults());
+            T = pipecompare.eval.Measure.trials(EEG, contract);
             nC = numel(ref.ids); nO = numel(ref.objectives);
             m = struct('kept', zeros(1, nC), 'retention', zeros(1, nC), 'extraTrials', 0, ...
                 'objectives', [], 'composite', NaN);
@@ -78,7 +78,7 @@ classdef Measure
                     X = nan(ref.n(c), size(T.data{k}, 2));
                     X(rowOf{c}.loc, :) = T.data{k}(rowOf{c}.rows, :);
                     o.X{c} = X;
-                    [o.estimate(c), o.sme(c)] = neuroqc.eval.Measure.estimate(o, X, opts, k * 1000 + c);
+                    [o.estimate(c), o.sme(c)] = pipecompare.eval.Measure.estimate(o, X, opts, k * 1000 + c);
                 end
                 o.agg = sqrt(mean(o.sme .^ 2));
                 objs(k) = o;
@@ -183,20 +183,20 @@ classdef Measure
             end
             tol = 1.5 / EEG.srate;
             assert(EEG.xmin <= win(1) + tol && EEG.xmax >= win(2) - tol, ...
-                'NeuroQC:Measure', 'Epochs [%g %g] s do not cover the contract epoch [%g %g] s.', EEG.xmin, EEG.xmax, win);
+                'PipeCompare:Measure', 'Epochs [%g %g] s do not cover the contract epoch [%g %g] s.', EEG.xmin, EEG.xmax, win);
             times = EEG.xmin + (0:EEG.pnts-1) / EEG.srate;
             labels = lower({EEG.chanlocs.labels});
             nT = EEG.trials;
             id = nan(nT, 1); cond = zeros(nT, 1);
             eligible = [];
-            if isfield(EEG, 'etc') && isfield(EEG.etc, 'neuroqc') && isfield(EEG.etc.neuroqc, 'eligibleUrevents')
-                eligible = EEG.etc.neuroqc.eligibleUrevents;
+            if isfield(EEG, 'etc') && isfield(EEG.etc, 'pipecompare') && isfield(EEG.etc.pipecompare, 'eligibleUrevents')
+                eligible = EEG.etc.pipecompare.eligibleUrevents;
             end
-            lock = neuroqc.eval.Measure.lockingEvents(EEG, codes);
+            lock = pipecompare.eval.Measure.lockingEvents(EEG, codes);
             for k = find(lock > 0)
                 e = EEG.event(lock(k));
                 t = strtrim(char(string(e.type)));
-                assert(isfield(e, 'urevent') && ~isempty(e.urevent), 'NeuroQC:Urevent', ...
+                assert(isfield(e, 'urevent') && ~isempty(e.urevent), 'PipeCompare:Urevent', ...
                     'Time-locking events have no urevent index.');
                 if ~isempty(eligible) && ~ismember(double(e.urevent), eligible), continue; end
                 id(k) = double(e.urevent);
@@ -210,7 +210,7 @@ classdef Measure
             bl = contract.baseline;
             if ~isempty(bl)
                 bsel = times >= bl(1) - 1e-9 & times <= bl(2) + 1e-9;
-                assert(any(bsel), 'NeuroQC:Measure', 'No samples in the baseline window.');
+                assert(any(bsel), 'PipeCompare:Measure', 'No samples in the baseline window.');
                 data = data - mean(data(:, bsel, :), 2);
             end
             if strcmp(contract.analysis, 'bandpower')
@@ -247,7 +247,7 @@ end
 function idx = roiIndex(roi, labels)
 [ok, idx] = ismember(lower(roi), labels);
 if ~all(ok)
-    error('NeuroQC:RoiMissing', 'ROI channel(s) missing in this candidate: %s', strjoin(roi(~ok), ', '));
+    error('PipeCompare:RoiMissing', 'ROI channel(s) missing in this candidate: %s', strjoin(roi(~ok), ', '));
 end
 end
 
@@ -271,7 +271,7 @@ w = 0.5 - 0.5 * cos(2 * pi * (0:n-1)' / (n - 1));
 F = fft(permute(X, [2 1 3]) .* w, [], 1);              % samples x ROI x trials
 f = (0:n-1) * fs / n;
 sel = f >= band(1) & f <= band(2);
-assert(any(sel), 'NeuroQC:Measure', 'The window is too short to resolve the band [%g %g] Hz.', band);
+assert(any(sel), 'PipeCompare:Measure', 'The window is too short to resolve the band [%g %g] Hz.', band);
 P = 2 * abs(F(sel, :, :)) .^ 2 / (fs * sum(w .^ 2));
 s = reshape(log10(mean(mean(P, 1), 2)), nt, 1);
 end

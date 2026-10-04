@@ -1,21 +1,21 @@
 classdef Rank
     %RANK Decide which candidates are acceptable and which is recommended.
     %
-    %   R = neuroqc.eval.Rank.run(cands, ref, opts)
+    %   R = pipecompare.eval.Rank.run(cands, ref, opts)
     %
     %   1. Execution failures are reported, never ranked.
     %   2. Constraints, each with a readable reason:
     %        trials per condition    >= minTrials
     %        retention per condition >= minRetention
     %        interpolated channels   <= maxInterpolated (fraction)
-    %        signal preservation (neuroqc.eval.Injection): amplitude error
+    %        signal preservation (pipecompare.eval.Injection): amplitude error
     %          <= maxAmplitudeError, peak shift <= maxLatencyShiftMs,
     %          artifactual deflection <= maxArtifactPct, waveform
     %          correlation >= minWaveformCorr, topography correlation >=
     %          minTopoCorr. A metric that was not computed fails.
     %   3. Objective (opts.objective): the gain-corrected SME, SME/g, where
     %      g is the factor by which the candidate scales a known signal in
-    %      that measure (neuroqc.eval.Injection: window mean for mean
+    %      that measure (pipecompare.eval.Injection: window mean for mean
     %      amplitude, peak for peak amplitude, g = 1 for latency). With a
     %      pipeline acting linearly on signal + noise, score = g*a + e, so
     %      the score divided by g estimates the same quantity a for every
@@ -67,7 +67,7 @@ classdef Rank
 
         function R = run(cands, ref, opts)
             if nargin < 3, opts = struct(); end
-            opts = neuroqc.utils.withDefaults(opts, neuroqc.eval.Rank.defaults());
+            opts = pipecompare.utils.withDefaults(opts, pipecompare.eval.Rank.defaults());
             n = numel(cands);
             objName = resolveObjective(opts.objective, ref);
             nO = numel(ref.objectives);
@@ -134,7 +134,7 @@ classdef Rank
             strata = unique(stratum(strcmp(status, 'feasible')), 'stable');
             for s = 1:numel(strata)
                 feas = find(strcmp(status, 'feasible') & strcmp(stratum, strata{s}));
-                boot = neuroqc.eval.Rank.bootstrap(cands(feas), ref, opts, {objName});
+                boot = pipecompare.eval.Rank.bootstrap(cands(feas), ref, opts, {objName});
                 pts = primary(feas);
                 [~, ib] = min(pts);
                 [keep, l, h] = bestSet(pts(:), boot{1}, ib, opts.alpha);
@@ -167,7 +167,7 @@ classdef Rank
             % Paired bootstrap. Returns one (candidates x B) matrix per
             % objective in objNames ('composite' allowed).
             if nargin < 4, objNames = {'composite'}; end
-            opts = neuroqc.utils.withDefaults(opts, neuroqc.eval.Rank.defaults());
+            opts = pipecompare.utils.withDefaults(opts, pipecompare.eval.Rank.defaults());
             s = RandStream('mt19937ar', 'Seed', opts.seed);
             peak = isfield(cands(1).m, 'objectives') && any(~strcmp({cands(1).m.objectives.kind}, 'scalar'));
             B = opts.nBoot; if peak, B = opts.nBootPeakOuter; end
@@ -209,7 +209,7 @@ classdef Rank
                 objs = cands(k).m.objectives;
                 g = gainOf(cands(k), nO);
                 for o = 1:nO
-                    per(k, :, o) = neuroqc.eval.Measure.smeBoot(objs(o), W, opts, 7919 * o, scale) / g(o);
+                    per(k, :, o) = pipecompare.eval.Measure.smeBoot(objs(o), W, opts, 7919 * o, scale) / g(o);
                 end
             end
             boot = cell(1, numel(objNames));
@@ -304,7 +304,7 @@ classdef Rank
 
         function print(R, labels)
             T = R.table; o = R.options;
-            neuroqc.utils.log(['Ranking by %s gain-corrected SME (SME / signal gain; lower = more precise). diff = difference from the best, ', ...
+            pipecompare.utils.log(['Ranking by %s gain-corrected SME (SME / signal gain; lower = more precise). diff = difference from the best, ', ...
                 '%.0f%% interval simultaneous over all candidates; "nd" = not distinguished from the best by these data ', ...
                 '(not equivalence).'], R.objective, 100 * (1 - o.alpha));
             fprintf('   %-4s %-9s %9s %19s %3s %6s %6s %6s %5s  %s\n', 'id', 'status', 'objective', 'diff vs best [CI]', 'nd', 'minRet', 'interp', 'ampErr', 'art', 'pipeline');
@@ -320,19 +320,19 @@ classdef Rank
                 if ~isempty(T.note{k}), fprintf('        note: %s\n', T.note{k}); end
             end
             if isempty(R.byStratum)
-                neuroqc.utils.log('NO FEASIBLE PIPELINE: no candidate satisfies the constraints (none relaxed).');
-                common = neuroqc.eval.Rank.commonReasons(R, 3);
-                if ~isempty(common), neuroqc.utils.log('Most common reasons: %s', strjoin(common, '; ')); end
+                pipecompare.utils.log('NO FEASIBLE PIPELINE: no candidate satisfies the constraints (none relaxed).');
+                common = pipecompare.eval.Rank.commonReasons(R, 3);
+                if ~isempty(common), pipecompare.utils.log('Most common reasons: %s', strjoin(common, '; ')); end
                 return;
             end
             for s = 1:numel(R.byStratum)
                 b = R.byStratum(s);
                 lab = ''; if ~isempty(b.stratum), lab = sprintf(' [stratum %s]', b.stratum); end
-                neuroqc.utils.log(['Recommended (*)%s: candidate %d (fewest trials lost, then least distortion, among the %d ', ...
+                pipecompare.utils.log(['Recommended (*)%s: candidate %d (fewest trials lost, then least distortion, among the %d ', ...
                     'not distinguished from the best); best objective: candidate %d.'], lab, b.recommended, numel(b.set), b.best);
             end
             if numel(R.byStratum) > 1
-                neuroqc.utils.log(['Strata differ in what is measured (e.g. the reference); their results are not ', ...
+                pipecompare.utils.log(['Strata differ in what is measured (e.g. the reference); their results are not ', ...
                     'comparable, so there is no overall recommendation. Choose the stratum that fits your analysis ', ...
                     'and adopt its recommendation: adopt(result, id).']);
             end
@@ -344,16 +344,16 @@ end
 function name = resolveObjective(obj, ref)
 % 'composite' (all measures share a unit) or the name of one measure.
 if iscell(obj)
-    assert(isscalar(obj), 'NeuroQC:Objective', 'Choose one objective (or ''composite''), not a list.');
+    assert(isscalar(obj), 'PipeCompare:Objective', 'Choose one objective (or ''composite''), not a list.');
     obj = obj{1};
 end
 name = char(obj);
 if strcmp(name, 'composite')
-    assert(numel(unique(ref.units)) == 1, 'NeuroQC:Objective', ...
+    assert(numel(unique(ref.units)) == 1, 'PipeCompare:Objective', ...
         ['The measures have different units (%s); a composite would add incompatible quantities. ', ...
          'Choose the measure to optimize, e.g. ''%s''.'], strjoin(unique(ref.units), ', '), ref.objectives{1});
 else
-    assert(any(strcmp(name, ref.objectives)), 'NeuroQC:Objective', 'Unknown objective %s; available: composite, %s', ...
+    assert(any(strcmp(name, ref.objectives)), 'PipeCompare:Objective', 'Unknown objective %s; available: composite, %s', ...
         name, strjoin(ref.objectives, ', '));
 end
 end

@@ -1,7 +1,7 @@
 # Coverage inventory
 
-What NeuroQC covers, and how far each part has been checked. This inventory is incomplete by
-nature: EEGLAB has hundreds of functions and plugins, and NeuroQC covers a deliberately small set of
+What PipeCompare covers, and how far each part has been checked. This inventory is incomplete by
+nature: EEGLAB has hundreds of functions and plugins, and PipeCompare covers a deliberately small set of
 them. Anything not listed here is either reachable as a **native step** (any `pop_*` command, run and
 replayed verbatim, see below; in the panel through *Add EEGLAB menu step…*, which lists every
 operation of EEGLAB's menus that takes and returns the dataset, plugins included) or not supported.
@@ -15,7 +15,7 @@ Each item has four status columns:
 - **Indep.** — validated independently, by someone other than the author or against an external
   reference. Nothing is marked here yet.
 
-## Search steps (`neuroqc.plan.Catalog`)
+## Search steps (`pipecompare.plan.Catalog`)
 
 | Step | EEGLAB call | Impl. | Auto | Real | Signal check | Notes |
 |---|---|---|---|---|---|---|
@@ -23,7 +23,7 @@ Each item has four status columns:
 | `linenoise` | `pop_eegfiltnew` (revfilt) | ✓ | ✓ | ✓ | injection | FIR band-stop at the mains frequency detected in the recording (50/60 Hz) unless set; CleanLine/Zapline only as native steps |
 | `highpass` | `pop_eegfiltnew` | ✓ | ✓ | ✓ real data | injection | |
 | `lowpass` | `pop_eegfiltnew` | ✓ | ✓ | ✓ real data | injection | |
-| `asr` | `pop_clean_rawdata` | ✓ | ✓ | ✓ | injection, decision-matched: the window-by-window reconstructions ASR chose on the real data are recorded and applied (`neuroqc.run.AsrRecord`, checked to reproduce EEGLAB's output exactly; otherwise re-run and flagged) | needs clean_rawdata; Euclidean ASR, burst correction only |
+| `asr` | `pop_clean_rawdata` | ✓ | ✓ | ✓ | injection, decision-matched: the window-by-window reconstructions ASR chose on the real data are recorded and applied (`pipecompare.run.AsrRecord`, checked to reproduce EEGLAB's output exactly; otherwise re-run and flagged) | needs clean_rawdata; Euclidean ASR, burst correction only |
 | `badchannels` | `pop_rejchan` (+ `pop_interp`) | ✓ | ✓ | ✓ | injection, matched | |
 | `channels` | `pop_select` / `pop_interp` | ✓ | ✓ | ✓ real data | injection, matched | interpolation needs channel locations |
 | `restore` | `pop_interp` | ✓ | ✓ | ✓ | injection, matched | |
@@ -37,14 +37,14 @@ Each item has four status columns:
 | `reject_kurtosis` | `pop_rejkurt` + `pop_rejepoch` | ✓ | ✓ | ✓ | injection, matched | |
 | `native` | any `pop_*` command, or a captured EEGLAB workflow (one statement per line) | ✓ | ✓ | ✓ | fixed transforms (filters, resampling, reference, baseline, epoching, channel lists): injection, same operation; workflows of marks + removals (`pop_eegthresh`/`pop_jointprob`/`pop_rejkurt` → `pop_rejepoch`, `pop_iclabel` → `pop_icflag` → `pop_subcomp`): injection, decision-matched (the removed epochs/components are replayed); otherwise injection, re-run (flagged) | each configuration is fixed; several configurations of one step (and skipping it) can be searched as alternatives |
 
-## History parsing (`neuroqc.live.History`)
+## History parsing (`pipecompare.live.History`)
 
 | Item | Impl. | Auto | Real |
 |---|---|---|---|
 | Order kept, no deduplication, repeated steps distinct | ✓ | ✓ | ✓ real history |
 | Char-matrix and cell histories, `;`-separated statements, `...` continuations | ✓ | ✓ | ✓ |
 | Classification: load / save / view / channel edit / select / events / resample / filters / line noise / ASR / channel rejection / continuous rejection / reref / ICA / IC removal / IC flagging / interpolation / epoch / baseline / epoch rejection | ✓ | partly | ✓ real history |
-| Provenance labels: recorded in the history / executed by NeuroQC / session (ALLCOM) only / inferred from data / cannot be verified | ✓ | ✓ | ✓ |
+| Provenance labels: recorded in the history / executed by PipeCompare / session (ALLCOM) only / inferred from data / cannot be verified | ✓ | ✓ | ✓ |
 | Filter parameters parsed: `pop_eegfiltnew` only | ✓ | ✓ | ✓ |
 | Other filter functions (`pop_firws`, `pop_basicfilter`, `pop_iirfilt`, …) | recognised, parameters not parsed | — | — |
 

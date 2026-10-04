@@ -1,12 +1,14 @@
-# NeuroQC
+# PipeCompare
 
 <p>
-  <img src="https://img.shields.io/badge/version-0.7.1-2f6fed?style=flat-square" alt="version"/>
+  <img src="https://img.shields.io/badge/version-0.8.0-2f6fed?style=flat-square" alt="version"/>
   <img src="https://img.shields.io/badge/MATLAB-R2026a-orange?style=flat-square" alt="MATLAB"/>
   <img src="https://img.shields.io/badge/EEGLAB-2026.0.0-blueviolet?style=flat-square" alt="EEGLAB"/>
 </p>
 
-NeuroQC compares EEGLAB preprocessing pipelines by the standardized measurement error (SME) of
+*Formerly NeuroQC (up to 0.7.1).*
+
+PipeCompare compares EEGLAB preprocessing pipelines by the standardized measurement error (SME) of
 your measures, after checking constraints and that a known signal survives the processing: ERP
 measures on event-related data, and band power on continuous data such as resting state.
 
@@ -14,7 +16,7 @@ It starts from the dataset as it is in EEGLAB now, takes the steps, order and fi
 choose, runs every allowed combination of what you left open through EEGLAB itself, evaluates and
 compares the results, and hands the candidate pipelines back to you.
 
-![The NeuroQC panel on synthetic data](docs/assets/panel.png)
+![The PipeCompare panel on synthetic data](docs/assets/panel.png)
 
 What it does, and nothing more:
 
@@ -24,7 +26,7 @@ What it does, and nothing more:
 2. **Lets you define the search**: which steps, in which order, which values are fixed and which
    may vary, which steps may be skipped.
 3. **Uses EEGLAB's own dialogs** to configure steps, conditions, trials, epoch, baseline and ROI;
-   NeuroQC's own window manages candidates, order, locks and the comparison.
+   PipeCompare's own window manages candidates, order, locks and the comparison.
 4. **Runs every allowed combination** in EEGLAB (shared first steps computed once); it never
    samples or truncates and then claims a full search.
 5. **Evaluates and compares**: constraints first (trials kept, interpolation, preservation of a known
@@ -38,20 +40,21 @@ What it does, and nothing more:
 
 ## Install
 
-Copy the NeuroQC folder into `eeglab/plugins/` and start (or restart) EEGLAB: it adds
-EEGLAB > Tools > NeuroQC by itself, every time EEGLAB starts. Name the folder `NeuroQC` (or
-`NeuroQC0.7.1`): EEGLAB takes the plugin's name and version from the folder name, so a folder
+Download `PipeCompare<version>.zip` from the repository's Releases and unzip it into
+`eeglab/plugins/` (or copy the PipeCompare folder there), then start (or restart) EEGLAB: it adds
+EEGLAB > Tools > PipeCompare by itself, every time EEGLAB starts. Name the folder `PipeCompare` (or
+`PipeCompare0.8.0`): EEGLAB takes the plugin's name and version from the folder name, so a folder
 called e.g. `111` would show up as a plugin named `111`.
 
-`neuroqc_setup` is for development from another folder: it puts NeuroQC on the path and adds the
-menu to the running EEGLAB. Each later `eeglab` call rebuilds the menus, so call `neuroqc_setup`
+`pipecompare_setup` is for development from another folder: it puts PipeCompare on the path and adds the
+menu to the running EEGLAB. Each later `eeglab` call rebuilds the menus, so call `pipecompare_setup`
 again after it.
 
 Requirements:
 
 - Tested on MATLAB R2026a with EEGLAB 2026.0.0 (no other versions have been tested).
 - MATLAB only; GNU Octave is not supported (the panel is a MATLAB `uifigure`).
-- EEGLAB's main window and its base-workspace variables `EEG`, `ALLEEG` and `CURRENTSET`: NeuroQC
+- EEGLAB's main window and its base-workspace variables `EEG`, `ALLEEG` and `CURRENTSET`: PipeCompare
   reads the current dataset from there (the script interface too) and stores adopted candidates
   there. It does not work with `eeglab nogui` or with EEGLAB called inside a function, where these
   variables are not in the base workspace.
@@ -61,7 +64,7 @@ Requirements:
 ## Quick start
 
 1. Load or select a dataset in EEGLAB as usual.
-2. EEGLAB > Tools > NeuroQC > *Compare pipelines…*: choose the event types and an ERP component
+2. EEGLAB > Tools > PipeCompare > *Compare pipelines…*: choose the event types and an ERP component
    (N170, MMN, N2pc, N400, P3, LRP, ERN, with ERP CORE's windows and sites), or a frequency band
    for continuous data. Then choose what to compare (filters only, standard, or full), and press
    *Run*. The dialog shows how many pipelines that is before anything runs.
@@ -75,27 +78,27 @@ EEG = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'recipe', 's
 ```
 
 For everything else (your own windows and ROIs, any step and value, order search, constraints),
-use *Advanced…* in the dialog, or EEGLAB > Tools > NeuroQC > *Advanced panel…*; every button of
+use *Advanced…* in the dialog, or EEGLAB > Tools > PipeCompare > *Advanced panel…*; every button of
 the panel is described in [docs/PANEL.md](docs/PANEL.md).
 
 Band power of continuous data (script only for now; the simple-mode dialog will offer it):
 
 ```matlab
-c = neuroqc.eval.Contract('analysis', 'bandpower', 'segment', 2, ...
+c = pipecompare.eval.Contract('analysis', 'bandpower', 'segment', 2, ...
     'bands', {'alpha', [8 12], {'O1','Oz','O2'}});              % your band and ROI
 ```
 
 **The same from a script**
 
 ```matlab
-neuroqc.NeuroQC.state();                          % current dataset, parsed history
+pipecompare.PipeCompare.state();                          % current dataset, parsed history
 
-c = neuroqc.eval.Contract( ...
+c = pipecompare.eval.Contract( ...
     'conditions', {'target', {'11','21'}; 'standard', {'31'}}, ...      % your event codes
     'epoch', [-0.2 1.0], 'baseline', [-0.2 0], ...
     'components', {'P3', [0.30 0.60], {'Pz','CPz','POz'}, 'mean'});    % your measure
 
-p = neuroqc.plan.Plan();
+p = pipecompare.plan.Plan();
 p = p.add('highpass');                            % searched over its default list
 p = p.add('lowpass', 'cutoff', 30);               % fixed
 p = p.addEeglab('EEG = pop_reref(EEG, []);', 'reref');   % any EEGLAB call; its arguments are parameters
@@ -104,20 +107,20 @@ p = p.add('icremove', 'threshold', {0.8, 0.9});   % searched
 p = p.add('epoch'); p = p.add('baseline');        % windows come from the contract
 p = p.add('reject_threshold', 'uv', {100, 150});
 
-r = neuroqc.NeuroQC.optimize(p, c, struct('checkpoint', 'nqc_run1'));
-neuroqc.NeuroQC.adopt(r);                         % recommended candidate -> new EEGLAB dataset
-neuroqc.NeuroQC.writeScript(r, 3, 'pipeline3.m'); % runnable EEGLAB function for candidate 3
-r = neuroqc.NeuroQC.resume('nqc_run1');           % continue an interrupted search
+r = pipecompare.PipeCompare.optimize(p, c, struct('checkpoint', 'nqc_run1'));
+pipecompare.PipeCompare.adopt(r);                         % recommended candidate -> new EEGLAB dataset
+pipecompare.PipeCompare.writeScript(r, 3, 'pipeline3.m'); % runnable EEGLAB function for candidate 3
+r = pipecompare.PipeCompare.resume('nqc_run1');           % continue an interrupted search
 ```
 
-Options are listed in `help neuroqc.run.Executor` (search) and `help neuroqc.eval.Rank`
+Options are listed in `help pipecompare.run.Executor` (search) and `help pipecompare.eval.Rank`
 (constraints and ranking). By default the order you add steps is the order they run; if it is
-illegal, NeuroQC lists the conflicts and rearranges nothing. `p.OrderMode = 'search'` tries every
+illegal, PipeCompare lists the conflicts and rearranges nothing. `p.OrderMode = 'search'` tries every
 legal order; `p.pin(id)` keeps a step in place and `p.before(a, b)` constrains two steps.
 ## Limitations (read before trusting a result)
 
 - The contract (events, epoch and baseline windows, ROIs and time windows) defines what is measured.
-  NeuroQC never searches it.
+  PipeCompare never searches it.
 - The signal check uses a known signal with an assumed topography: a Gaussian around the ROI over
   the channels that have locations (channels without one, e.g. EOG, get none outside the ROI), or
   the ROI channels only when no ROI channel has a location. Real components can be affected
@@ -157,7 +160,7 @@ The automated suite runs on synthetic data with known ground truth:
 
 Two optional runs use your own data and are never committed:
 
-- `NEUROQC_REAL_SET` parses one of your datasets.
+- `PIPECOMPARE_REAL_SET` parses one of your datasets.
 - `tests/realdata_validation.m` runs a technical search on a working copy of a real recording.
 
 Clicking inside EEGLAB's dialogs cannot be automated; [tests/MANUAL_GUI_CHECK.md](tests/MANUAL_GUI_CHECK.md)
@@ -165,12 +168,12 @@ lists what to click and what to expect.
 ## Cite
 
 ```bibtex
-@software{neuroqc2026,
+@software{pipecompare2026,
   author  = {abwoo},
-  title   = {NeuroQC: an optimization layer for EEGLAB preprocessing pipelines},
+  title   = {PipeCompare: an optimization layer for EEGLAB preprocessing pipelines},
   year    = {2026},
-  version = {0.7.1},
-  url     = {https://github.com/abwoo/NeuroQC}
+  version = {0.8.0},
+  url     = {https://github.com/abwoo/PipeCompare}
 }
 ```
 ## References

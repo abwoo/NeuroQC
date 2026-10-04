@@ -1,7 +1,7 @@
 classdef Plan
     %PLAN The processing you want to run from the current dataset onward.
     %
-    %   p = neuroqc.plan.Plan();
+    %   p = pipecompare.plan.Plan();
     %   p = p.add('highpass');                        % cutoff unfixed -> searched
     %   p = p.add('lowpass', 'cutoff', 30);           % fixed
     %   p = p.add('badchannels', 'threshold', {3 5}); % searched over 3 and 5
@@ -37,7 +37,7 @@ classdef Plan
     methods
         function obj = add(obj, type, varargin)
             type = char(type);
-            neuroqc.plan.Catalog.get(type); % validates the type
+            pipecompare.plan.Catalog.get(type); % validates the type
             params = nvStruct(varargin);
             obj = obj.addSlot(type, {struct('type', type, 'params', params)});
         end
@@ -46,8 +46,8 @@ classdef Plan
             if nargin < 3, id = 'native'; end
             % one EEGLAB call: its arguments become (fixed) step parameters;
             % a multi-statement workflow stays one fixed command
-            alt = neuroqc.run.Native.eeglabAlt(command);
-            if isempty(alt), alt = neuroqc.plan.Plan.nativeAlt(command); end
+            alt = pipecompare.run.Native.eeglabAlt(command);
+            if isempty(alt), alt = pipecompare.plan.Plan.nativeAlt(command); end
             obj = obj.addSlot(id, {alt});
         end
 
@@ -58,12 +58,12 @@ classdef Plan
             %                   'hicutoff', {20, 30, 40});
             % Every argument of the command is kept; named ones (or
             % 'arg2', 'arg3', ... for positional ones) take a search list.
-            alt = neuroqc.run.Native.eeglabAlt(command);
-            assert(~isempty(alt), 'NeuroQC:Native', 'Not a single EEG = pop_x(EEG, ...) command: %s', command);
+            alt = pipecompare.run.Native.eeglabAlt(command);
+            assert(~isempty(alt), 'PipeCompare:Native', 'Not a single EEG = pop_x(EEG, ...) command: %s', command);
             if nargin < 3 || isempty(id), id = regexprep(alt.params.fn, '^pop_', ''); end
             for k = 1:2:numel(varargin)
                 i = find(strcmp({alt.params.args.name}, varargin{k}), 1);
-                assert(~isempty(i), 'NeuroQC:Plan', '%s has no argument %s (has: %s)', alt.params.fn, varargin{k}, ...
+                assert(~isempty(i), 'PipeCompare:Plan', '%s has no argument %s (has: %s)', alt.params.fn, varargin{k}, ...
                     strjoin({alt.params.args.name}, ', '));
                 v = varargin{k+1}; if ~iscell(v), v = {v}; end
                 alt.params.args(i).values = v(:)';
@@ -85,7 +85,7 @@ classdef Plan
             isNone = cellfun(@(a) strcmp(a.type, 'none'), obj.Slots(k).alternatives);
             if tf && ~any(isNone), obj.Slots(k).alternatives{end+1} = struct('type', 'none', 'params', struct()); end
             if ~tf, obj.Slots(k).alternatives(isNone) = []; end
-            assert(~isempty(obj.Slots(k).alternatives), 'NeuroQC:Plan', 'A step needs at least one alternative.');
+            assert(~isempty(obj.Slots(k).alternatives), 'PipeCompare:Plan', 'A step needs at least one alternative.');
         end
 
         function obj = addChoice(obj, id, varargin)
@@ -97,8 +97,8 @@ classdef Plan
                 if ischar(a) && strcmp(a, 'none')
                     alts{end+1} = struct('type', 'none', 'params', struct()); %#ok<AGROW>
                 else
-                    assert(iscell(a) && ~isempty(a), 'NeuroQC:Plan', 'Each alternative is {type, name, value, ...} or ''none''');
-                    neuroqc.plan.Catalog.get(a{1});
+                    assert(iscell(a) && ~isempty(a), 'PipeCompare:Plan', 'Each alternative is {type, name, value, ...} or ''none''');
+                    pipecompare.plan.Catalog.get(a{1});
                     alts{end+1} = struct('type', char(a{1}), 'params', nvStruct(a(2:end))); %#ok<AGROW>
                 end
             end
@@ -130,13 +130,13 @@ classdef Plan
         function obj = setParams(obj, id, varargin)
             % Replace the parameters of a single-alternative slot.
             k = obj.slotIndex(id);
-            assert(numel(obj.Slots(k).alternatives) == 1, 'NeuroQC:Plan', 'setParams applies to single-step slots');
+            assert(numel(obj.Slots(k).alternatives) == 1, 'PipeCompare:Plan', 'setParams applies to single-step slots');
             obj.Slots(k).alternatives{1}.params = nvStruct(varargin);
         end
 
         function k = slotIndex(obj, id)
             k = find(strcmp({obj.Slots.id}, id), 1);
-            assert(~isempty(k), 'NeuroQC:Plan', 'No step "%s" in the plan', id);
+            assert(~isempty(k), 'PipeCompare:Plan', 'No step "%s" in the plan', id);
         end
 
         function [leaves, tree, report] = enumerate(obj, state, contract, opts)
@@ -154,8 +154,8 @@ classdef Plan
             %   advance (8 free steps = 40320 orders is fine when most are
             %   illegal). opts.maxVisits bounds the work (refused above it).
             if nargin < 4, opts = struct(); end
-            opts = neuroqc.utils.withDefaults(opts, struct('maxLeaves', 500, 'maxVisits', 2e6));
-            assert(~isempty(obj.Slots), 'NeuroQC:Plan', 'The plan is empty: add at least one step.');
+            opts = pipecompare.utils.withDefaults(opts, struct('maxLeaves', 500, 'maxVisits', 2e6));
+            assert(~isempty(obj.Slots), 'PipeCompare:Plan', 'The plan is empty: add at least one step.');
             n = numel(obj.Slots);
             obj = obj.resolveAuto(state);
             inst = cell(1, n);
@@ -191,7 +191,7 @@ classdef Plan
                     cands = inst{s};
                     for c = 1:numel(cands)
                         visits = visits + 1;
-                        assert(visits <= opts.maxVisits, 'NeuroQC:SearchTooLarge', ...
+                        assert(visits <= opts.maxVisits, 'PipeCompare:SearchTooLarge', ...
                             ['More than %d partial pipelines explored (%d orders x %s values per step). Nothing ', ...
                              'was run or truncated. Fix more parameters, pin steps or add before() constraints.'], ...
                              opts.maxVisits, nOrders, mat2str(counts));
@@ -200,7 +200,7 @@ classdef Plan
                             walk(bitset(mask, s), [order s], path, st);
                             continue;
                         end
-                        [why, st2] = neuroqc.plan.Catalog.apply(in.type, in.params, st);
+                        [why, st2] = pipecompare.plan.Catalog.apply(in.type, in.params, st);
                         if ~isempty(why)
                             note(pos, in, why);
                             continue;
@@ -218,13 +218,13 @@ classdef Plan
                 % must never share a key, or one would be dropped silently
                 sig = getByteStreamFromArray(cellfun(@(i) {i.type, i.params}, path, 'UniformOutput', false));
                 if isKey(seen, key)
-                    assert(isequal(seen(key), sig), 'NeuroQC:Plan', ['Internal error: two different pipelines share ', ...
+                    assert(isequal(seen(key), sig), 'PipeCompare:Plan', ['Internal error: two different pipelines share ', ...
                         'the key %s; refusing rather than dropping one.'], key);
                     return;
                 end
                 seen(key) = sig;
                 leaves(end+1) = struct('path', {path}, 'key', key, 'order', order, 'stratum', stratumOf(path));
-                assert(numel(leaves) <= opts.maxLeaves, 'NeuroQC:SearchTooLarge', ...
+                assert(numel(leaves) <= opts.maxLeaves, 'PipeCompare:SearchTooLarge', ...
                     ['More than maxLeaves = %d legal pipelines. Nothing was run or truncated. Fix more ', ...
                      'parameters or the order, or raise maxLeaves deliberately.'], opts.maxLeaves);
             end
@@ -241,10 +241,10 @@ classdef Plan
             function explainIfEmpty()
                 if ~isempty(leaves), return; end
                 if strcmp(obj.OrderMode, 'fixed')
-                    error('NeuroQC:NoLegalPipeline', ['The steps cannot run in the order you fixed; nothing was ', ...
+                    error('PipeCompare:NoLegalPipeline', ['The steps cannot run in the order you fixed; nothing was ', ...
                         'rearranged. Conflicts: %s'], describe(reasons));
                 end
-                error('NeuroQC:NoLegalPipeline', 'No legal pipeline: %s', describe(reasons));
+                error('PipeCompare:NoLegalPipeline', 'No legal pipeline: %s', describe(reasons));
             end
         end
 
@@ -260,7 +260,7 @@ classdef Plan
                         if isempty(lf), alt.params.freq = 'auto';
                         else
                             alt.params.freq = lf;
-                            neuroqc.utils.log('%s: line frequency %g Hz detected in the dataset.', obj.Slots(k).id, lf);
+                            pipecompare.utils.log('%s: line frequency %g Hz detected in the dataset.', obj.Slots(k).id, lf);
                         end
                         obj.Slots(k).alternatives{a} = alt;
                     end
@@ -313,8 +313,8 @@ classdef Plan
                 nextOf = @(mask, pos) pos; nOrders = 1;
                 return;
             end
-            assert(strcmp(obj.OrderMode, 'search'), 'NeuroQC:Plan', 'OrderMode must be fixed or search');
-            assert(n <= 20, 'NeuroQC:SearchTooLarge', 'Order search over %d steps: pin steps or fix the order (at most 20 free steps).', n);
+            assert(strcmp(obj.OrderMode, 'search'), 'PipeCompare:Plan', 'OrderMode must be fixed or search');
+            assert(n <= 20, 'PipeCompare:SearchTooLarge', 'Order search over %d steps: pin steps or fix the order (at most 20 free steps).', n);
             ids = {obj.Slots.id};
             pinned = [obj.Slots.pinned];
             pred = zeros(1, n);                    % bitmask of slots that must come before each slot
@@ -344,7 +344,7 @@ classdef Plan
         end
 
         function print(obj)
-            neuroqc.utils.log('Plan (order %s):', obj.OrderMode);
+            pipecompare.utils.log('Plan (order %s):', obj.OrderMode);
             for k = 1:numel(obj.Slots)
                 s = obj.Slots(k);
                 alts = cellfun(@(a) altText(a), s.alternatives, 'UniformOutput', false);
@@ -362,11 +362,11 @@ classdef Plan
             % A native alternative: one or more EEGLAB pop_* statements
             % (one per line), as returned by an EEGLAB dialog or workflow.
             command = char(command);
-            st = neuroqc.run.Native.statements(command);
-            assert(~isempty(st), 'NeuroQC:Native', 'Empty native command.');
+            st = pipecompare.run.Native.statements(command);
+            assert(~isempty(st), 'PipeCompare:Native', 'Empty native command.');
             for k = 1:numel(st)
-                e = neuroqc.live.History.classify(st{k});
-                assert(~isempty(e.fn) && startsWith(e.fn, 'pop_'), 'NeuroQC:Native', ...
+                e = pipecompare.live.History.classify(st{k});
+                assert(~isempty(e.fn) && startsWith(e.fn, 'pop_'), 'PipeCompare:Native', ...
                     'Each line of a native step must be one EEGLAB pop_* command, e.g. EEG = pop_reref(EEG, []); (got: %s)', st{k});
             end
             alt = struct('type', 'native', 'params', struct('command', command));
@@ -386,7 +386,7 @@ end
 
 % ---------------------------------------------------------------------
 function s = nvStruct(c)
-assert(mod(numel(c), 2) == 0, 'NeuroQC:Plan', 'Parameters must be name, value pairs');
+assert(mod(numel(c), 2) == 0, 'PipeCompare:Plan', 'Parameters must be name, value pairs');
 s = struct();
 for k = 1:2:numel(c)
     s.(char(c{k})) = c{k+1};
@@ -394,10 +394,10 @@ end
 end
 
 function [grid, searched, defining] = paramGrid(type, given, contract)
-d = neuroqc.plan.Catalog.get(type);
+d = pipecompare.plan.Catalog.get(type);
 names = {d.params.name};
 unknown = setdiff(fieldnames(given), names);
-assert(isempty(unknown), 'NeuroQC:Plan', 'Step %s has no parameter(s): %s (known: %s)', ...
+assert(isempty(unknown), 'PipeCompare:Plan', 'Step %s has no parameter(s): %s (known: %s)', ...
     type, strjoin(unknown, ', '), strjoin(names, ', '));
 values = cell(1, numel(names));
 searched = {}; defining = {};
@@ -410,12 +410,12 @@ for k = 1:numel(d.params)
             if iscell(v) && ~isempty(v) && all(cellfun(@iscell, v)), vals = v(:)'; else, vals = {v}; end
         elseif iscell(v)
             vals = v(:)';
-            assert(~isempty(vals), 'NeuroQC:Plan', '%s.%s: empty search list', type, p.name);
+            assert(~isempty(vals), 'PipeCompare:Plan', '%s.%s: empty search list', type, p.name);
         else
             vals = {v};
         end
     elseif strcmp(type, 'native')
-        error('NeuroQC:Plan', 'A native step needs its command.');
+        error('PipeCompare:Plan', 'A native step needs its command.');
     elseif ~isempty(p.suggest)
         vals = p.suggest;
     else
@@ -429,7 +429,7 @@ for k = 1:numel(d.params)
     values{k} = vals;
 end
 if any(strcmp(type, {'epoch','baseline'}))
-    assert(~isempty(contract), 'NeuroQC:Contract', 'Step %s needs the analysis contract (epoch/baseline windows).', type);
+    assert(~isempty(contract), 'PipeCompare:Contract', 'Step %s needs the analysis contract (epoch/baseline windows).', type);
 end
 % Cartesian product
 grid = {struct()};
@@ -463,7 +463,7 @@ end
 list = cell(1, numel(idx));
 for g = 1:numel(idx)
     vals = arrayfun(@(i) args(i).values{idx{g}(i)}, 1:numel(args), 'UniformOutput', false);
-    com = neuroqc.run.Native.eeglabCommand(P.fn, args, vals);
+    com = pipecompare.run.Native.eeglabCommand(P.fn, args, vals);
     p = struct('command', com);
     shown = {};
     for i = 1:numel(args)
@@ -487,10 +487,10 @@ function d = referenceOf(command)
 % A native pop_reref defines what is measured, like the reref step: its
 % reference (and excluded channels) puts the candidate in a stratum.
 d = '';
-for stmt = neuroqc.run.Native.statements(command)
-    e = neuroqc.live.History.classify(stmt{1});
+for stmt = pipecompare.run.Native.statements(command)
+    e = pipecompare.live.History.classify(stmt{1});
     if strcmp(e.step, 'reref')
-        a = neuroqc.run.Native.argsOf(stmt{1}, 'pop_reref');
+        a = pipecompare.run.Native.argsOf(stmt{1}, 'pop_reref');
         d = sprintf('pop_reref=%s', valText(a));
     end
 end
@@ -515,7 +515,7 @@ end
 
 function t = instLabel(type, p)
 if strcmp(type, 'native')
-    t = ['native: ' strjoin(neuroqc.run.Native.statements(p.command), ' / ')];
+    t = ['native: ' strjoin(pipecompare.run.Native.statements(p.command), ' / ')];
     if numel(t) > 70, t = [t(1:67) '...']; end
     return;
 end
@@ -551,7 +551,7 @@ pruned = ~isempty(icaAt) && any(strcmp(steps(icaAt+1:end), 'icremove'));
 hp = 0; if ~isempty(s.filters.highpass), hp = max(s.filters.highpass); end
 st = struct('epoched', s.isEpoched, 'srate', s.srate, 'hasICA', s.ica.present, ...
     'icRemoved', s.ica.present && pruned, 'removed', isfield(s, 'restorableChannels') && ~isempty(s.restorableChannels), ...
-    'highpass', hp, ...   % removed: channels removed before NeuroQC can be restored by the plan
+    'highpass', hp, ...   % removed: channels removed before PipeCompare can be restored by the plan
     'anyLocations', ~isfield(s, 'nLocated') || s.nLocated > 0);
 end
 

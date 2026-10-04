@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in NeuroQC does not work as documented
+description: Something in PipeCompare does not work as documented
 title: "[bug] "
 labels: ["bug"]
 body:
@@ -39,5 +39,5 @@ body:
     id: output
     attributes:
       label: Command Window output
-      description: The [NeuroQC] lines and any error message with its stack.
+      description: The [PipeCompare] lines and any error message with its stack.
       render: text

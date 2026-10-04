@@ -1,4 +1,4 @@
-# Methods: what NeuroQC computes, and why
+# Methods: what PipeCompare computes, and why
 
 This page states the mathematics behind the evaluation and ranking, with the sources each choice
 rests on. The code that implements each part is named in brackets.
@@ -13,9 +13,9 @@ amplitude over the ROI channels and the window after baseline correction.
    - The current state is read from the EEG structure: epoched or not, sampling rate, channels and
      their locations, ICA matrices, IC flags and reference.
    - `EEG.history` is parsed in order, without deduplication; continuation lines (`...`) are joined.
-   - Where the history cannot describe the data, NeuroQC says so instead of guessing.
+   - Where the history cannot describe the data, PipeCompare says so instead of guessing.
    - The data unit (uV or V) is judged from the amplitude scale (or set with `dataUnit`); volts are
-     converted on NeuroQC's copy.
+     converted on PipeCompare's copy.
    - A floating-point sampling-rate residue (common after EDF import) is rounded on the copy, and
      the change is recorded.
 2. **Legal pipelines.**
@@ -51,7 +51,7 @@ amplitude over the ROI channels and the window after baseline correction.
      are each checked against a limit.
 6. **Ranking.**
    - Failures are reported, never ranked. Constraint violations are listed with their reasons.
-     If nothing is feasible, NeuroQC says so and relaxes nothing.
+     If nothing is feasible, PipeCompare says so and relaxes nothing.
    - Objective: the **gain-corrected SME**, SME divided by the factor by which the candidate scales a
      known signal in that measure (read from the signal check). Raw SME would reward a pipeline that
      shrinks signal and noise alike; SME/gain does not, and ranking it is ranking signal-to-noise
@@ -81,7 +81,7 @@ SME (Luck et al., 2021):
 
 For a peak amplitude or latency the score of the average is not a mean of trial scores, so the SME
 is bootstrapped (bSME): draw *N* trials with replacement *B* times, average, take the peak, and use
-the SD of the *B* values (Luck et al., 2021). [`neuroqc.eval.Measure`]
+the SD of the *B* values (Luck et al., 2021). [`pipecompare.eval.Measure`]
 
 Several measures that share a unit are combined as the root mean square over measures and
 conditions. Measures in different units (µV and ms) are never added: one of them must be chosen.
@@ -125,7 +125,7 @@ amplitude, the ratio of the recovered and expected window means over the ROI; fo
 amplitude, the ratio of the peaks; for a latency, *g* = 1, because a latency does not change
 when the amplitude is scaled. A gain that is not positive (signal lost or inverted) leaves the
 objective undefined, and the candidate is rejected with that reason.
-[`neuroqc.eval.Injection.compare` → `gain`; `neuroqc.eval.Rank`]
+[`pipecompare.eval.Injection.compare` → `gain`; `pipecompare.eval.Rank`]
 
 **Limits.**
 - For a peak amplitude the correction is first-order: max(·) is not linear. It is exact when the
@@ -170,7 +170,7 @@ through the number of replicates beyond *c*. That number is binomial(*B*, α), w
 | 1999 (now, mean measures) | 40 ± 6.26 | 16 % |
 
 With *B* = 200 the verdict for a borderline candidate could change with the random seed. The
-defaults are now *B* = 1999 and, for the nested peak bootstrap, *B* = 999. [`neuroqc.eval.Rank`]
+defaults are now *B* = 1999 and, for the nested peak bootstrap, *B* = 999. [`pipecompare.eval.Rank`]
 
 **Half-samples for peak measures.** A peak measure already carries an inner bootstrap. Resampling
 with replacement around it overstates how much its bSME varies. Each outer draw therefore takes a
@@ -194,7 +194,7 @@ scalp it is a Gaussian in the angle θ between a channel's unit position vector 
 centroid, w(θ) = exp(−θ²/(2·0.5²)), normalized to mean 1 over the ROI. Channels without coordinates
 (often EOG/ECG) have no defined scalp position: they get no field outside the ROI and the ROI's
 mean field inside it. Their presence no longer reduces the whole field to a box over the ROI. A box
-is used only when no ROI channel has a position. [`neuroqc.eval.Injection`]
+is used only when no ROI channel has a position. [`pipecompare.eval.Injection`]
 
 ## 5. Preconditions checked before anything runs
 
@@ -215,10 +215,10 @@ is used only when no ROI channel has a position. [`neuroqc.eval.Injection`]
 
 EEGLAB keeps rejection marks (`EEG.reject.*`) separate from the data; only `pop_rejepoch` removes
 epochs (Delorme & Makeig, 2004). ERPLAB's artifact detection marks `EEG.reject.rejmanual` and the
-epochs' flags, which ERPLAB's averager honours (Lopez-Calderon & Luck, 2014). NeuroQC's scores use
+epochs' flags, which ERPLAB's averager honours (Lopez-Calderon & Luck, 2014). PipeCompare's scores use
 every epoch that is still in the data. A candidate that ends with epochs marked but not removed
 therefore carries a note, so a marking-only step is not mistaken for a rejection.
-[`neuroqc.run.Executor`, note column of the ranking]
+[`pipecompare.run.Executor`, note column of the ranking]
 
 ## 7. Multiverse summary (sensitivity, not ranking)
 
@@ -233,7 +233,7 @@ estimate *x̄*ᵥ), the share is
 
 the fraction of the spread that lies between that choice's values. The summary describes how much
 the measured quantity depends on processing. It is not used to rank or recommend pipelines, and it
-contains no comparison between conditions. [`neuroqc.eval.Rank.robustness`, `result.robustness`]
+contains no comparison between conditions. [`pipecompare.eval.Rank.robustness`, `result.robustness`]
 
 ## 8. Band power (continuous data, e.g. resting state)
 

@@ -8,10 +8,10 @@ function setupOnce(tc)
 addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0));
 tc.TestData.EEG = EEG;
-c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
+c = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
     'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz'}});
 tc.TestData.c = c;
-tc.TestData.ref = neuroqc.eval.Measure.reference(EEG, c);
+tc.TestData.ref = pipecompare.eval.Measure.reference(EEG, c);
 end
 
 function testFilterDistortionIsMeasuredByInjection(tc)
@@ -20,10 +20,10 @@ function testFilterDistortionIsMeasuredByInjection(tc)
 % with the high-pass edge.
 hp = [0.1 0.5 1 2]; e = zeros(size(hp));
 for k = 1:numel(hp)
-    [S, truth] = neuroqc.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
+    [S, truth] = pipecompare.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
     in = inst('highpass', 'cutoff', hp(k));
-    S = neuroqc.run.Steps.replayDecision(in, S, struct(), ctx(tc));
-    r = neuroqc.eval.Injection.compare(S, tc.TestData.c, truth, {in});
+    S = pipecompare.run.Steps.replayDecision(in, S, struct(), ctx(tc));
+    r = pipecompare.eval.Injection.compare(S, tc.TestData.c, truth, {in});
     e(k) = r.amplitudeError;
 end
 fprintf('injection amp error HP %s: %s\n', mat2str(hp), mat2str(e, 3));
@@ -33,10 +33,10 @@ verifyTrue(tc, all(diff(e) >= -0.01));
 end
 
 function testReReferencingIsNotDistortion(tc)
-[S, truth] = neuroqc.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
+[S, truth] = pipecompare.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
 in = inst('reref', 'mode', 'average', 'channels', {});
-S = neuroqc.run.Steps.replayDecision(in, S, struct(), ctx(tc));
-r = neuroqc.eval.Injection.compare(S, tc.TestData.c, truth, {in});
+S = pipecompare.run.Steps.replayDecision(in, S, struct(), ctx(tc));
+r = pipecompare.eval.Injection.compare(S, tc.TestData.c, truth, {in});
 verifyLessThan(tc, r.amplitudeError, 0.02);
 verifyGreaterThan(tc, r.topoCorr, 0.99);
 verifyGreaterThan(tc, r.waveformCorr, 0.99);
@@ -45,12 +45,12 @@ end
 function testReReferenceWithExcludedChannels(tc)
 % Excluded channels (e.g. EOG) neither enter the average nor change; the
 % expected field must follow the same rule.
-[S0, truth] = neuroqc.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
+[S0, truth] = pipecompare.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
 in = inst('reref', 'mode', 'average', 'channels', {}, 'exclude', {'FPz', 'Oz'});
-S = neuroqc.run.Steps.replayDecision(in, S0, struct(), ctx(tc));
+S = pipecompare.run.Steps.replayDecision(in, S0, struct(), ctx(tc));
 k = strcmpi({S.chanlocs.labels}, 'FPz');
 verifyEqual(tc, double(S.data(k, :)), double(S0.data(k, :)), 'AbsTol', 1e-4);
-r = neuroqc.eval.Injection.compare(S, tc.TestData.c, truth, {in});
+r = pipecompare.eval.Injection.compare(S, tc.TestData.c, truth, {in});
 verifyLessThan(tc, r.amplitudeError, 0.02);
 verifyGreaterThan(tc, r.topoCorr, 0.99);
 end
@@ -60,16 +60,16 @@ function testChannelsRemovedAfterAverageReferenceAreNotDistortion(tc)
 % does not change Pz, so the expected field must keep the reference over
 % the channels present when it was applied (the old code re-averaged over
 % the final channels and reported ~4% amplitude error).
-c = neuroqc.eval.Contract('conditions', {'target', {'11'}; 'standard', {'31'}}, ...
+c = pipecompare.eval.Contract('conditions', {'target', {'11'}; 'standard', {'31'}}, ...
     'epoch', [-0.2 1.0], 'baseline', [-0.2 0], 'components', {'P3', [0.30 0.50], {'Pz'}});
-[S, truth] = neuroqc.eval.Injection.prepare(tc.TestData.EEG, c, tc.TestData.ref);
+[S, truth] = pipecompare.eval.Injection.prepare(tc.TestData.EEG, c, tc.TestData.ref);
 x = struct('contract', c, 'highpass', 0);
 in1 = inst('reref', 'mode', 'average', 'channels', {});
 in2 = inst('channels', 'labels', {'P3', 'P4', 'POz'}, 'action', 'remove');
-S = neuroqc.run.Steps.replayDecision(in1, S, struct(), x);
+S = pipecompare.run.Steps.replayDecision(in1, S, struct(), x);
 idx = find(ismember(lower({S.chanlocs.labels}), lower({'P3', 'P4', 'POz'})));
-S = neuroqc.run.Steps.replayDecision(in2, S, struct('listedIdx', idx), x);
-r = neuroqc.eval.Injection.compare(S, c, truth, {in1, in2});
+S = pipecompare.run.Steps.replayDecision(in2, S, struct('listedIdx', idx), x);
+r = pipecompare.eval.Injection.compare(S, c, truth, {in1, in2});
 verifyLessThan(tc, r.amplitudeError, 0.005);
 verifyGreaterThan(tc, r.waveformCorr, 0.999);
 end
@@ -78,9 +78,9 @@ function testOverlappingEpochsAreNotReadAsDistortion(tc)
 % Events 0.42 s apart with 1.2 s epochs: each epoch contains neighbouring
 % injected responses. The expectation must include them.
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 60, 'artifactTrials', 0));
-c = tc.TestData.c; ref = neuroqc.eval.Measure.reference(EEG, c);
-[S, truth] = neuroqc.eval.Injection.prepare(EEG, c, ref);
-r = neuroqc.eval.Injection.compare(S, c, truth, {});
+c = tc.TestData.c; ref = pipecompare.eval.Measure.reference(EEG, c);
+[S, truth] = pipecompare.eval.Injection.prepare(EEG, c, ref);
+r = pipecompare.eval.Injection.compare(S, c, truth, {});
 verifyLessThan(tc, r.amplitudeError, 0.01);
 verifyLessThan(tc, r.artifactPct, 0.01);
 verifyGreaterThan(tc, r.waveformCorr, 0.999);
@@ -89,24 +89,24 @@ end
 function testIcaRemovalOfSignalComponentIsDetected(tc)
 % With identity unmixing every component is one channel: removing the Pz
 % component deletes the measured signal; removing FPz does not touch it.
-[S0, truth] = neuroqc.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
+[S0, truth] = pipecompare.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
 n = S0.nbchan; labs = {S0.chanlocs.labels};
 ica = struct('icaweights', eye(n), 'icasphere', eye(n), 'icachansind', 1:n);
-S0 = neuroqc.run.Steps.replayDecision(inst('ica'), S0, struct('ica', ica), ctx(tc));
-bad = neuroqc.run.Steps.replayDecision(inst('icremove'), S0, struct('comps', find(strcmpi(labs, 'Pz'))), ctx(tc));
-good = neuroqc.run.Steps.replayDecision(inst('icremove'), S0, struct('comps', find(strcmpi(labs, 'FPz'))), ctx(tc));
-rb = neuroqc.eval.Injection.compare(bad, tc.TestData.c, truth, {});
-rg = neuroqc.eval.Injection.compare(good, tc.TestData.c, truth, {});
+S0 = pipecompare.run.Steps.replayDecision(inst('ica'), S0, struct('ica', ica), ctx(tc));
+bad = pipecompare.run.Steps.replayDecision(inst('icremove'), S0, struct('comps', find(strcmpi(labs, 'Pz'))), ctx(tc));
+good = pipecompare.run.Steps.replayDecision(inst('icremove'), S0, struct('comps', find(strcmpi(labs, 'FPz'))), ctx(tc));
+rb = pipecompare.eval.Injection.compare(bad, tc.TestData.c, truth, {});
+rg = pipecompare.eval.Injection.compare(good, tc.TestData.c, truth, {});
 verifyGreaterThan(tc, rb.amplitudeError, 0.9);
 verifyLessThan(tc, rg.amplitudeError, 0.01);
 end
 
 function testInterpolatingAnRoiChannelIsMeasured(tc)
-[S, truth] = neuroqc.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
+[S, truth] = pipecompare.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
 pz = find(strcmpi({S.chanlocs.labels}, 'Pz'));
 in = inst('badchannels', 'action', 'interpolate', 'measure', 'kurt', 'threshold', 5);
-S = neuroqc.run.Steps.replayDecision(in, S, struct('badIdx', pz), ctx(tc));
-r = neuroqc.eval.Injection.compare(S, tc.TestData.c, truth, {in});
+S = pipecompare.run.Steps.replayDecision(in, S, struct('badIdx', pz), ctx(tc));
+r = pipecompare.eval.Injection.compare(S, tc.TestData.c, truth, {in});
 fprintf('interpolated ROI channel: amplitude error %.3f, topo r %.3f\n', r.amplitudeError, r.topoCorr);
 verifyGreaterThan(tc, r.amplitudeError, 0.001);   % the real value at Pz is replaced
 % ... by a spherical-spline estimate from its neighbours. Pz is the peak of
@@ -118,11 +118,11 @@ verifyGreaterThan(tc, r.topoCorr, 0.95);
 end
 
 function testEpochRejectionDoesNotDistortTheAverage(tc)
-[S, truth] = neuroqc.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
+[S, truth] = pipecompare.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
 c = tc.TestData.c;
-S = neuroqc.run.Steps.replayDecision(inst('epoch'), S, struct(), ctx(tc));
-S = neuroqc.run.Steps.replayDecision(inst('reject_threshold', 'uv', 100), S, struct('rejIdx', 1:5), ctx(tc));
-r = neuroqc.eval.Injection.compare(S, c, truth, {});
+S = pipecompare.run.Steps.replayDecision(inst('epoch'), S, struct(), ctx(tc));
+S = pipecompare.run.Steps.replayDecision(inst('reject_threshold', 'uv', 100), S, struct('rejIdx', 1:5), ctx(tc));
+r = pipecompare.eval.Injection.compare(S, c, truth, {});
 verifyLessThan(tc, r.amplitudeError, 1e-6);
 end
 
@@ -130,9 +130,9 @@ end
 function testSignalGainIsReportedPerMeasure(tc)
 % A pipeline that scales the data by 0.9 transfers the signal with gain
 % 0.9; Rank divides the SME by it (see test_statistics).
-[S, truth] = neuroqc.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
+[S, truth] = pipecompare.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
 S.data = 0.9 * S.data;
-r = neuroqc.eval.Injection.compare(S, tc.TestData.c, truth, {});
+r = pipecompare.eval.Injection.compare(S, tc.TestData.c, truth, {});
 verifyEqual(tc, r.gain, 0.9, 'AbsTol', 1e-6);
 verifyEqual(tc, r.amplitudeError, 0.1, 'AbsTol', 1e-6);
 end
@@ -147,9 +147,9 @@ for lab = {'Fz', 'P3'}
     k = find(strcmpi({EEG.chanlocs.labels}, lab{1}));
     EEG.chanlocs(k).X = []; EEG.chanlocs(k).Y = []; EEG.chanlocs(k).Z = [];
 end
-c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
+c = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
     'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz', 'P3'}});
-[~, truth] = neuroqc.eval.Injection.prepare(EEG, c, neuroqc.eval.Measure.reference(EEG, c));
+[~, truth] = pipecompare.eval.Injection.prepare(EEG, c, pipecompare.eval.Measure.reference(EEG, c));
 w = truth.weights(:, 1); L = lower(truth.labels);
 verifyEqual(tc, w(strcmp(L, 'fz')), 0);
 verifyEqual(tc, w(strcmp(L, 'p3')), 1);
@@ -163,15 +163,15 @@ function testBandPowerSignalCheck(tc)
 % The gain is 1 for log power (scale-free: the SD of log power does not
 % change when the data are scaled).
 EEG = tc.TestData.EEG;
-c = neuroqc.eval.Contract('analysis', 'bandpower', 'segment', 2, 'bands', {'alpha', [8 12], {'Oz', 'O1', 'O2'}});
-[~, root] = evalc('neuroqc.run.Executor.prepareRoot(EEG, c)');
-ref = neuroqc.eval.Measure.reference(root, c);
+c = pipecompare.eval.Contract('analysis', 'bandpower', 'segment', 2, 'bands', {'alpha', [8 12], {'Oz', 'O1', 'O2'}});
+[~, root] = evalc('pipecompare.run.Executor.prepareRoot(EEG, c)');
+ref = pipecompare.eval.Measure.reference(root, c);
 err = zeros(1, 2); cut = [30 9];
 for k = 1:2
-    [S, truth] = neuroqc.eval.Injection.prepare(root, c, ref);
+    [S, truth] = pipecompare.eval.Injection.prepare(root, c, ref);
     in = inst('lowpass', 'cutoff', cut(k));
-    S = neuroqc.run.Steps.replayDecision(in, S, struct(), ctx(tc));
-    r = neuroqc.eval.Injection.compare(S, c, truth, {in});
+    S = pipecompare.run.Steps.replayDecision(in, S, struct(), ctx(tc));
+    r = pipecompare.eval.Injection.compare(S, c, truth, {in});
     err(k) = r.amplitudeError;
     verifyEqual(tc, r.gain, 1);
 end

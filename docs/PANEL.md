@@ -26,7 +26,7 @@ script…*, *All results…* (the panel's result table).
 
 ## Panel (*Advanced panel…*)
 
-Open EEGLAB > Tools > NeuroQC > *Advanced panel…*. NeuroQC has no load step: it
+Open EEGLAB > Tools > PipeCompare > *Advanced panel…*. PipeCompare has no load step: it
 always works on the current EEGLAB dataset and never modifies it during a search. Each candidate
 runs on its own copy.
 
@@ -61,7 +61,7 @@ runs on its own copy.
 - **Apply now in EEGLAB.** Runs the step on the current dataset through EEGLAB's own menu code path
   (`EEG.history`, `ALLCOM`, new dataset), so the plan starts after it.
 - **Run search / Options… / Resume…** Every command and score is printed in the Command Window and
-  the result is stored in `neuroqc_result`. Options: data unit, checkpoint folder, parallel.
+  the result is stored in `pipecompare_result`. Options: data unit, checkpoint folder, parallel.
 - **Results.** Selecting a row shows its full pipeline, reason, measures and commands below the
   table. *Inspect selected* opens a rebuilt candidate (not adopted) or the source in EEGLAB's
   viewers; *Adopt* stores a candidate as a new EEGLAB dataset whose `EEG.history` reproduces it.
