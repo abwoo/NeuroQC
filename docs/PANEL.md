@@ -2,11 +2,15 @@
 
 ## Simple mode (*Compare pipelines…*, `pop_pipecompare`)
 
-Three choices, nothing preselected:
+Three choices; the measure and the recipe are not preselected:
 
 1. **Data**, judged from the data: epoched, or continuous with events → event-related (ERP);
    continuous without events → band power. The reason is shown, and you can change it.
-2. **Measure.** ERP: the time-locking event types (one condition each) and a component. Its
+2. **Measure.** ERP: the time-locking event types and a component. Each type is one condition,
+   or tick *Score the selected event types as one condition* when several codes mean one
+   condition (e.g. one code per block). `boundary` markers are not offered; on epoched data the
+   types the epochs are time-locked to are preselected. A condition with fewer events than the
+   search needs (10) is flagged before *Run*, which stays off. The component's
    epoch, baseline, electrode sites and mean-amplitude window are those of ERP CORE (Kappenman et
    al., 2021, Tables 1 and 2): N170 PO8 110–150 ms; MMN FCz 125–225 ms; N2pc PO7/PO8 200–275 ms;
    N400 CPz 300–500 ms; P3 Pz 300–600 ms; LRP C3/C4 −100–0 ms (response-locked); ERN FCz 0–100
@@ -20,15 +24,19 @@ Three choices, nothing preselected:
    their order does not change the data). ASR is compared from the panel or a script. The number
    of pipelines (and of ICA decompositions) is shown live. Steps the data or the installation
    cannot support are left out, with the reason: no channel locations, no ICLabel, or data that
-   are already epoched. Above the search limit (500) *Run* stays off; use *Advanced…* to fix
+   are already epoched. Filter edges the data already have (read from the history) are not
+   compared: they would leave the data unchanged but still filter the known signal. Above the search limit (500) *Run* stays off; use *Advanced…* to fix
    some values.
 
 *Run* shows a progress window (pipelines done, time left) with *Stop*: stopping keeps the
-pipelines already run, and the result covers those.
+pipelines already run, and the result covers those. The time left is estimated from the
+pipelines after the first, which alone runs the shared steps (ICA included). Data stored in volts
+are recognised from the amplitude scale and compared in µV.
 
 *Advanced…* opens the panel below with these choices filled in. The result window says in one
-sentence which pipeline to use and why, lists it (*) with the best others (checks, noise (SME),
-trials kept, signal change), and offers *Use this pipeline* (a new EEGLAB dataset), *Save
+sentence which pipeline to use and why, naming pipelines by the settings compared (e.g. high-pass
+0.5 Hz, low-pass 30 Hz), lists it (*) with the best others (checks, noise (SME), trials kept,
+signal change, settings) above one line with the steps every pipeline shares, and offers *Use this pipeline* (a new EEGLAB dataset), *Save
 script…* and *Details…* (the panel's result table).
 
 ## Panel (*Advanced panel…*)

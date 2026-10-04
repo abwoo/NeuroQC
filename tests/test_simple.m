@@ -66,6 +66,18 @@ verifyTrue(tc, any(contains(notes, 'no channel locations')));
 verifyFalse(tc, any(ismember({'highpass', 'lowpass', 'epoch'}, ids(p))));
 verifyTrue(tc, any(contains(notes, 'already epoched')));
 verifyError(tc, @() pipecompare.simple.Presets.recipe('full', st, c), 'PipeCompare:Simple');   % ASR: panel or script
+% filter edges the data already have are not compared: they would leave
+% the data unchanged but filter the known signal
+H = EEG; H.history = sprintf('%s\nEEG = pop_eegfiltnew(EEG, ''locutoff'',0.5,''plotfreqz'',0);', EEG.history);
+[p, notes] = pipecompare.simple.Presets.recipe('filters', pipecompare.live.DataState.fromEEG(H), c);
+verifyEqual(tc, p.Slots(1).alternatives{1}.params.cutoff, {1});
+verifyTrue(tc, any(contains(notes, 'high-pass 0.1, 0.3, 0.5 Hz (the data are already high-pass-filtered at 0.5 Hz)')));
+end
+
+function testPooledEventTypesAreOneCondition(tc)
+c = pipecompare.simple.Presets.contract(tc.TestData.EEG, 'P3', {'11', '31'}, 2, true);
+verifyEqual(tc, {c.conditions.name}, {'11+31'});
+verifyEqual(tc, c.conditions.events, {'11', '31'});
 end
 
 function testDialogPreselectsNothingAndCountsLive(tc)
@@ -91,8 +103,27 @@ d.TypeDrop.Value = d.BandType; d.typeChanged();
 verifyEqual(tc, d.MeasureDrop.Value, d.Choose);                 % changing the type clears the measure
 verifyTrue(tc, ismember('alpha', d.MeasureDrop.Items));
 E2 = EEG; E2.event = E2.event([]); E2.urevent = [];
+E2.event = struct('type', 'boundary', 'latency', 100, 'duration', 0);
 d2 = pipecompare.gui.SimpleDialog(E2); c2 = onCleanup(@() delete(d2)); %#ok<NASGU>
-verifyEqual(tc, d2.TypeDrop.Value, d2.BandType);                % continuous, no events
+verifyEqual(tc, d2.TypeDrop.Value, d2.BandType);                % continuous, boundary markers only
+verifyEmpty(tc, d2.EventList.Items);
+end
+
+function testTooFewEventsAreFlaggedBeforeRun(tc)
+EEG = tc.TestData.EEG;
+is11 = find(arrayfun(@(e) strcmp(strtrim(char(string(e.type))), '11'), EEG.event));
+F = EEG; F.event(is11(6:end)) = []; F.urevent = [];
+d = pipecompare.gui.SimpleDialog(F); c = onCleanup(@() delete(d)); %#ok<NASGU>
+d.EventList.Value = {'11'}; d.MeasureDrop.Value = 'P3'; d.RecipeDrop.Value = 'filters';
+d.update();
+verifyEqual(tc, char(d.RunButton.Enable), 'off');               % every pipeline would be excluded
+verifyTrue(tc, startsWith(d.NotesLabel.Text, '11 has 5 events; each condition needs at least 10.'));
+d.EventList.Value = {'11', '31'}; d.update();
+verifyTrue(tc, contains(d.NotesLabel.Text, 'Score the selected event types as one condition'));
+d.PoolBox.Value = true; d.update();
+verifyEqual(tc, char(d.RunButton.Enable), 'on');                % 35 events in one condition
+o = d.options();
+verifyTrue(tc, o.pool);
 end
 
 function testPopFunctionFromAScript(tc)
@@ -119,7 +150,9 @@ EEG = tc.TestData.EEG;
 nqc_setBase(EEG);
 [~, ~, r] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'recipe', 'filters', 'show', 'off');
 w = pipecompare.gui.SimpleResults(r); c = onCleanup(@() delete(w.Fig)); %#ok<NASGU>
-verifyTrue(tc, startsWith(w.Headline.Text, sprintf('Use pipeline %d: ', r.ranking.recommended)));
+verifyTrue(tc, startsWith(w.Headline.Text, sprintf('Use pipeline %d: high-pass ', r.ranking.recommended)));
+verifyFalse(tc, contains(w.Headline.Text, 'cutoff='));          % the settings in words, not the internal key
+verifyTrue(tc, startsWith(w.Table.Data{1, 6}, 'high-pass '));
 verifyEqual(tc, size(w.Table.Data, 1), 5);
 verifyEqual(tc, w.Table.Data{1, 1}, sprintf('%d*', r.ranking.recommended));   % always shown, first
 f = [tempname '.m']; c2 = onCleanup(@() delete(f)); %#ok<NASGU>
