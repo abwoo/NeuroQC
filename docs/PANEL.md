@@ -40,7 +40,9 @@ pipelines already run, and the result covers those. The time left is estimated f
 pipelines after the first, which alone runs the shared steps (ICA included). Data stored in volts
 are recognised from the amplitude scale and compared in µV.
 
-*Advanced…* opens the panel below with these choices filled in. The result window says in one
+*Advanced…* opens the panel below with these choices filled in (ERP only: for band power it is
+off). When the choices cannot be filled in (e.g. a component's electrode is missing), it says
+why and the dialog stays open. The result window says in one
 sentence which pipeline to use and why, naming pipelines by the settings compared (e.g. high-pass
 0.5 Hz, low-pass 30 Hz), lists it (*) with the best others (checks, noise (SME), trials kept,
 signal change, settings) above one line with the steps every pipeline shares, and offers *Use this pipeline* (a new EEGLAB dataset), *Save

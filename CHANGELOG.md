@@ -27,6 +27,9 @@ release has a git tag `vX.Y.Z`.
   epochs are decided from that recording's data. Previously the file replayed this dataset's
   channel, component and epoch numbers, which gave wrong results on other recordings without an
   error. The exact commands follow as comments.
+- *Advanced…* in the simple dialog no longer leaves an empty panel and an error when the choices
+  cannot be handed over (e.g. a missing electrode): it says why and the dialog stays open. It is
+  off for band power, which the panel does not define.
 
 - A plan with ASR or ICLabel IC removal is now illegal when the clean_rawdata or ICLabel plugin is
   missing, with that reason, before the search starts; previously every candidate failed during it.

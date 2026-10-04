@@ -162,6 +162,23 @@ d.MeasureDrop.Value = 'custom'; d.measureChanged();
 verifyEmpty(tc, d.Channels);                                    % a window starts with no electrodes
 end
 
+function testAdvancedTakesTheChoicesOrSaysWhyNot(tc)
+EEG = tc.TestData.EEG;
+nqc_setBase(EEG);
+d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>
+d.MeasureDrop.Value = 'alpha'; d.measureChanged();
+verifyEqual(tc, char(d.AdvancedButton.Enable), 'off');          % the panel defines ERP measures only
+d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
+verifyEqual(tc, char(d.AdvancedButton.Enable), 'on');
+app = d.advanced(); ca = onCleanup(@() delete(app)); %#ok<NASGU>
+verifyTrue(tc, ismember('ica', {app.Plan.Slots.id}));           % the Standard recipe
+[~, noPz] = evalc('pop_select(EEG, ''rmchannel'', {''Pz''})');
+d2 = pipecompare.gui.SimpleDialog(noPz); c2 = onCleanup(@() delete(d2)); %#ok<NASGU>
+d2.EventList.Value = {'11'}; d2.MeasureDrop.Value = 'P3'; d2.measureChanged();
+verifyEmpty(tc, d2.advanced());                                 % no empty panel: the reason is shown
+verifyTrue(tc, isvalid(d2.Fig) && strcmp(char(d2.Fig.Visible), 'on'));  % and the dialog stays open
+end
+
 function testTooFewEventsAreFlaggedBeforeRun(tc)
 EEG = tc.TestData.EEG;
 is11 = find(arrayfun(@(e) strcmp(strtrim(char(string(e.type))), '11'), EEG.event));

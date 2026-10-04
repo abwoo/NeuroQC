@@ -29,7 +29,7 @@ classdef SimpleDialog < handle
         Types; Counts          % the event types offered and how many of each
         RecipeDrop
         CountLabel; NotesLabel
-        RunButton
+        RunButton; AdvancedButton
         Answer = []            % the options when Run was pressed
         Grid
     end
@@ -98,7 +98,7 @@ classdef SimpleDialog < handle
             uilabel(g, 'Text', '');
             b = uigridlayout(g, [1 3]); b.Padding = [0 0 0 0];
             obj.RunButton = uibutton(b, 'Text', 'Run', 'FontWeight', 'bold', 'ButtonPushedFcn', @(~, ~) obj.run());
-            uibutton(b, 'Text', 'Advanced...', 'ButtonPushedFcn', @(~, ~) obj.advanced());
+            obj.AdvancedButton = uibutton(b, 'Text', 'Advanced...', 'ButtonPushedFcn', @(~, ~) obj.advanced());
             uibutton(b, 'Text', 'Cancel', 'ButtonPushedFcn', @(~, ~) obj.close());
             obj.measureChanged();
         end
@@ -163,6 +163,10 @@ classdef SimpleDialog < handle
             erp = obj.isErp() || strcmp(m, obj.Choose);
             obj.EventList.Enable = pipecompare.utils.ternary(erp, 'on', 'off');
             obj.PoolBox.Enable = obj.EventList.Enable;
+            % the panel defines ERP measures only
+            obj.AdvancedButton.Enable = obj.EventList.Enable;
+            obj.AdvancedButton.Tooltip = pipecompare.utils.ternary(erp, '', ...
+                'The panel defines ERP measures; band power with other steps is set up from a script.');
             obj.update();
         end
 
@@ -280,22 +284,25 @@ classdef SimpleDialog < handle
         end
 
         function app = advanced(obj)
-            % The full panel with what has been chosen so far.
-            app = pipecompare.gui.Panel();
-            o = obj.options();
+            % The full panel with what has been chosen so far; choices the
+            % panel cannot take are said here, and the dialog stays open.
+            app = [];
+            o = obj.options(); c = [];
             if ~isempty(o)
-                c = obj.contract(o);
+                try
+                    c = obj.contract(o);
+                catch ME
+                    uialert(obj.Fig, ME.message, 'PipeCompare'); return;
+                end
+            end
+            app = pipecompare.gui.Panel();
+            if ~isempty(c) && strcmp(c.analysis, 'erp')
                 [plan, notes] = pipecompare.simple.Presets.recipe(o.recipe, obj.State, c);
                 app.Plan = plan; app.showPlan();
-                if strcmp(c.analysis, 'erp')
-                    for k = 1:numel(c.conditions), app.addCondition(c.conditions(k).name, c.conditions(k).events); end
-                    app.EpochField.Value = sprintf('%g %g', c.epoch); app.BaseField.Value = sprintf('%g %g', c.baseline);
-                    comp = c.components(1);
-                    app.addComponent(comp.name, comp.window, comp.roi, comp.measure, comp.polarity);
-                else
-                    pipecompare.utils.log(['The panel defines ERP contracts; a band-power contract is set from a ', ...
-                        'script for now (pipecompare.eval.Contract(''analysis'', ''bandpower'', ...)).']);
-                end
+                for k = 1:numel(c.conditions), app.addCondition(c.conditions(k).name, c.conditions(k).events); end
+                app.EpochField.Value = sprintf('%g %g', c.epoch); app.BaseField.Value = sprintf('%g %g', c.baseline);
+                comp = c.components(1);
+                app.addComponent(comp.name, comp.window, comp.roi, comp.measure, comp.polarity);
                 app.settingsChanged();
                 for k = 1:numel(notes), pipecompare.utils.log('Recipe %s: %s.', o.recipe, notes{k}); end
             end
