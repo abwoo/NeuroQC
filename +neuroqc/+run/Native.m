@@ -40,6 +40,28 @@ classdef Native
             end
         end
 
+        function items = menuSteps()
+            % The operations of EEGLAB's own menus (plugins included) that
+            % take the dataset and return it, each with the call its menu
+            % item makes: what "Add EEGLAB menu step..." offers. File, Plot
+            % and Help items (import, save, figures) are not plan steps.
+            items = struct('label', {}, 'call', {}, 'fn', {});
+            f = findall(groot, 'Type', 'figure', 'Tag', 'EEGLAB');
+            if isempty(f), return; end
+            pat = '\[\s*EEG\>[^\]=]*\<LASTCOM\s*\]\s*=\s*(pop_\w+)\s*\(\s*EEG\s*[,)][^;]*;';
+            for m = findall(f, 'Type', 'uimenu')'
+                cb = m.MenuSelectedFcn;
+                if ~ischar(cb), continue; end
+                [call, tok] = regexp(cb, pat, 'match', 'tokens', 'once');
+                if isempty(call) || ~isempty(regexp(call, '\<(ALLEEG|STUDY|CURRENTSET)\>', 'once')), continue; end
+                p = m; lab = {strtrim(p.Text)};
+                while isa(p.Parent, 'matlab.ui.container.Menu'), p = p.Parent; lab = [{strtrim(p.Text)} lab]; end %#ok<AGROW>
+                if any(strcmp(lab{1}, {'File', 'Plot', 'Help', 'Datasets', 'Study'})) || strcmp(tok{1}, 'pop_saveset'), continue; end
+                items(end+1) = struct('label', strjoin(lab, ' > '), 'call', call, 'fn', tok{1}); %#ok<AGROW>
+            end
+            [~, o] = unique({items.label}); items = items(o);
+        end
+
         function applyNow(type)
             neuroqc.run.Native.applyCall(neuroqc.run.Native.menuCall(type), type);
         end

@@ -133,7 +133,7 @@ classdef Executor
             neuroqc.eval.Rank.print(R, result.labels);
             notes = unique([allc.unmatched]);
             if ~isempty(notes)
-                neuroqc.utils.log(['Signal check note: %s were re-run rather than replayed on the injected copy; ', ...
+                neuroqc.utils.log(['Signal check note: %s step(s) were re-run rather than replayed on the injected copy; ', ...
                     'their signal effect is measured but not decision-matched.'], strjoin(notes, ', '));
             end
             if ~isempty(result.marginal) && height(result.marginal) > 0

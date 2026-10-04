@@ -561,6 +561,32 @@ app.baselineFromEEGLAB(com, 'all');
 verifyEqual(tc, str2num(app.BaseField.Value), [-0.3 0]); %#ok<ST2NM>
 end
 
+function testAnyEeglabMenuOperationIsAPlanStep(tc)
+% GUI users add operations outside the catalog (any EEGLAB menu item,
+% plugins included) as plan steps; their arguments can be searched and the
+% step's own dialog reopens for Configure in EEGLAB.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+nqc_setBase(EEG);
+app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+evalc('[~, com] = pop_firma(EEG, ''forder'', 4);');            % what the dialog returns
+app.addEeglabStep('', com);
+s = app.Plan.Slots(end);
+verifyEqual(tc, s.id, 'firma');
+verifyEqual(tc, s.alternatives{1}.type, 'eeglab');
+app.PlanTable.Selection = [numel(app.Plan.Slots) 1];
+app.setValues('forder', {4, 8});                                 % searched like any argument
+c = nqc_contract();
+p = app.Plan; p = p.add('epoch'); p = p.add('baseline');
+r = neuroqc.NeuroQC.optimize(p, c);
+verifyEqual(tc, numel(r.cands), 2);
+verifyTrue(tc, all(arrayfun(@(x) any(contains(x.coms, 'pop_firma')), r.cands)));
+verifyEqual(tc, sort(cellfun(@(x) sum(contains(x, '''forder'',8')), {r.cands.coms})), [0 1]);
+if ~isempty(neuroqc.run.Native.menuSteps())                      % EEGLAB's main window is open
+    verifyEqual(tc, app.dialogType(s), 'call:[EEG LASTCOM] = pop_firma(EEG);');
+    verifyTrue(tc, any(strcmp({neuroqc.run.Native.menuSteps().label}, 'Tools > Filter the data > Moving average FIR filter')));
+end
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');

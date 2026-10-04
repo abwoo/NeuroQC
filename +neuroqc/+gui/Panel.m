@@ -75,9 +75,14 @@ classdef Panel < handle
             obj.PlanTable = uitable(pg, 'ColumnName', {'#','step','values (searched or fixed)','pin'}, ...
                 'ColumnEditable', [false false false true], 'ColumnWidth', {30, 120, 'auto', 45}, 'RowName', {}, ...
                 'CellEditCallback', @(~, e) obj.planEdited(e), 'SelectionChangedFcn', @(t, ~) obj.showDetails('plan', t));
-            b1 = uigridlayout(pg, [1 7]); b1.Padding = [0 0 0 0];
+            b1 = uigridlayout(pg, [1 8]); b1.Padding = [0 0 0 0];
+            b1.ColumnWidth = {'1.3x', '0.6x', '1.7x', '0.9x', '0.6x', '0.7x', '0.7x', '0.9x'};
             obj.TypeDrop = uidropdown(b1, 'Items', setdiff(neuroqc.plan.Catalog.types(), {'native'}, 'stable'));
             uibutton(b1, 'Text', 'Add', 'ButtonPushedFcn', @(~, ~) obj.addStep());
+            uibutton(b1, 'Text', 'Add EEGLAB menu step...', 'Tooltip', ...
+                ['Any operation of EEGLAB''s menus (plugins included): its own dialog opens on the data as the plan ', ...
+                 'has them at the end, and the command it returns becomes a step'], ...
+                'ButtonPushedFcn', @(~, ~) obj.addEeglabStep());
             uibutton(b1, 'Text', 'Remove', 'ButtonPushedFcn', @(~, ~) obj.removeStep());
             uibutton(b1, 'Text', 'Up', 'ButtonPushedFcn', @(~, ~) obj.moveStep(-1));
             uibutton(b1, 'Text', 'Down', 'ButtonPushedFcn', @(~, ~) obj.moveStep(1));
@@ -308,6 +313,40 @@ classdef Panel < handle
             neuroqc.utils.log('Added %s: %s', obj.Plan.Slots(end).id, settingsText(obj.Plan.Slots(end)));
         end
 
+        function addEeglabStep(obj, label, com)
+            % Any operation of EEGLAB's menus (plugins included) as a plan
+            % step: its dialog opens on the data as the plan has them at
+            % the end of the plan, and the command it returns is the step
+            % (a single call's arguments can then be searched with Edit
+            % values... or another Configure in EEGLAB...). A command
+            % (com) given by a script skips the dialog.
+            try
+                if nargin < 3
+                    items = neuroqc.run.Native.menuSteps();
+                    assert(~isempty(items), 'NeuroQC:Native', 'EEGLAB''s main window (with its menus) is not open.');
+                    if nargin < 2
+                        [i, ok] = listdlg2('PromptString', 'EEGLAB operation to add as a plan step', ...
+                            'ListString', {items.label}, 'SelectionMode', 'single');
+                        if ~ok || isempty(i), return; end
+                    else
+                        i = find(strcmp({items.label}, label), 1);
+                        assert(~isempty(i), 'NeuroQC:Native', 'EEGLAB has no menu item "%s".', label);
+                    end
+                    EEG = obj.previewAt(numel(obj.Plan.Slots) + 1);
+                    com = neuroqc.run.Native.captureCall(EEG, items(i).call);
+                    if isempty(com), return; end
+                end
+                st = neuroqc.run.Native.statements(com);
+                e = neuroqc.live.History.classify(st{1});
+                obj.Plan = obj.Plan.addNative(com, regexprep(e.fn, '^pop_', ''));
+                obj.invalidate('Plan changed');
+                obj.showPlan();
+                neuroqc.utils.log('Added %s: %s', obj.Plan.Slots(end).id, settingsText(obj.Plan.Slots(end)));
+            catch ME
+                uialert(obj.Fig, ME.message, 'NeuroQC');
+            end
+        end
+
         function k = selected(obj)
             k = [];
             sel = obj.PlanTable.Selection;
@@ -501,13 +540,14 @@ classdef Panel < handle
             type = alts{1}.type;
             if strcmp(type, 'eeglab')
                 A = alts{1}.params.args;
-                type = neuroqc.run.Native.typeOfCommand(neuroqc.run.Native.eeglabCommand(alts{1}.params.fn, A, ...
-                    arrayfun(@(x) x.values{1}, A, 'UniformOutput', false)));
-                assert(~isempty(type), 'NeuroQC:Native', 'No EEGLAB dialog is known for %s.', alts{1}.params.fn);
+                com = neuroqc.run.Native.eeglabCommand(alts{1}.params.fn, A, arrayfun(@(x) x.values{1}, A, 'UniformOutput', false));
+                type = neuroqc.run.Native.typeOfCommand(com);
+                if isempty(type), type = menuDialog(com); end
             elseif strcmp(type, 'native')
                 type = neuroqc.run.Native.typeOfCommand(alts{1}.params.command);
-                assert(~isempty(type), 'NeuroQC:Native', 'No EEGLAB dialog is known for this command; remove the step and add it again.');
+                if isempty(type), type = menuDialog(alts{1}.params.command); end
             end
+            if startsWith(type, 'call:'), return; end   % a step added from EEGLAB's menus
             ok = {'resample','highpass','lowpass','linenoise','filter','asr','badchannels','restore','reref','ica', ...
                 'icremove','reject_threshold','reject_jointprob','reject_kurtosis'};
             assert(any(strcmp(type, ok)), 'NeuroQC:Native', ['%s has no EEGLAB dialog here (epoch and baseline come ', ...
@@ -527,7 +567,11 @@ classdef Panel < handle
                         'add an ica step before it in the plan (or run ICA on the dataset).']);
                     com = neuroqc.run.Native.captureWorkflow(type, EEG);
                 otherwise
-                    com = neuroqc.run.Native.capture(type, EEG);
+                    if startsWith(type, 'call:')
+                        com = neuroqc.run.Native.captureCall(EEG, type(6:end));   % the EEGLAB menu item's own call
+                    else
+                        com = neuroqc.run.Native.capture(type, EEG);
+                    end
             end
         end
 
@@ -1454,6 +1498,18 @@ for i = 1:numel(parts)
             vals{i} = regexprep(p, '^[''"](.*)[''"]$', '$1');
     end
 end
+end
+
+function type = menuDialog(command)
+% 'call:<the call>' of the EEGLAB menu item whose function made the
+% command (a step added from EEGLAB's menus), so its dialog can reopen.
+st = neuroqc.run.Native.statements(command);
+e = neuroqc.live.History.classify(st{1});
+items = neuroqc.run.Native.menuSteps();
+i = find(strcmp({items.fn}, e.fn), 1);
+assert(~isempty(i), 'NeuroQC:Native', ['No EEGLAB menu item calls %s (is EEGLAB''s main window open?); ', ...
+    'use Edit values... for this step.'], e.fn);
+type = ['call:' items(i).call];
 end
 
 function alt = stepAlt(com)

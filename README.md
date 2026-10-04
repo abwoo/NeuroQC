@@ -58,7 +58,10 @@ dataset and never modifies it during a search. Each candidate runs on its own co
 - **Analysis contract, from EEGLAB's own dialogs.** Conditions are picked from the dataset's event
   list (*Add from events…*); the trials that count from markers, an EEGLAB data selection
   (`pop_select`) or event selection (`pop_selectevent`); the epoch from `pop_epoch`; the baseline from
-  `pop_rmbase` (ms converted to s); the ROI from EEGLAB's channel selection. *View ERP* opens
+  `pop_rmbase` (ms converted to s); the ROI from EEGLAB's channel selection. When a dialog sets
+  something the contract cannot hold as is (epoch events that differ from the conditions, epoch
+  options, a baseline on a channel subset), the panel asks which to keep. A trial rule belongs to
+  the recording it was set on and is reset (or flagged) when another recording becomes current. *View ERP* opens
   `pop_timtopo`, *Chan. locations…* opens `pop_chanedit`. The text fields stay editable and show
   the trials per condition under the rule.
 - **Nothing is prefilled for a particular study.** Conditions, epoch and components start empty.
@@ -71,8 +74,11 @@ dataset and never modifies it during a search. Each candidate runs on its own co
   run (one value = fixed, several = searched, defaults marked). *Configure in EEGLAB…* opens the
   step's EEGLAB dialog: its values join the step, and a value that differs from those already there
   becomes a searched candidate; settings the step cannot hold (e.g. asymmetric limits) are kept as
-  the whole EEGLAB command if you choose so. *Edit values…* lists the parameters (channel lists
-  picked in EEGLAB's channel list). *Skipping allowed*, *Must come before…* and the *pin* column
+  the whole EEGLAB command if you choose so. Each dialog opens on the data as the plan has them at
+  that step (the current dataset's first 120 s run through the steps before it). *Add EEGLAB menu
+  step…* adds any operation of EEGLAB's menus, plugins included (e.g. CleanLine, ERPLAB): its own
+  dialog opens and the command it returns becomes a step whose arguments can be searched.
+  *Edit values…* lists the parameters (channel lists picked in EEGLAB's channel list). *Skipping allowed*, *Must come before…* and the *pin* column
   control alternatives and order.
 - **Apply now in EEGLAB.** Runs the step on the current dataset through EEGLAB's own menu code path
   (`EEG.history`, `ALLCOM`, new dataset), so the plan starts after it.
