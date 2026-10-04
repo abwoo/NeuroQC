@@ -224,6 +224,12 @@ classdef Steps
         end
 
         function [EEG, coms] = ica(EEG, p, ctx)
+            % 'rndreset','no' makes runica start from a fixed random state,
+            % so the same data give the same decomposition. Adopting a
+            % candidate (replay must reproduce the evaluated scores) relies
+            % on this; it holds for runica in EEGLAB 2026.0 (checked by
+            % test_engine/testEndToEndRecoversSensibleChoice and the adopt
+            % replay check, which refuses a candidate that differs).
             opts = {'icatype', 'runica', 'extended', p.extended, 'rndreset', 'no', 'interrupt', 'off'};
             applied = 0; if isfield(ctx, 'highpass'), applied = ctx.highpass; end
             if p.fitHighpass > 0 && p.fitHighpass > applied
@@ -324,16 +330,33 @@ classdef Steps
                 cmd = regexprep(cmd, '''interrupt''\s*,\s*''on''', '''interrupt'',''off''');
                 e = neuroqc.live.History.classify(cmd);
                 if strcmp(e.step, 'reject_epochs') && EEG.trials > 1
-                    % tag epochs through their events to see which ones go
-                    n0 = EEG.trials;
-                    for q = 1:numel(EEG.event), EEG.event(q).nqc_epoch = EEG.event(q).epoch; end
-                    EEG = evalWithEEG(EEG, cmd);
-                    kept = unique(arrayfun(@(x) double(x.nqc_epoch), EEG.event));
-                    EEG.event = rmfield(EEG.event, 'nqc_epoch');
-                    gone = setdiff(1:n0, kept);
-                    assert(numel(gone) < n0, 'NeuroQC:AllRejected', 'every epoch would be rejected');
-                    info.decisions(end+1) = struct('kind', 'epochs', 'idx', gone);
-                    info.rejected = info.rejected + numel(gone);
+                    n0 = EEG.trials; gone = []; known = false;
+                    if strcmp(e.fn, 'pop_rejepoch') && numel(e.args) >= 2
+                        % the epochs it removes, read before it runs
+                        v = evalExprWithEEG(EEG, e.args{2});
+                        if islogical(v) || (numel(v) == n0 && all(ismember(v(:), [0 1]))), gone = find(v(:)');
+                        else, gone = unique(double(v(:)')); end
+                        known = true;
+                        EEG = evalWithEEG(EEG, cmd);
+                    elseif all(ismember(1:n0, unique([EEG.event.epoch])))
+                        % other removals: every epoch carries an event, so the
+                        % surviving events tell which epochs are left
+                        for q = 1:numel(EEG.event), EEG.event(q).nqc_epoch = EEG.event(q).epoch; end
+                        EEG = evalWithEEG(EEG, cmd);
+                        if isfield(EEG.event, 'nqc_epoch')
+                            gone = setdiff(1:n0, unique(arrayfun(@(x) double(x.nqc_epoch), EEG.event)));
+                            EEG.event = rmfield(EEG.event, 'nqc_epoch'); known = true;
+                        end
+                    else
+                        EEG = evalWithEEG(EEG, cmd);   % an epoch without events: cannot be told apart
+                    end
+                    assert(EEG.trials > 0, 'NeuroQC:AllRejected', 'every epoch would be rejected');
+                    if known && EEG.trials == n0 - numel(gone)
+                        info.decisions(end+1) = struct('kind', 'epochs', 'idx', gone);
+                    else
+                        decided = false;               % re-run on the signal copy, flagged
+                    end
+                    info.rejected = info.rejected + (n0 - EEG.trials);
                 elseif strcmp(e.fn, 'pop_subcomp') && ~isempty(EEG.icaweights)
                     W0 = EEG.icaweights;
                     EEG = evalWithEEG(EEG, cmd);
@@ -353,6 +376,12 @@ end
 
 function EEG = evalWithEEG(EEG, NEUROQC_CMD__)
 eval(NEUROQC_CMD__);
+end
+
+function v = evalExprWithEEG(EEG, NEUROQC_EXPR__) %#ok<INUSL>
+% value of an argument expression of a captured command (e.g.
+% EEG.reject.rejthresh), in a workspace that only contains EEG
+v = eval(NEUROQC_EXPR__);
 end
 
 function tf = isFixedTransform(stmt)

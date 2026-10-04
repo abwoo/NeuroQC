@@ -136,6 +136,9 @@ classdef Catalog
                     st.removed = false;
                 case 'reref'
                     if ~any(strcmp(p.mode, {'average','channels'})), reason = 'reref mode must be average or channels'; return; end
+                    if strcmp(p.mode, 'channels') && (~isfield(p, 'channels') || isempty(p.channels))
+                        reason = 'reref mode channels needs the reference channels'; return;
+                    end
                 case 'ica'
                     st.hasICA = true; st.icRemoved = false;
                 case 'icremove'

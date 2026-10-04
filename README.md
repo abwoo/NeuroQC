@@ -160,6 +160,8 @@ legal order; `p.pin(id)` keeps a step in place and `p.before(a, b)` constrains t
      are simultaneous over all candidates, so a larger search does not produce more false "worse"
      verdicts. *Not distinguished* is absence of evidence, not equivalence.
    - Candidates that differ in the reference are ranked in separate strata, never against each other.
+     With several strata there is no overall recommendation: each stratum has its own (marked `*`),
+     and you choose the one that fits your analysis.
    - The recommendation is the least aggressive candidate among those not distinguished from the
      best: most trials kept, then least distortion.
 

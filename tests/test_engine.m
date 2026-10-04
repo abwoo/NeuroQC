@@ -559,6 +559,81 @@ r = neuroqc.NeuroQC.optimize(q, nqc_c());
 verifyEqual(tc, r.cands(1).unmatched, {'native'});
 end
 
+function testAdoptAndInspectAfterACheckpointedSearch(tc)
+% A checkpointed search does not keep the starting dataset in the result;
+% adopt / replay / inspect read it back from the checkpoint folder, also
+% after changing folder (the path is stored absolute).
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+nqc_setBase(EEG);
+p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', {0.1, 0.5}); p = p.add('epoch'); p = p.add('baseline');
+base = tempname; mkdir(base); c0 = onCleanup(@() rmdir(base, 's')); %#ok<NASGU>
+here = pwd; cd(base); c1 = onCleanup(@() cd(here)); %#ok<NASGU>
+r = neuroqc.NeuroQC.optimize(p, nqc_c(), struct('checkpoint', 'nqc_run1'));   % relative, as in the README
+cd(here);
+verifyEmpty(tc, r.root);                                          % not kept in memory
+verifyTrue(tc, isfile(fullfile(r.options.checkpoint, 'root.mat')));
+n0 = evalin('base', 'numel(ALLEEG)');
+neuroqc.NeuroQC.adopt(r);
+verifyEqual(tc, evalin('base', 'numel(ALLEEG)'), n0 + 1);
+E = neuroqc.run.Executor.rootOf(r);
+verifyEqual(tc, double(E.data), double(EEG.data), 'AbsTol', 1e-4);
+r2 = r; r2.identity = 'another search';
+verifyError(tc, @() neuroqc.run.Executor.rootOf(r2), 'NeuroQC:Checkpoint');
+end
+
+function testRemovedEpochsAreReadNotGuessed(tc)
+% pop_rejepoch's epochs are read from its argument before it runs, so an
+% epoch that has no events is not mistaken for a removed one; a removal
+% that cannot be told apart is re-run (flagged) instead of guessed.
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
+[~, E] = evalc('pop_epoch(EEG, {''11'', ''31''}, [-0.2 0.8])');
+E.event([E.event.epoch] == 5) = []; E = eeg_checkset(E, 'eventconsistency');   % epoch 5 has no event
+[E2, ~, info] = neuroqc.run.Steps.native(E, 'EEG = pop_rejepoch(EEG, [2 3], 0);');
+verifyEqual(tc, info.decisions.idx, [2 3]);
+verifyEqual(tc, E2.trials, E.trials - 2);
+[E3, ~, info] = neuroqc.run.Steps.native(E, 'EEG = pop_eegthresh(EEG,1,[1:32],-150,150,-0.2,0.796,0,1);');
+verifyLessThan(tc, E3.trials, E.trials);                          % it did remove epochs
+verifyEmpty(tc, info.decisions);                                  % not decision-matched: re-run on the copy
+end
+
+function testStrataDoNotDependOnStepOrder(tc)
+% The same measure-defining choices in another order are one stratum.
+p = neuroqc.plan.Plan();
+p = p.add('reref', 'mode', 'average');
+p = p.addEeglab('EEG = pop_reref(EEG, {''P7'',''P8''});', 'ref2');
+p.OrderMode = 'search';
+leaves = p.enumerate(nqc_fakeState(false, 500), nqc_contract());
+verifyEqual(tc, numel(leaves), 2);
+verifyEqual(tc, numel(unique({leaves.stratum})), 1);
+q = neuroqc.plan.Plan(); q = q.add('reref', 'mode', 'channels');          % no reference channels
+try
+    q.enumerate(nqc_fakeState(false, 500), nqc_contract());
+    verifyFail(tc, 'reref channels without channels must be refused at plan time');
+catch ME
+    verifyEqual(tc, ME.identifier, 'NeuroQC:NoLegalPipeline');
+    verifyTrue(tc, contains(ME.message, 'needs the reference channels'));
+end
+end
+
+function testSeveralStrataAskTheUserToChoose(tc)
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0));
+nqc_setBase(EEG);
+p = neuroqc.plan.Plan();
+p = p.addChoice('ref', {'reref', 'mode', 'average'}, {'reref', 'mode', 'channels', 'channels', {'P7', 'P8'}});
+p = p.add('epoch'); p = p.add('baseline');
+r = neuroqc.NeuroQC.optimize(p, nqc_c());
+verifyEqual(tc, numel(r.ranking.byStratum), 2);
+verifyEmpty(tc, r.ranking.recommended);
+try
+    neuroqc.NeuroQC.adopt(r);
+    verifyFail(tc, 'adopt without a choice must explain the strata');
+catch ME
+    verifyEqual(tc, ME.identifier, 'NeuroQC:Adopt');
+    verifyTrue(tc, contains(ME.message, 'strata'));
+end
+neuroqc.NeuroQC.adopt(r, r.ranking.byStratum(1).recommended);   % a chosen stratum's recommendation
+end
+
 % ---------------------------------------------------------------- helpers
 function c = nqc_c()
 c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...

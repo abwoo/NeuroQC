@@ -104,7 +104,7 @@ classdef Executor
                 'same decisions (matched-decision injection).'], opts.injectUv);
             if ~isempty(opts.checkpoint) && ~any(done)
                 result = neuroqc.run.Executor.writeManifest(result);
-                env.identity = result.identity;
+                env.identity = result.identity; env.checkpoint = result.options.checkpoint;
             elseif isfield(result, 'identity')
                 env.identity = result.identity;
             end
@@ -285,10 +285,28 @@ classdef Executor
             end
         end
 
+        function root = rootOf(result)
+            % The starting dataset of a search. With a checkpoint folder it
+            % is not kept in the result (long searches start from large
+            % data); it is read back from root.mat, checked against the
+            % search identity.
+            root = result.root;
+            if ~isempty(root), return; end
+            d = '';
+            if isfield(result.options, 'checkpoint'), d = result.options.checkpoint; end
+            f = fullfile(d, 'root.mat');
+            assert(~isempty(d) && isfile(f), 'NeuroQC:Checkpoint', ['The starting dataset of this result is not in ', ...
+                'memory and its checkpoint file %s is missing.'], f);
+            R = load(f);
+            assert(isfield(R, 'identity') && isfield(result, 'identity') && strcmp(R.identity, result.identity), ...
+                'NeuroQC:Checkpoint', '%s belongs to another search; the starting dataset cannot be restored.', f);
+            root = R.root;
+        end
+
         function EEG = replay(result, idx, recordGlobal)
             % Re-run candidate idx from the stored starting dataset.
             if nargin < 3, recordGlobal = false; end
-            EEG = result.root;
+            EEG = neuroqc.run.Executor.rootOf(result);
             path = result.leaves(idx).path;
             ctx = struct('contract', result.contract, 'highpass', rootHighpass(result.state));
             if recordGlobal
@@ -367,7 +385,12 @@ classdef Executor
             % Store candidate idx as a NEW EEGLAB dataset with its full history.
             if nargin < 2 || isempty(idx), idx = result.ranking.recommended; end
             if nargin < 3, force = false; end
-            assert(~isempty(idx), 'NeuroQC:Adopt', 'No candidate to adopt (no feasible or no unique recommendation).');
+            if isempty(idx) && numel(result.ranking.byStratum) > 1
+                error('NeuroQC:Adopt', ['The candidates fall into %d strata (different references) that are not ', ...
+                    'comparable; choose one: adopt(result, id) with a stratum''s recommendation %s.'], ...
+                    numel(result.ranking.byStratum), mat2str([result.ranking.byStratum.recommended]));
+            end
+            assert(~isempty(idx), 'NeuroQC:Adopt', 'No candidate to adopt: none satisfies the constraints.');
             st = result.ranking.table.status{idx};
             if ~strcmp(st, 'feasible')
                 why = result.ranking.table.reason{idx};
@@ -419,6 +442,8 @@ classdef Executor
             % options) is refused rather than mixed.
             d = result.options.checkpoint;
             if ~isfolder(d), mkdir(d); end
+            w = what(d); d = w(1).path;        % absolute (from MATLAB's current folder): found from any folder later
+            result.options.checkpoint = d;
             identity = searchIdentity(result);
             result.identity = identity;
             used = ~isempty(dir(fullfile(d, '*.mat')));
@@ -436,7 +461,7 @@ classdef Executor
             end
             root = result.root; %#ok<NASGU>
             save(fullfile(d, 'root.mat'), 'root', 'identity', '-v7.3');
-            result.root = [];
+            result.root = [];          % read back on demand (Executor.rootOf)
             save(fullfile(d, 'manifest.mat'), 'result', 'identity', '-v7.3');
             neuroqc.utils.log('Checkpoint folder: %s (resume with neuroqc.NeuroQC.resume).', d);
         end
@@ -463,6 +488,24 @@ if isfield(s, f), v = s.(f); else, v = d; end
 end
 
 function c = emptyCand()
+% One evaluated pipeline. Every field is set here and only here; the
+% producers and consumers are:
+%   id, key, stratum        leaf index, pipeline key and measure-defining
+%                           choices (Plan.enumerate leaves)
+%   status, message         'ok' | 'rejected' (e.g. all epochs removed) |
+%                           'failed', with the reason
+%   m                       Measure.candidate: kept, retention, objectives
+%                           (per-measure SME), composite
+%   signal                  Injection.compare: source, amplitudeError,
+%                           latencyShiftMs, artifactPct, waveformCorr,
+%                           topoCorr, notApplicable
+%   interpolatedFraction    share of the montage interpolated
+%   icsRemoved, rejectedEpochs   counts from the steps' decisions
+%   coms                    EEGLAB commands that rebuild it (script/adopt)
+%   seconds                 run time of its steps
+%   unmatched               step types re-run (not decision-matched) on
+%                           the signal copy
+% Rank.run reads status, m, signal, interpolatedFraction and stratum.
 c = struct('id', 0, 'key', '', 'stratum', '', 'status', 'pending', 'message', '', 'm', [], 'signal', [], ...
     'interpolatedFraction', NaN, 'icsRemoved', 0, 'rejectedEpochs', 0, 'coms', {{}}, 'seconds', 0, 'unmatched', {{}});
 end

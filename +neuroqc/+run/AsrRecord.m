@@ -16,6 +16,12 @@ classdef AsrRecord
     %   calibration (clean_windows, asr_calibrate); apply() applies the same
     %   decisions to any data of the same size (e.g. the injected signal).
     %
+    %   Written against clean_rawdata 2.11 (ASR core 0.13: asr_calibrate
+    %   state fields M, T, A, B, iir, last_trivial; asr_process blocks,
+    %   moving-average covariance and raised-cosine blending). After a
+    %   clean_rawdata update, re-run test_engine/testAsrDecisionsAreReplayed-
+    %   OnTheSignalCopy: it checks the replay against EEGLAB's output.
+    %
     %   This is an independent implementation of the published algorithm,
     %   not a copy of asr_process. Its decisions are only used after
     %   neuroqc.run.Steps has checked that apply(rec, real data) equals

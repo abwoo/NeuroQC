@@ -254,7 +254,9 @@ classdef Rank
                     'not distinguished from the best); best objective: candidate %d.'], lab, b.recommended, numel(b.set), b.best);
             end
             if numel(R.byStratum) > 1
-                neuroqc.utils.log('Strata differ in what is measured; their results are not comparable with each other.');
+                neuroqc.utils.log(['Strata differ in what is measured (e.g. the reference); their results are not ', ...
+                    'comparable, so there is no overall recommendation. Choose the stratum that fits your analysis ', ...
+                    'and adopt its recommendation: adopt(result, id).']);
             end
         end
     end

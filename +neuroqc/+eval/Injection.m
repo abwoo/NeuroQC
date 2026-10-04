@@ -162,10 +162,11 @@ codes = contract.allEvents();
 span = [times(1) times(end)];
 G = zeros(size(g)); n = 0;
 for ep = 1:numel(S.epoch)
-    lat = S.epoch(ep).eventlatency; typ = S.epoch(ep).eventtype; ue = S.epoch(ep).eventurevent;
-    if ~iscell(lat), lat = {lat}; typ = {typ}; ue = {ue}; end
+    % the three fields are not guaranteed to share a shape: make each a cell
+    lat = asCell(S.epoch(ep).eventlatency); typ = asCell(S.epoch(ep).eventtype); ue = asCell(S.epoch(ep).eventurevent);
+    if numel(typ) ~= numel(lat) || numel(ue) ~= numel(lat), return; end
     typ = cellfun(@(x) strtrim(char(string(x))), typ, 'UniformOutput', false);
-    z = find(abs(cell2mat(lat)) < 1e-6 & ismember(typ, codes), 1);
+    z = find(abs(cellfun(@double, lat)) < 1e-6 & ismember(typ, codes), 1);
     if isempty(z) || isempty(ue{z}), return; end
     k = find(truth.urevents == ue{z}, 1);
     if isempty(k), return; end
@@ -179,6 +180,10 @@ for ep = 1:numel(S.epoch)
     n = n + 1;
 end
 if n > 0, g = G / n; end
+end
+
+function c = asCell(x)
+if iscell(x), c = x; elseif ischar(x) || isstring(x), c = {char(x)}; else, c = num2cell(x); end
 end
 
 function w = topography(EEG, roi)

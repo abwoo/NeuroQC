@@ -698,7 +698,7 @@ classdef Panel < handle
             r = obj.Result;
             try
                 if which == 0
-                    E = r.root; E.setname = sprintf('%s (NeuroQC source, start of the search)', r.state.setname);
+                    E = neuroqc.run.Executor.rootOf(r); E.setname = sprintf('%s (NeuroQC source, start of the search)', r.state.setname);
                 else
                     [~, E] = evalc('neuroqc.run.Executor.replay(r, which)');
                     E.setname = sprintf('NeuroQC candidate %d (not adopted): %s', which, r.labels{which});
@@ -1063,7 +1063,19 @@ classdef Panel < handle
             k = [];
             if isempty(obj.Result), uialert(obj.Fig, 'Run a search first.', 'NeuroQC'); return; end
             sel = obj.ResultTable.Selection;
-            if isempty(sel), k = obj.Result.ranking.recommended; return; end
+            if isempty(sel)
+                R = obj.Result.ranking;
+                k = R.recommended;
+                if isempty(k) && numel(R.byStratum) > 1
+                    uialert(obj.Fig, sprintf(['The candidates fall into %d strata (different references): they measure ', ...
+                        'different quantities and are not compared with each other, so there is no single ', ...
+                        'recommendation. Each stratum''s recommendation is marked *; select the row you want, ', ...
+                        'according to your analysis.'], numel(R.byStratum)), 'NeuroQC');
+                elseif isempty(k)
+                    uialert(obj.Fig, 'No candidate satisfies the constraints; the reasons are in the table.', 'NeuroQC');
+                end
+                return;
+            end
             k = str2double(strrep(obj.ResultTable.Data{sel(1, 1), 1}, '*', ''));
         end
 

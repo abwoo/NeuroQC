@@ -335,40 +335,6 @@ classdef Plan
             end
         end
 
-        function orders = orders(obj, maxOrders)
-            n = numel(obj.Slots);
-            if strcmp(obj.OrderMode, 'fixed')
-                orders = {1:n};
-                return;
-            end
-            assert(strcmp(obj.OrderMode, 'search'), 'NeuroQC:Plan', 'OrderMode must be fixed or search');
-            ids = {obj.Slots.id};
-            pinned = [obj.Slots.pinned];
-            mustBefore = false(n);
-            for r = 1:size(obj.Precedence, 1)
-                mustBefore(strcmp(ids, obj.Precedence{r, 1}), strcmp(ids, obj.Precedence{r, 2})) = true;
-            end
-            orders = {};
-            rec([]);
-            function rec(prefix)
-                pos = numel(prefix) + 1;
-                if pos > n
-                    assert(numel(orders) < maxOrders, 'NeuroQC:SearchTooLarge', ...
-                        'More than %d step orders; pin steps or add before() constraints.', maxOrders);
-                    orders{end+1} = prefix; return;
-                end
-                if pinned(pos) && ~ismember(pos, prefix)
-                    if any(mustBefore(setdiff(1:n, [prefix pos]), pos)), return; end
-                    rec([prefix pos]); return;
-                end
-                for s = setdiff(1:n, prefix)
-                    if pinned(s), continue; end
-                    if any(mustBefore(setdiff(1:n, [prefix s]), s)), continue; end
-                    rec([prefix s]);
-                end
-            end
-        end
-
         function print(obj)
             neuroqc.utils.log('Plan (order %s):', obj.OrderMode);
             for k = 1:numel(obj.Slots)
@@ -524,11 +490,13 @@ end
 end
 
 function s = stratumOf(path)
+% What a pipeline measures (its measure-defining choices). Sorted, so the
+% same choices in another step order are the same stratum.
 parts = {};
 for q = 1:numel(path)
     if isfield(path{q}, 'defining') && ~isempty(path{q}.defining), parts{end+1} = path{q}.defining; end %#ok<AGROW>
 end
-s = strjoin(parts, ';');
+s = strjoin(sort(parts), ';');
 end
 
 function k = instKey(type, p)
