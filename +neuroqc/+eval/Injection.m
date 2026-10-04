@@ -45,10 +45,15 @@ classdef Injection
             S.data = zeros(size(root.data), 'like', root.data);
             S.icaact = [];
             nch = root.nbchan; fs = root.srate;
-            W = zeros(nch, numel(contract.components));
+            % the field over the whole montage, including channels removed before
+            % NeuroQC that a restore step can interpolate back (their expected
+            % value after restoring is the true field there)
+            [full, labels] = montage(root);
+            Wfull = zeros(numel(full), numel(contract.components));
             for j = 1:numel(contract.components)
-                W(:, j) = topography(root, contract.components(j).roi);
+                Wfull(:, j) = topography(struct('chanlocs', {full}), contract.components(j).roi);
             end
+            W = Wfull(1:nch, :);
             tt = (round(contract.epoch(1) * fs):round(contract.epoch(2) * fs)) / fs;
             g = template(tt, contract);                       % nComp x samples
             sig = A * (W * g);                                % nch x samples
@@ -76,7 +81,7 @@ classdef Injection
             end
             % onsets/urevents let compare() build the expected average when
             % epochs overlap (neighbouring events inside one epoch window)
-            truth = struct('kind', 'erp', 'weights', W, 'labels', {labels}, 'A', A, ...
+            truth = struct('kind', 'erp', 'weights', Wfull, 'labels', {labels}, 'A', A, ...
                 'onsets', onsets, 'urevents', urs);
         end
 
@@ -180,6 +185,23 @@ for ep = 1:numel(S.epoch)
     n = n + 1;
 end
 if n > 0, g = G / n; end
+end
+
+function [full, labels] = montage(root)
+% channel labels and positions: the data's channels, then the restorable
+% channels removed before NeuroQC
+f = {'labels', 'X', 'Y', 'Z'};
+pick = @(c) cell2struct(cellfun(@(n) fieldOrEmpty(c, n), f, 'UniformOutput', false), f, 2);
+full = arrayfun(pick, root.chanlocs);
+if isfield(root, 'etc') && isstruct(root.etc) && isfield(root.etc, 'neuroqc') && isfield(root.etc.neuroqc, 'preRemoved')
+    full = [full(:); arrayfun(pick, root.etc.neuroqc.preRemoved(:))]';
+end
+full = full(:)';
+labels = {full.labels};
+end
+
+function v = fieldOrEmpty(c, n)
+if isfield(c, n), v = c.(n); else, v = []; end
 end
 
 function c = asCell(x)

@@ -644,6 +644,33 @@ end
 neuroqc.NeuroQC.adopt(r, r.ranking.byStratum(1).recommended);   % a chosen stratum's recommendation
 end
 
+function testRoiOnAChannelRestoredByThePlan(tc)
+% Pz was removed before NeuroQC; the plan restores it and measures there.
+% The ROI check must not refuse this, the restored Pz carries the known
+% signal, and a pipeline without the restore fails with that reason.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0));
+E = pop_select(EEG, 'rmchannel', {'Pz'});
+nqc_setBase(E);
+c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
+    'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz'}});
+p = neuroqc.plan.Plan(); p = p.addChoice('rest', {'restore'}, 'none'); p = p.add('epoch'); p = p.add('baseline');
+r = neuroqc.NeuroQC.optimize(p, c);
+k = find(contains(r.labels, 'restore'));
+verifyEqual(tc, r.cands(k).status, 'ok');
+% the restored Pz is checked against the true field there: interpolating
+% the peak channel of a focal component loses ~28% of it, and that is what
+% the check reports (test_signal/testInterpolatingAnRoiChannelIsMeasured)
+verifyGreaterThan(tc, r.cands(k).signal.amplitudeError, 0.15);
+verifyLessThan(tc, r.cands(k).signal.amplitudeError, 0.45);
+verifyGreaterThan(tc, r.cands(k).signal.waveformCorr, 0.95);
+j = setdiff(1:2, k);
+verifyEqual(tc, r.cands(j).status, 'failed');
+verifyTrue(tc, contains(r.cands(j).message, 'ROI channel(s) missing'));
+c2 = neuroqc.eval.Contract('conditions', {'t', {'11'}}, 'epoch', [-0.2 1], 'baseline', [-0.2 0], ...
+    'components', {'X', [0.3 0.5], {'NoSuchChannel'}});
+verifyError(tc, @() neuroqc.NeuroQC.optimize(p, c2), 'NeuroQC:Contract');   % unknown channels still refused
+end
+
 % ---------------------------------------------------------------- helpers
 function c = nqc_c()
 c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...

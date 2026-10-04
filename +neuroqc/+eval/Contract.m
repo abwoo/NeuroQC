@@ -130,7 +130,14 @@ classdef Contract
                 strjoin(missing, ', '), strjoin(state.eventTypes, ', '));
             roi = obj.allRoi();
             absent = setdiff(lower(roi), lower(state.labels));
-            assert(isempty(absent), 'NeuroQC:Contract', 'ROI channel(s) not in the dataset: %s', strjoin(absent, ', '));
+            restorable = {};
+            if isfield(state, 'restorableChannels') && ~isempty(state.restorableChannels)
+                restorable = lower(state.removedChannels(state.restorableChannels));
+            end
+            % a removed channel that a restore step can bring back is a valid ROI
+            % channel; pipelines without the restore fail with that reason
+            assert(all(ismember(absent, restorable)), 'NeuroQC:Contract', 'ROI channel(s) not in the dataset: %s', ...
+                strjoin(setdiff(absent, restorable), ', '));
             if state.isEpoched
                 w = obj.effectiveEpoch();
                 assert(state.xmin <= w(1) + 1.5/state.srate && state.xmax >= w(2) - 1.5/state.srate, ...

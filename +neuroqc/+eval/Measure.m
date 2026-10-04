@@ -32,7 +32,8 @@ classdef Measure
         end
 
         function ref = reference(EEG, contract)
-            T = neuroqc.eval.Measure.trials(EEG, contract);
+            % trial identities only: the ROI may be restored later in the plan
+            T = neuroqc.eval.Measure.trials(EEG, contract, true);
             conds = contract.effectiveConditions();
             ref = struct('ids', {cell(1, numel(conds))}, 'names', {{conds.name}});
             for c = 1:numel(conds)
@@ -149,8 +150,10 @@ classdef Measure
             v = sqrt(acc / numel(Wc));
         end
 
-        function T = trials(EEG, contract)
-            % One row per epoch: urevent id, condition index, per-objective data.
+        function T = trials(EEG, contract, idsOnly)
+            % One row per epoch: urevent id, condition index, per-objective data
+            % (idsOnly: identities and conditions only).
+            if nargin < 3, idsOnly = false; end
             conds = contract.effectiveConditions();
             codes = contract.allEvents();
             win = contract.effectiveEpoch();
@@ -191,6 +194,7 @@ classdef Measure
             bl = contract.effectiveBaseline();
             T = struct('id', id(keep), 'cond', cond(keep), 'data', {{}}, 'times', {{}}, ...
                 'labels', {labels});
+            if idsOnly, return; end
             if ~isempty(bl)
                 bsel = times >= bl(1) - 1e-9 & times <= bl(2) + 1e-9;
                 assert(any(bsel), 'NeuroQC:Measure', 'No samples in the baseline window.');
