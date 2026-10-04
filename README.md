@@ -34,7 +34,9 @@ What it does, and nothing more:
 ## Install
 
 Copy the NeuroQC folder into `eeglab/plugins/` and start (or restart) EEGLAB: it adds
-EEGLAB > Tools > NeuroQC by itself, every time EEGLAB starts.
+EEGLAB > Tools > NeuroQC by itself, every time EEGLAB starts. Name the folder `NeuroQC` (or
+`NeuroQC0.7.0`): EEGLAB takes the plugin's name and version from the folder name, so a folder
+called e.g. `111` would show up as a plugin named `111`.
 
 `neuroqc_setup` is for development from another folder: it puts NeuroQC on the path and adds the
 menu to the running EEGLAB. Each later `eeglab` call rebuilds the menus, so call `neuroqc_setup`
@@ -43,6 +45,11 @@ again after it.
 Requirements:
 
 - Tested on MATLAB R2026a with EEGLAB 2026.0.0 (no other versions have been tested).
+- MATLAB only; GNU Octave is not supported (the panel is a MATLAB `uifigure`).
+- EEGLAB's main window and its base-workspace variables `EEG`, `ALLEEG` and `CURRENTSET`: NeuroQC
+  reads the current dataset from there (the script interface too) and stores adopted candidates
+  there. It does not work with `eeglab nogui` or with EEGLAB called inside a function, where these
+  variables are not in the base workspace.
 - EEGLAB with firfilt (included by default).
 - The ICLabel plugin for `icremove`, and clean_rawdata for `asr`.
 - Optional: the Parallel Computing Toolbox, for `parallel`.

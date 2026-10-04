@@ -690,6 +690,25 @@ verifyEqual(tc, sort(arrayfun(@(k) double(out.event(k).urevent), lock)), sort(T.
 verifyLessThan(tc, out.trials, E.trials);                       % the rule did remove trials
 end
 
+function testPluginMenusUseEeglabErrorHandling(tc)
+% Menu callbacks are wrapped like EEGLAB's own (try ... catch,
+% eeglab_error; end), so an error shows EEGLAB's error window.
+f = figure('Visible', 'off'); cleanup = onCleanup(@() delete(f)); %#ok<NASGU>
+saved = getappdata(0, 'neuroqc_eeglab_strings');                 % EEGLAB's real strings, put back after
+restore = onCleanup(@() setappdata(0, 'neuroqc_eeglab_strings', saved)); %#ok<NASGU>
+uimenu(f, 'Label', 'Tools', 'Tag', 'tools');
+ts = struct('no_check', 'try,'); cs = struct('add_to_hist', '');
+evalc('eegplugin_neuroqc(f, ts, cs)');
+items = findobj(findobj(f, 'Tag', 'neuroqc_menu'), 'Type', 'uimenu', '-not', 'Tag', 'neuroqc_menu');
+verifyNumElements(tc, items, 2);
+for k = 1:numel(items)
+    cb = items(k).MenuSelectedFcn;
+    verifyTrue(tc, startsWith(cb, 'try,') && contains(cb, 'catch, eeglab_error; end'));
+end
+evalc('eegplugin_neuroqc(f, ts, cs)');                            % a second call adds nothing
+verifyNumElements(tc, findobj(f, 'Tag', 'neuroqc_menu'), 1);
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');
