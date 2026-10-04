@@ -1,6 +1,7 @@
 name: release
 
-# A pushed tag vX.Y.Z (or a manual run for an existing tag) builds the
+# A pushed tag vX.Y.Z, or a manual run naming a tag (created at the given
+# commit when it does not exist yet), builds the
 # EEGLAB plugin zip - one top folder named <Plugin><X.Y.Z>, which EEGLAB
 # reads as the plugin's name and version - and publishes it as a GitHub
 # release whose notes are that version's CHANGELOG section.
@@ -11,8 +12,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to release, e.g. v0.7.1"
+        description: "Tag to release, e.g. v0.7.1"
         required: true
+      target:
+        description: "Commit to create the tag at, when it does not exist yet"
+        required: false
 
 permissions:
   contents: write
@@ -27,7 +31,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.target || inputs.tag || github.ref }}
 
       - name: Build plugin zip
         run: |
@@ -47,4 +51,4 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$TAG" "$ZIP" --title "$TITLE" --notes-file notes.md --verify-tag
+        run: gh release create "$TAG" "$ZIP" --title "$TITLE" --notes-file notes.md --target "$(git rev-parse HEAD)"
