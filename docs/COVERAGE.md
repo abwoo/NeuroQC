@@ -54,6 +54,7 @@ Each item has four status columns:
 |---|---|---|---|
 | Mean amplitude, analytic SME | ✓ | ✓ (vs. empirical SD) | ✓ real data |
 | Gain-corrected objective (SME / signal gain) | ✓ | ✓ (invariance to scaling) | ✓ real data |
+| Simple mode `pop_pipecompare`: ERP CORE presets, recipes adapted to the data, live count, result window | ✓ | ✓ (presets against the paper's tables; dialog; script call; window) | manual (MANUAL_GUI_CHECK 19–22) |
 | Band power of continuous data: segments (eeg_regepochs), log band power SME, sinusoid signal check, moving-block bootstrap | ✓ | ✓ (end to end; error rate with AR(1) segments) | — |
 | Peak amplitude / latency, bootstrapped SME | ✓ | ✓ (vs. replications) | ✓ synthetic |
 | Composite objective or one chosen measure; unit safety | ✓ | ✓ | ✓ |

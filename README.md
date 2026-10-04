@@ -61,13 +61,22 @@ Requirements:
 ## Quick start
 
 1. Load or select a dataset in EEGLAB as usual.
-2. EEGLAB > Tools > NeuroQC > *Optimize from current dataset…*. Define the conditions (*Add from
-   events…*), the epoch, and a component (time window, ROI, measure), add the steps to compare,
-   and press *Run search*.
-3. Select a result to see why it was recommended or excluded; *Adopt selected* stores it as a new
-   EEGLAB dataset whose `EEG.history` reproduces it.
+2. EEGLAB > Tools > NeuroQC > *Compare pipelines…*: choose the event types and an ERP component
+   (N170, MMN, N2pc, N400, P3, LRP, ERN, with ERP CORE's windows and sites), or a frequency band
+   for continuous data. Then choose what to compare (filters only, standard, or full), and press
+   *Run*. The dialog shows how many pipelines that is before anything runs.
+3. The result window names the recommended pipeline and why; *Adopt* stores it as a new EEGLAB
+   dataset whose `EEG.history` reproduces it, and *Save script…* writes it as an EEGLAB function.
 
-Every button of the panel is described in [docs/PANEL.md](docs/PANEL.md).
+The same from the command line, as EEGLAB records it:
+
+```matlab
+EEG = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'recipe', 'standard');
+```
+
+For everything else (your own windows and ROIs, any step and value, order search, constraints),
+use *Advanced…* in the dialog, or EEGLAB > Tools > NeuroQC > *Advanced panel…*; every button of
+the panel is described in [docs/PANEL.md](docs/PANEL.md).
 
 Band power of continuous data (script only for now; the simple-mode dialog will offer it):
 
