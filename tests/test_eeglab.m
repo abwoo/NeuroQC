@@ -491,6 +491,32 @@ verifyTrue(tc, has(n, 'BurstRejection') && has(n, 'Distance'));
 verifyTrue(tc, has(n, 'anti-aliasing'));
 end
 
+function testDialogsSeeTheDataAtTheirPlanStep(tc)
+% A step's EEGLAB dialog opens on the data as the plan has them at that
+% step: after ICA (for the ICLabel dialogs), after channel removal (for
+% channel lists), epoched (for epoch rejection).
+EEG = nqc_synth(struct('seconds', 200, 'nPerCond', 30));
+nqc_setBase(EEG);
+app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.EpochField.Value = '-0.2 1';
+app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
+app.TypeDrop.Value = 'channels'; app.addStep(); app.PlanTable.Selection = [1 1];
+app.setValues('labels', {{'O1'}}); app.setValues('action', {'remove'});
+app.TypeDrop.Value = 'ica'; app.addStep(); app.PlanTable.Selection = [2 1]; app.setValues('fitHighpass', {1});
+app.TypeDrop.Value = 'icremove'; app.addStep();
+app.TypeDrop.Value = 'epoch'; app.addStep();
+app.TypeDrop.Value = 'reject_threshold'; app.addStep();
+verifyEmpty(tc, EEG.icaweights);                                  % the dataset itself has no ICA
+P3 = app.previewAt(3);
+verifyNotEmpty(tc, P3.icaweights);                                % ...the icremove dialog sees one
+verifyFalse(tc, any(strcmp({P3.chanlocs.labels}, 'O1')));        % ...and O1 already removed
+verifyLessThan(tc, P3.pnts / P3.srate, 121);                       % a short copy (first 120 s)
+P5 = app.previewAt(5);
+verifyGreaterThan(tc, P5.trials, 1);                              % the rejection dialog sees epochs
+P1 = app.previewAt(1);
+verifyTrue(tc, any(strcmp({P1.chanlocs.labels}, 'O1')));          % the first step sees the dataset
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');

@@ -351,7 +351,7 @@ classdef Panel < handle
             try
                 if nargin < 2
                     type = obj.dialogType(slot);
-                    com = obj.captureFor(type);
+                    [com, EEG] = obj.captureFor(type, k);   % on the data as the plan has them at this step
                     if isempty(com), return; end
                 end
                 if nargin < 3 || isempty(EEG), EEG = neuroqc.live.Session.current(); end
@@ -512,21 +512,52 @@ classdef Panel < handle
                 'from the analysis contract above; named channels from Edit values...).'], type);
         end
 
-        function com = captureFor(obj, type)
+        function [com, EEG] = captureFor(obj, type, k)
+            % The step's EEGLAB dialog, on the data as the plan has them when
+            % step k runs (previewAt); epoch-level dialogs on epoched data.
+            if nargin < 3, EEG = neuroqc.live.Session.current(); else, EEG = obj.previewAt(k); end
             switch type
                 case {'reject_threshold','reject_jointprob','reject_kurtosis'}
-                    com = neuroqc.run.Native.captureWorkflow(type, obj.previewEpoched());
+                    if EEG.trials == 1, EEG = obj.previewEpoched(EEG); end
+                    com = neuroqc.run.Native.captureWorkflow(type, EEG);
                 case 'icremove'
-                    com = neuroqc.run.Native.captureWorkflow(type);
+                    assert(~isempty(EEG.icaweights), 'NeuroQC:Plan', ['There is no ICA decomposition at this step: ', ...
+                        'add an ica step before it in the plan (or run ICA on the dataset).']);
+                    com = neuroqc.run.Native.captureWorkflow(type, EEG);
                 otherwise
-                    com = neuroqc.run.Native.capture(type);
+                    com = neuroqc.run.Native.capture(type, EEG);
             end
         end
 
-        function EEG = previewEpoched(obj)
-            % The current dataset, epoched on a copy with the contract
-            % window when it is still continuous (for epoch-level dialogs).
+        function EEG = previewAt(obj, k)
+            % A copy of the current dataset (continuous: its first 120 s) after
+            % the plan's steps before step k, each with its first legal
+            % configuration: what the dialog of step k would see.
             EEG = neuroqc.live.Session.current();
+            assert(~isempty(EEG), 'NeuroQC:NoDataset', 'No dataset in EEGLAB.');
+            if EEG.trials == 1 && EEG.pnts / EEG.srate > 120
+                [~, EEG] = evalc('pop_select(EEG, ''time'', [0 120])');
+            end
+            if k <= 1, return; end
+            c = obj.contract();
+            [~, EEG] = evalc('neuroqc.run.Executor.prepareRoot(EEG, c, struct(''dataUnit'', ''uV''))');
+            sub = obj.Plan; sub.Slots = sub.Slots(1:k-1); sub.OrderMode = 'fixed'; sub.Precedence = cell(0, 2);
+            leaves = sub.enumerate(neuroqc.live.DataState.fromEEG(EEG), c, struct('maxLeaves', Inf));
+            path = leaves(1).path;
+            ctx = struct('contract', c, 'highpass', 0);
+            for q = 1:numel(path)
+                [~, EEG] = evalc('neuroqc.run.Steps.run(path{q}, EEG, ctx)');
+            end
+            if ~isempty(path)
+                neuroqc.utils.log('Dialog on a preview copy%s after: %s', ternary(EEG.trials == 1, ' (first 120 s)', ''), ...
+                    strjoin(cellfun(@(i) i.label, path, 'UniformOutput', false), ' > '));
+            end
+        end
+
+        function EEG = previewEpoched(obj, EEG)
+            % The current dataset (or EEG), epoched on a copy with the
+            % contract window when it is still continuous (epoch-level dialogs).
+            if nargin < 2, EEG = neuroqc.live.Session.current(); end
             assert(~isempty(EEG), 'NeuroQC:NoDataset', 'No dataset in EEGLAB.');
             if EEG.trials > 1, return; end
             c = obj.contract();
