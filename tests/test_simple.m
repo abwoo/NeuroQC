@@ -55,16 +55,17 @@ st = pipecompare.live.DataState.fromEEG(EEG);
 p = pipecompare.simple.Presets.recipe('filters', st, c);
 verifyEqual(tc, ids(p), {'highpass', 'lowpass', 'epoch', 'baseline'});
 [p, notes] = pipecompare.simple.Presets.recipe('standard', st, c);
-verifyEqual(tc, ids(p), {'highpass', 'lowpass', 'badchannels', 'ica', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
-verifyEmpty(tc, notes);
+verifyEqual(tc, ids(p), {'badchannels', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
+verifyEmpty(tc, notes);                                          % ICA first: one decomposition for every filter choice
 noloc = st; noloc.nLocated = 0;
 [p, notes] = pipecompare.simple.Presets.recipe('standard', noloc, c);
 verifyFalse(tc, any(ismember({'badchannels', 'ica', 'icremove'}, ids(p))));
 verifyTrue(tc, any(contains(notes, 'no channel locations')));
 [~, Ep] = evalc('pop_epoch(EEG, {''11''}, [-0.2 0.8])');
-[p, notes] = pipecompare.simple.Presets.recipe('full', pipecompare.live.DataState.fromEEG(Ep), c);
-verifyFalse(tc, any(ismember({'highpass', 'lowpass', 'epoch', 'asr'}, ids(p))));
-verifyTrue(tc, any(contains(notes, 'already epoched')) && any(contains(notes, 'ASR')));
+[p, notes] = pipecompare.simple.Presets.recipe('standard', pipecompare.live.DataState.fromEEG(Ep), c);
+verifyFalse(tc, any(ismember({'highpass', 'lowpass', 'epoch'}, ids(p))));
+verifyTrue(tc, any(contains(notes, 'already epoched')));
+verifyError(tc, @() pipecompare.simple.Presets.recipe('full', st, c), 'PipeCompare:Simple');   % ASR: panel or script
 end
 
 function testDialogPreselectsNothingAndCountsLive(tc)
@@ -81,11 +82,11 @@ d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.RecipeDrop.Value
 verifyEqual(tc, n, 12);                                         % 4 high-pass x 3 low-pass edges
 verifyTrue(tc, startsWith(msg, '12 pipelines'));
 verifyEqual(tc, char(d.RunButton.Enable), 'on');
-d.RecipeDrop.Value = 'full';
+d.RecipeDrop.Value = 'standard';
 [n, msg] = d.update();
-verifyGreaterThan(tc, n, 500);
-verifyTrue(tc, contains(msg, 'above the limit') && contains(msg, 'ICA decompositions'));
-verifyEqual(tc, char(d.RunButton.Enable), 'off');
+verifyEqual(tc, n, 4 * 3 * 3 * 3);                              % filters x ICLabel threshold x rejection threshold
+verifyTrue(tc, contains(msg, '(1 ICA decomposition)'));
+verifyEqual(tc, char(d.RunButton.Enable), 'on');
 d.TypeDrop.Value = d.BandType; d.typeChanged();
 verifyEqual(tc, d.MeasureDrop.Value, d.Choose);                 % changing the type clears the measure
 verifyTrue(tc, ismember('alpha', d.MeasureDrop.Items));
@@ -118,11 +119,34 @@ EEG = tc.TestData.EEG;
 nqc_setBase(EEG);
 [~, ~, r] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'recipe', 'filters', 'show', 'off');
 w = pipecompare.gui.SimpleResults(r); c = onCleanup(@() delete(w.Fig)); %#ok<NASGU>
-verifyTrue(tc, startsWith(w.Headline.Text, sprintf('Recommended: candidate %d', r.ranking.recommended)));
+verifyTrue(tc, startsWith(w.Headline.Text, sprintf('Use pipeline %d: ', r.ranking.recommended)));
 verifyEqual(tc, size(w.Table.Data, 1), 5);
 verifyEqual(tc, w.Table.Data{1, 1}, sprintf('%d*', r.ranking.recommended));   % always shown, first
 f = [tempname '.m']; c2 = onCleanup(@() delete(f)); %#ok<NASGU>
 w.saveScript(f);
 verifyTrue(tc, isfile(f));
 verifyTrue(tc, contains(fileread(f), 'pop_eegfiltnew'));
+end
+
+function testProgressReportsAndStopKeepsTheFinished(tc)
+EEG = tc.TestData.EEG;
+nqc_setBase(EEG);
+c = pipecompare.simple.Presets.contract(EEG, 'P3', {'11', '31'});
+plan = pipecompare.simple.Presets.recipe('filters', pipecompare.live.DataState.fromEEG(EEG), c);
+m = containers.Map({'n'}, {0});
+r = pipecompare.PipeCompare.optimize(plan, c, struct('progress', @(n) countTo(m, n, 3)));
+verifyEqual(tc, m('n'), 3);                                     % the 3 low-pass edges under the first high-pass
+verifyEqual(tc, r.notRun, 12 - 3);
+notRun = startsWith({r.cands.message}, 'not run');
+verifyEqual(tc, sum(notRun), 9);
+verifyTrue(tc, all(strcmp(r.ranking.table.status(notRun), 'failed')));
+verifyNotEmpty(tc, r.ranking.recommended);                      % the finished ones are ranked
+verifyEmpty(tc, r.options.progress);                            % the caller's callback is not kept
+w = pipecompare.gui.SimpleResults(r); cw = onCleanup(@() delete(w.Fig)); %#ok<NASGU>
+verifyTrue(tc, startsWith(w.Headline.Text, 'Stopped after 3 of 12 pipelines'));
+end
+
+function stop = countTo(m, n, limit)
+m('n') = m('n') + n;
+stop = m('n') >= limit;
 end

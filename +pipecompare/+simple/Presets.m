@@ -17,6 +17,12 @@ classdef Presets
     %   Recipes: which steps are compared, each searched over the catalog's
     %   default lists (pipecompare.plan.Catalog). Steps the data or the
     %   installation cannot support are left out, each with the reason.
+    %   'standard' fits ICA once: bad channels (fixed) and ICA come before
+    %   the searched filters, so every filter choice shares one
+    %   decomposition (fitted on a 1 Hz high-passed copy; filtering and
+    %   unmixing are both linear, so their order does not change the data).
+    %   ASR is compared from the panel or a script (it multiplies the
+    %   search beyond the simple mode's limit).
 
     methods (Static)
         function names = componentNames()
@@ -52,15 +58,14 @@ classdef Presets
         end
 
         function names = recipeNames()
-            names = {'filters', 'standard', 'full'};
+            names = {'filters', 'standard'};
         end
 
         function t = recipeLabel(name)
             switch name
                 case 'filters', t = 'Filters only (high-pass, low-pass)';
-                case 'standard', t = 'Standard (filters, bad channels, ICA/ICLabel threshold, epoch rejection)';
-                case 'full', t = 'Full (standard + ASR)';
-                otherwise, error('PipeCompare:Simple', 'Unknown recipe %s (filters, standard, full).', name);
+                case 'standard', t = 'Standard (filters, ICLabel threshold, epoch rejection; one ICA)';
+                otherwise, error('PipeCompare:Simple', 'Unknown recipe %s (filters, standard).', name);
             end
         end
 
@@ -104,35 +109,31 @@ classdef Presets
             notes = {};
             plan = pipecompare.plan.Plan();
             continuous = ~state.isEpoched;
+            standard = strcmp(name, 'standard');
+            ica = false;
+            if standard
+                if state.nLocated == 0
+                    notes{end+1} = 'no channel locations: bad-channel interpolation and ICLabel are left out';
+                else
+                    % the catalog defaults, fixed: a searched step before
+                    % ICA would multiply the decompositions
+                    plan = plan.add('badchannels', 'measure', 'kurt', 'threshold', 5);
+                    if exist('pop_iclabel', 'file') ~= 2
+                        notes{end+1} = 'ICLabel is not installed: ICA and IC removal left out';
+                    else
+                        plan = plan.add('ica'); ica = true;
+                    end
+                end
+            end
             if continuous
                 plan = plan.add('highpass'); plan = plan.add('lowpass');
             else
                 notes{end+1} = 'the data are already epoched, so filters are not compared (they must run before epoching)';
             end
-            if any(strcmp(name, {'standard', 'full'}))
-                if state.nLocated == 0
-                    notes{end+1} = 'no channel locations: bad-channel interpolation and ICLabel are left out';
-                else
-                    plan = plan.add('badchannels');
-                end
-                if strcmp(name, 'full')
-                    if ~continuous
-                        notes{end+1} = 'ASR needs continuous data: left out';
-                    elseif exist('pop_clean_rawdata', 'file') ~= 2
-                        notes{end+1} = 'clean_rawdata is not installed: ASR left out';
-                    else
-                        plan = plan.add('asr');
-                    end
-                end
-                if exist('pop_iclabel', 'file') ~= 2
-                    notes{end+1} = 'ICLabel is not installed: ICA and IC removal left out';
-                elseif state.nLocated > 0
-                    plan = plan.add('ica'); plan = plan.add('icremove');
-                end
-            end
+            if ica, plan = plan.add('icremove'); end
             if continuous, plan = plan.add('epoch'); end
             if ~isempty(contract.baseline), plan = plan.add('baseline'); end
-            if any(strcmp(name, {'standard', 'full'})), plan = plan.add('reject_threshold'); end
+            if standard, plan = plan.add('reject_threshold'); end
         end
     end
 end

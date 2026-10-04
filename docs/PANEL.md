@@ -13,16 +13,23 @@ Three choices, nothing preselected:
    ms (response-locked). Each condition's waveform is scored at these sites; difference waves
    are formed later in your analysis. Band power: delta 1–4, theta 4–8, alpha 8–13, beta 13–30
    Hz over all EEG channels, in 2 s segments.
-3. **Compare**: *filters only* (high-pass × low-pass edges), *standard* (+ bad channels,
-   ICA/ICLabel threshold, epoch rejection) or *full* (+ ASR), each over the catalog's default
-   lists. The number of pipelines (and of ICA decompositions) is shown live. Steps the data or
-   the installation cannot support are left out, with the reason: no channel locations, no
-   ICLabel or clean_rawdata, or data that are already epoched. Above the search limit (500) *Run*
-   stays off; use *Advanced…* to fix some values.
+3. **Compare**: *filters only* (high-pass × low-pass edges) or *standard* (+ ICLabel threshold
+   and epoch rejection), each over the catalog's default lists. *Standard* detects bad channels
+   once (kurtosis, z = 5) and fits ICA once, before the filters, so every filter choice shares
+   one decomposition (fitted on a 1 Hz high-passed copy; filtering and unmixing are linear, so
+   their order does not change the data). ASR is compared from the panel or a script. The number
+   of pipelines (and of ICA decompositions) is shown live. Steps the data or the installation
+   cannot support are left out, with the reason: no channel locations, no ICLabel, or data that
+   are already epoched. Above the search limit (500) *Run* stays off; use *Advanced…* to fix
+   some values.
 
-*Advanced…* opens the panel below with these choices filled in. The result window shows the
-recommendation and why, the recommended candidate (*) with the best others, and *Adopt*, *Save
-script…*, *All results…* (the panel's result table).
+*Run* shows a progress window (pipelines done, time left) with *Stop*: stopping keeps the
+pipelines already run, and the result covers those.
+
+*Advanced…* opens the panel below with these choices filled in. The result window says in one
+sentence which pipeline to use and why, lists it (*) with the best others (checks, noise (SME),
+trials kept, signal change), and offers *Use this pipeline* (a new EEGLAB dataset), *Save
+script…* and *Details…* (the panel's result table).
 
 ## Panel (*Advanced panel…*)
 

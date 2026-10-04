@@ -136,7 +136,7 @@ classdef SimpleDialog < handle
                 nIca = sum(arrayfun(@(k) strcmp(tree(k).inst.type, 'ica'), 2:numel(tree)));   % shared prefixes run once
                 maxLeaves = 500;                       % the search's default limit (maxLeaves)
                 msg = sprintf('%d pipelines will be compared', n);
-                if nIca > 0, msg = sprintf('%s (%d ICA decompositions)', msg, nIca); end
+                if nIca > 0, msg = sprintf('%s (%d ICA decomposition%s)', msg, nIca, pipecompare.utils.ternary(nIca > 1, 's', '')); end
                 if n > maxLeaves
                     msg = sprintf('%s: above the limit of %d. Use Advanced... to fix some values.', msg, maxLeaves);
                 else
