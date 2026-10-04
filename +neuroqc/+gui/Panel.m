@@ -782,8 +782,11 @@ classdef Panel < handle
             neuroqc.utils.log('Condition %s = events %s', name, strjoin(cellstr(codes), ', '));
         end
 
-        function epochFromEEGLAB(obj, com)
+        function epochFromEEGLAB(obj, com, choice)
             % EEGLAB's epoching dialog on a copy; its window is the epoch.
+            % When its events differ from the conditions, or it sets options
+            % the epoch step does not use, you decide in a dialog (choice:
+            % 'replace' | 'keep' for scripts and tests).
             if nargin < 2
                 EEG = neuroqc.live.Session.current();
                 if isempty(EEG), uialert(obj.Fig, 'No dataset in EEGLAB.', 'NeuroQC'); return; end
@@ -795,31 +798,48 @@ classdef Panel < handle
             end
             a = neuroqc.run.Native.argsOf(com, 'pop_epoch');
             assert(numel(a) >= 2 && isnumeric(a{2}) && numel(a{2}) == 2, 'NeuroQC:Native', 'No epoch limits in %s', com);
-            obj.EpochField.Value = num2str(a{2});
             types = a{1}; if ~iscell(types), types = {types}; end
             types = cellfun(@(x) strtrim(char(string(x))), types, 'UniformOutput', false);
             conds = parseConditions(obj.CondField.Value);
+            extra = a(3:end);
+            keys = extra(1:2:end); keys = keys(cellfun(@ischar, keys));
+            ignored = setdiff(keys, {'epochinfo','newname'});
+            differ = ~isempty(conds) && ~isempty(types) && ~isempty(setxor(types, [conds{:, 2}]));
+            if differ || ~isempty(ignored)
+                msg = {};
+                if differ
+                    msg{end+1} = sprintf(['The dialog epochs on %s; your conditions use %s. NeuroQC epochs on the ', ...
+                        'condition events.'], strjoin(types, ', '), strjoin([conds{:, 2}], ', '));
+                end
+                if ~isempty(ignored)
+                    msg{end+1} = sprintf('Option(s) %s of pop_epoch are not part of the epoch step and will not be used.', strjoin(ignored, ', '));
+                end
+                if nargin < 3
+                    opts = {'Keep my conditions', 'Cancel'};
+                    if differ, opts = [{'Use the dialog''s events as conditions'} opts]; end
+                    c = uiconfirm(obj.Fig, strjoin(msg, ' '), 'NeuroQC: epoch', 'Options', opts, ...
+                        'DefaultOption', 1, 'CancelOption', numel(opts));
+                    if strcmp(c, 'Cancel'), return; end
+                    choice = 'keep'; if startsWith(c, 'Use'), choice = 'replace'; end
+                end
+                if differ && strcmp(choice, 'replace'), conds = cell(0, 2); end
+                neuroqc.utils.log('%s', strjoin(msg, ' '));
+            end
+            obj.EpochField.Value = num2str(a{2});
             if isempty(conds) && ~isempty(types)
                 conds = [types(:) cellfun(@(t) {t}, types(:), 'UniformOutput', false)];
                 obj.CondField.Value = conditionsText(conds);
                 neuroqc.utils.log('Conditions set from the epoching events (one per code): %s', strjoin(types, ', '));
-            elseif ~isempty(setxor(types, [conds{:, 2}])) && ~isempty(types)
-                neuroqc.utils.log(['Note: NeuroQC epochs on the condition events (%s); the events chosen in the dialog ', ...
-                    '(%s) are not used. Edit the conditions to change them.'], strjoin([conds{:, 2}], ', '), strjoin(types, ', '));
-            end
-            extra = a(3:end);
-            keys = extra(1:2:end); keys = keys(cellfun(@ischar, keys));
-            ignored = setdiff(keys, {'epochinfo','newname'});
-            if ~isempty(ignored)
-                neuroqc.utils.log('Note: pop_epoch option(s) %s are not part of the NeuroQC epoch step and are not used.', strjoin(ignored, ', '));
             end
             obj.settingsChanged();
             neuroqc.utils.log('Epoch from EEGLAB: [%s] s', obj.EpochField.Value);
         end
 
-        function baselineFromEEGLAB(obj, com)
+        function baselineFromEEGLAB(obj, com, choice)
             % EEGLAB's baseline dialog on epoched preview data (the dataset
-            % itself, or a copy epoched with the planned window).
+            % itself, or a copy epoched with the planned window). A channel
+            % subset is not silently widened: you confirm (choice 'all' |
+            % 'cancel' for scripts and tests).
             if nargin < 2
                 EEG = neuroqc.live.Session.current();
                 if isempty(EEG), uialert(obj.Fig, 'No dataset in EEGLAB.', 'NeuroQC'); return; end
@@ -842,10 +862,19 @@ classdef Panel < handle
                 ms = EEG.times(a{2}([1 end]));                   % given as points
             end
             assert(numel(ms) == 2, 'NeuroQC:Native', 'No baseline range in %s', com);
-            obj.BaseField.Value = num2str(ms / 1000);
-            if numel(a) >= 3 && ~isempty(a{3})
-                neuroqc.utils.log('Note: the baseline dialog selected channels; NeuroQC removes the baseline on all channels.');
+            nAll = []; if ~isempty(EEG), nAll = EEG.nbchan; end
+            if numel(a) >= 3 && ~isempty(a{3}) && ~(~isempty(nAll) && numel(a{3}) >= nAll)
+                msg = sprintf(['The dialog removes the baseline on %d channel(s) only; NeuroQC removes it on all ', ...
+                    'channels (the measure compares channels on the same footing).'], numel(a{3}));
+                if nargin < 3
+                    c = uiconfirm(obj.Fig, msg, 'NeuroQC: baseline', 'Options', {'Use the window for all channels', 'Cancel'}, ...
+                        'DefaultOption', 1, 'CancelOption', 2);
+                    choice = 'all'; if strcmp(c, 'Cancel'), choice = 'cancel'; end
+                end
+                if strcmp(choice, 'cancel'), return; end
+                neuroqc.utils.log('%s', msg);
             end
+            obj.BaseField.Value = num2str(ms / 1000);
             obj.settingsChanged();
             neuroqc.utils.log('Baseline from EEGLAB: [%g %g] ms -> [%s] s', ms, obj.BaseField.Value);
         end

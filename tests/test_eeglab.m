@@ -539,6 +539,28 @@ verifyEqual(tc, app.TrialRule.mode, 'time_ranges');               % a time range
 verifyTrue(tc, contains(app.TrialLabel.Text, 'set on another recording'));   % ...and shown as such
 end
 
+function testEpochAndBaselineConflictsAreDecidedByTheUser(tc)
+% Events of the epoch dialog that differ from the conditions, and a
+% baseline on a channel subset, are resolved by the user's choice.
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
+nqc_setBase(EEG);
+app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.addCondition('target', {'11'});
+[~, ~, com] = pop_epoch(EEG, {'11', '31'}, [-0.3 0.9], 'epochinfo', 'yes');
+app.epochFromEEGLAB(com, 'keep');
+verifyEqual(tc, app.CondField.Value, 'target: 11');              % kept
+verifyEqual(tc, str2num(app.EpochField.Value), [-0.3 0.9]); %#ok<ST2NM>
+app.epochFromEEGLAB(com, 'replace');
+verifyEqual(tc, app.CondField.Value, '11: 11; 31: 31');          % replaced by the dialog's events
+[~, Ep] = evalc('pop_epoch(EEG, {''11'', ''31''}, [-0.3 0.9])');
+[~, com] = pop_rmbase(Ep, [-300 0], [], 1:5);                     % 5 channels only
+app.BaseField.Value = '';
+app.baselineFromEEGLAB(com, 'cancel');
+verifyEmpty(tc, app.BaseField.Value);                            % cancelled: unchanged
+app.baselineFromEEGLAB(com, 'all');
+verifyEqual(tc, str2num(app.BaseField.Value), [-0.3 0]); %#ok<ST2NM>
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');
