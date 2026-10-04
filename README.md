@@ -6,10 +6,9 @@
   <img src="https://img.shields.io/badge/EEGLAB-2026.0.0-blueviolet?style=flat-square" alt="EEGLAB"/>
 </p>
 
-NeuroQC compares EEGLAB preprocessing pipelines on event-related data by the standardized
-measurement error (SME) of your ERP measures, after checking constraints and that a known signal
-survives the processing. It currently supports event-related data only (epoched data, or
-continuous data with event markers).
+NeuroQC compares EEGLAB preprocessing pipelines by the standardized measurement error (SME) of
+your measures, after checking constraints and that a known signal survives the processing: ERP
+measures on event-related data, and band power on continuous data such as resting state.
 
 It starts from the dataset as it is in EEGLAB now, takes the steps, order and fixed values you
 choose, runs every allowed combination of what you left open through EEGLAB itself, evaluates and
@@ -69,6 +68,13 @@ Requirements:
    EEGLAB dataset whose `EEG.history` reproduces it.
 
 Every button of the panel is described in [docs/PANEL.md](docs/PANEL.md).
+
+Band power of continuous data (script only for now; the simple-mode dialog will offer it):
+
+```matlab
+c = neuroqc.eval.Contract('analysis', 'bandpower', 'segment', 2, ...
+    'bands', {'alpha', [8 12], {'O1','Oz','O2'}});              % your band and ROI
+```
 
 **The same from a script**
 

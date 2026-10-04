@@ -676,3 +676,51 @@ function c = nqc_c()
 c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
     'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz','P3','P4'}});
 end
+
+% ------------------------------------------------------------ band power
+function testBandPowerOfContinuousDataEndToEnd(tc)
+% Continuous alpha power: a 9 Hz low-pass destroys the band and is
+% rejected by the signal check; 30 Hz keeps it. Segments are marked with
+% eeg_regepochs and paired across candidates by urevent.
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 10, 'alphaUv', 10, 'artifactTrials', 0));
+nqc_setBase(EEG);
+c = neuroqc.eval.Contract('analysis', 'bandpower', 'segment', 2, 'bands', {'alpha', [8 12], {'Oz', 'O1', 'O2'}});
+p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', 1); p = p.add('lowpass', 'cutoff', {9, 30});
+p = p.add('epoch');
+r = neuroqc.NeuroQC.optimize(p, c);
+lp9 = contains(r.labels, 'cutoff=9'); lp30 = contains(r.labels, 'cutoff=30');
+verifyEqual(tc, r.ranking.table.status{lp9}, 'rejected');
+verifyTrue(tc, contains(r.ranking.table.reason{lp9}, 'amplitude'));
+verifyEqual(tc, r.ranking.table.status{lp30}, 'feasible');
+verifyGreaterThanOrEqual(tc, r.ref.n, 70);                        % 150 s / 2 s, minus edges
+verifyEqual(tc, r.ref.units{1}, 'log10(uV^2)');
+verifyTrue(tc, r.ref.segmented);
+verifyTrue(tc, any(contains(r.rootComs, 'eeg_regepochs')));       % pure EEGLAB, in the script
+end
+
+function testBandPowerContractIsValidated(tc)
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
+st = neuroqc.live.DataState.fromEEG(EEG);
+short = neuroqc.eval.Contract('analysis', 'bandpower', 'segment', 0.1, 'bands', {'theta', [4 8], {'Fz'}});
+verifyError(tc, @() short.validate(st), 'NeuroQC:Contract');      % fewer than two 4 Hz cycles
+high = neuroqc.eval.Contract('analysis', 'bandpower', 'segment', 2, 'bands', {'gamma', [100 140], {'Fz'}});
+verifyError(tc, @() high.validate(st), 'NeuroQC:Contract');       % above Nyquist (125 Hz)
+ok = neuroqc.eval.Contract('analysis', 'bandpower', 'segment', 2, 'bands', {'theta', [4 8], {'Fz'}});
+ok.validate(st);
+[~, Ep] = evalc('pop_epoch(EEG, {''11''}, [-0.2 0.8])');
+verifyError(tc, @() ok.validate(neuroqc.live.DataState.fromEEG(Ep)), 'NeuroQC:Contract');   % segments need continuous data
+end
+
+function testEventRelatedBandPower(tc)
+% With conditions and epoch instead of segments, each epoch's band power
+% is scored; trials are independent (no block resampling).
+EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30, 'alphaUv', 10));
+nqc_setBase(EEG);
+c = neuroqc.eval.Contract('analysis', 'bandpower', 'conditions', {'t', {'11'}; 's', {'31'}}, ...
+    'epoch', [-0.5 1.5], 'bands', {'alpha', [8 12], {'Oz', 'O1', 'O2'}});
+p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', {0.5, 1}); p = p.add('epoch');
+r = neuroqc.NeuroQC.optimize(p, c);
+verifyFalse(tc, r.ref.segmented);
+verifyEqual(tc, r.ref.n, [30 30]);
+verifyTrue(tc, all(strcmp(r.ranking.table.status, 'feasible')));
+end

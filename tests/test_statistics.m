@@ -272,3 +272,26 @@ R = neuroqc.eval.Rank.run([a a], nqc_ref(30), o);
 txt = evalc('neuroqc.eval.Rank.print(R, {''a'', ''b''})');
 verifyTrue(tc, contains(txt, [a.message ' (x2)']));
 end
+
+% ----------------------------------------------- dependent segments
+function testBlockBootstrapKeepsTheErrorRateWithDependentSegments(tc)
+% Segment scores of one recording are autocorrelated. Two candidates with
+% the same true noise (AR(1), phi = 0.6) must rarely be declared different;
+% the moving-block bootstrap keeps the false "worse" rate near the ERP one.
+rs = RandStream('mt19937ar', 'Seed', 21);
+N = 120; sims = 150; phi = 0.6;
+o = neuroqc.eval.Rank.defaults(); o.nBoot = 599;
+ar = @(n) filter(1, [1 -phi], randn(rs, n, 1)) * sqrt(1 - phi ^ 2);
+fa = [0 0];
+for k = 1:sims
+    common = ar(N);
+    a = nqc_cand(common + ar(N)); b = nqc_cand(common + ar(N));
+    for mode = 1:2
+        ref = nqc_ref(N); ref.segmented = (mode == 1);
+        R = neuroqc.eval.Rank.run([a b], ref, o);
+        fa(mode) = fa(mode) + any(~R.table.notDistinguished);
+    end
+end
+fprintf('AR(1) segments: false "worse" rate block %.3f, i.i.d. %.3f\n', fa / sims);
+verifyLessThanOrEqual(tc, fa(1) / sims, 0.07);
+end

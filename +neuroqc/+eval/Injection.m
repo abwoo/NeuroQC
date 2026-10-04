@@ -53,6 +53,19 @@ classdef Injection
             % NeuroQC that a restore step can interpolate back (their expected
             % value after restoring is the true field there)
             [full, labels] = montage(root);
+            if strcmp(contract.analysis, 'bandpower')
+                % a sinusoid at each band's centre frequency over the band's ROI
+                Wfull = zeros(numel(full), numel(contract.bands));
+                t = (0:root.pnts-1) / fs;
+                for b = 1:numel(contract.bands)
+                    Wfull(:, b) = topography(struct('chanlocs', {full}), contract.bands(b).roi);
+                    x = A * Wfull(1:nch, b) * sin(2 * pi * mean(contract.bands(b).freq) * t);
+                    S.data = S.data + repmat(cast(x, 'like', S.data), 1, 1, root.trials);
+                end
+                truth = struct('kind', 'bandpower', 'weights', Wfull, 'labels', {labels}, 'A', A, ...
+                    'onsets', [], 'urevents', []);
+                return;
+            end
             Wfull = zeros(numel(full), numel(contract.components));
             for j = 1:numel(contract.components)
                 Wfull(:, j) = topography(struct('chanlocs', {full}), contract.components(j).roi);
@@ -125,6 +138,26 @@ classdef Injection
             labs = lower({S.chanlocs.labels});
             if S.trials == 1
                 [~, S] = evalc('pop_epoch(S, contract.allEvents(), contract.epoch, ''epochinfo'', ''yes'')');
+            end
+            if strcmp(contract.analysis, 'bandpower')
+                % amplitude of the injected sinusoid per channel (least squares in
+                % each epoch, averaged) against the expected, re-referenced field.
+                % gain = 1: the score is log10 power, so a scale factor shifts
+                % every score equally and leaves its SD (the SME) unchanged; a
+                % filter that attenuates the band is caught by the amplitude error.
+                nB = numel(contract.bands);
+                r.gain = ones(1, nB);
+                amp = nan(1, nB); tc = amp;
+                for b = 1:nB
+                    a = sineAmplitude(S, mean(contract.bands(b).freq));
+                    roi = ismember(labs, lower(contract.bands(b).roi));
+                    e = truth.A * abs(Ew(:, b));
+                    amp(b) = abs(mean(a(roi)) / mean(e(roi)) - 1);
+                    tc(b) = safeCorr(a, e);
+                end
+                r.amplitudeError = max(amp); r.topoCorr = min(tc);
+                r.notApplicable = {'latencyShiftMs', 'artifactPct', 'waveformCorr'};   % no waveform in a band power
+                return;
             end
             times = S.xmin + (0:S.pnts-1) / S.srate;
             bl = times >= contract.baseline(1) - 1e-9 & times <= contract.baseline(2) + 1e-9;
@@ -282,6 +315,19 @@ E = zeros(numel(leafLabels), size(F, 2));
 E(ok, :) = F(loc(ok), :);
 end
 
+
+function amp = sineAmplitude(S, f0)
+% least-squares amplitude of a sinusoid at f0, per channel, averaged over epochs
+X = double(S.data); [nch, n, nt] = size(X);
+t = (0:n-1)' / S.srate;
+B = [sin(2 * pi * f0 * t) cos(2 * pi * f0 * t)];
+amp = zeros(nch, 1);
+for k = 1:nt
+    beta = B \ X(:, :, k)';
+    amp = amp + sqrt(sum(beta .^ 2, 1))';
+end
+amp = amp / nt;
+end
 
 function r = safeCorr(a, b)
 a = a(:) - mean(a(:)); b = b(:) - mean(b(:));

@@ -235,6 +235,39 @@ the fraction of the spread that lies between that choice's values. The summary d
 the measured quantity depends on processing. It is not used to rank or recommend pipelines, and it
 contains no comparison between conditions. [`neuroqc.eval.Rank.robustness`, `result.robustness`]
 
+## 8. Band power (continuous data, e.g. resting state)
+
+**Segments.** A band-power contract with `segment` *T* cuts the continuous recording into
+consecutive *T*-second segments. They are marked with EEGLAB's own `eeg_regepochs(…,
+'extractepochs', 'off')`, which inserts the events and their urevents. A segment is therefore
+identified by its urevent in every candidate, exactly as an ERP trial is, and a segment that a
+candidate rejects is missing (NaN) in that candidate. *T* must hold at least two cycles of the
+lowest band edge (*T* ≥ 2/*f*₁), and band edges must lie below Nyquist.
+
+**Score and SME.** Per segment, the score is log₁₀ of the mean power in the band. The power is the
+one-sided power spectral density with a Hann taper (Harris, 1978), averaged over the band's bins
+and the ROI channels. The SME is SD/√*n* over segments, as for a mean amplitude (section 1). With
+`conditions` and `epoch` instead of `segment`, each epoch's band power is scored (event-related
+band power).
+
+**No gain correction is needed.** The log is scale-free: if the data are multiplied by *c*, every
+score shifts by 2·log₁₀ *c*, and their SD (the SME) is unchanged. The gain of section 2 is
+therefore 1 for band power. A step that attenuates the band itself is caught by the signal check:
+a sinusoid at the band's centre frequency, over the band's ROI, is carried through the candidate
+with the same decisions as the real data. Its recovered amplitude (least squares per epoch,
+averaged) is compared with the expected, re-referenced field (amplitude error, topography
+correlation).
+
+**Dependent segments: moving-block bootstrap.** Consecutive segments of one recording are not
+independent, because state and noise change slowly. Resampling them one by one treats them as
+independent and understates how much an SME difference varies. In a simulation with AR(1) segment
+scores (φ = 0.6, 120 segments, two candidates with the same true noise), the false "worse" rate
+was 11.3 % with independent resampling and 5.3 % with blocks (`test_statistics`). The comparison
+of section 3 therefore resamples segments in blocks of *l* = round(*n*^{1/3}) consecutive segments.
+This is the moving-block bootstrap (Künsch, 1989), with the block-length order of Hall, Horowitz
+and Jing (1995). ERP trials, which are separated by inter-trial intervals and time-locked to
+different events, are resampled one by one as before.
+
 ## References
 
 - Clayson, P. E., Baldwin, S. A., Rocha, H. A., & Larson, M. J. (2021). The data-processing
@@ -246,10 +279,16 @@ contains no comparison between conditions. [`neuroqc.eval.Rank.robustness`, `res
   dynamics including independent component analysis. *Journal of Neuroscience Methods, 134*(1),
   9–21.
 - Efron, B., & Tibshirani, R. J. (1993). *An Introduction to the Bootstrap*. Chapman & Hall.
+- Hall, P., Horowitz, J. L., & Jing, B.-Y. (1995). On blocking rules for the bootstrap with dependent
+  data. *Biometrika, 82*(3), 561–574.
 - Hansen, P. R., Lunde, A., & Nason, J. M. (2011). The model confidence set. *Econometrica, 79*(2),
   453–497.
+- Harris, F. J. (1978). On the use of windows for harmonic analysis with the discrete Fourier
+  transform. *Proceedings of the IEEE, 66*(1), 51–83.
 - Kothe, C. A. E., & Makeig, S. (2013). BCILAB: a platform for brain-computer interface development.
   *Journal of Neural Engineering, 10*(5), 056014 (artifact subspace reconstruction).
+- Künsch, H. R. (1989). The jackknife and the bootstrap for general stationary observations.
+  *The Annals of Statistics, 17*(3), 1217–1241.
 - Lopez-Calderon, J., & Luck, S. J. (2014). ERPLAB: an open-source toolbox for the analysis of
   event-related potentials. *Frontiers in Human Neuroscience, 8*, 213.
 - Luck, S. J., Stewart, A. X., Simmons, A. M., & Rhemtulla, M. (2021). Standardized measurement

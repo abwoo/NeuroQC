@@ -157,6 +157,28 @@ outside = w(~ismember(L, {'fz', 'pz', 'p3'}));
 verifyTrue(tc, any(outside > 0.05 & outside < 0.95));     % graded, not a box
 end
 
+function testBandPowerSignalCheck(tc)
+% A sinusoid at the band centre goes through the candidate: a 30 Hz
+% low-pass keeps the alpha band, a 9 Hz low-pass removes most of it.
+% The gain is 1 for log power (scale-free: the SD of log power does not
+% change when the data are scaled).
+EEG = tc.TestData.EEG;
+c = neuroqc.eval.Contract('analysis', 'bandpower', 'segment', 2, 'bands', {'alpha', [8 12], {'Oz', 'O1', 'O2'}});
+[~, root] = evalc('neuroqc.run.Executor.prepareRoot(EEG, c)');
+ref = neuroqc.eval.Measure.reference(root, c);
+err = zeros(1, 2); cut = [30 9];
+for k = 1:2
+    [S, truth] = neuroqc.eval.Injection.prepare(root, c, ref);
+    in = inst('lowpass', 'cutoff', cut(k));
+    S = neuroqc.run.Steps.replayDecision(in, S, struct(), ctx(tc));
+    r = neuroqc.eval.Injection.compare(S, c, truth, {in});
+    err(k) = r.amplitudeError;
+    verifyEqual(tc, r.gain, 1);
+end
+verifyLessThan(tc, err(1), 0.02);
+verifyGreaterThan(tc, err(2), 0.3);
+end
+
 function s = inst(type, varargin)
 p = struct();
 for k = 1:2:numel(varargin), p.(varargin{k}) = varargin{k+1}; end
