@@ -285,6 +285,12 @@ different events, are resampled one by one as before.
   453–497.
 - Harris, F. J. (1978). On the use of windows for harmonic analysis with the discrete Fourier
   transform. *Proceedings of the IEEE, 66*(1), 51–83.
+- Kane, N., Acharya, J., Beniczky, S., Caboclo, L., Finnigan, S., Kaplan, P. W., et al. (2017). A
+  revised glossary of terms most commonly used by clinical electroencephalographers and updated
+  proposal for the report format of the EEG findings. *Clinical Neurophysiology Practice, 2*,
+  170–185.
+- Kappenman, E. S., Farrens, J. L., Zhang, W., Stewart, A. X., & Luck, S. J. (2021). ERP CORE: An
+  open resource for human event-related potential research. *NeuroImage, 225*, 117465.
 - Kothe, C. A. E., & Makeig, S. (2013). BCILAB: a platform for brain-computer interface development.
   *Journal of Neural Engineering, 10*(5), 056014 (artifact subspace reconstruction).
 - Künsch, H. R. (1989). The jackknife and the bootstrap for general stationary observations.

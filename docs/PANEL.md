@@ -1,6 +1,32 @@
 # Panel reference
 
-Open EEGLAB > Tools > NeuroQC > *Optimize from current dataset…*. NeuroQC has no load step: it
+## Simple mode (*Compare pipelines…*, `pop_pipecompare`)
+
+Three choices, nothing preselected:
+
+1. **Data**, judged from the data: epoched, or continuous with events → event-related (ERP);
+   continuous without events → band power. The reason is shown, and you can change it.
+2. **Measure.** ERP: the time-locking event types (one condition each) and a component. Its
+   epoch, baseline, electrode sites and mean-amplitude window are those of ERP CORE (Kappenman et
+   al., 2021, Tables 1 and 2): N170 PO8 110–150 ms; MMN FCz 125–225 ms; N2pc PO7/PO8 200–275 ms;
+   N400 CPz 300–500 ms; P3 Pz 300–600 ms; LRP C3/C4 −100–0 ms (response-locked); ERN FCz 0–100
+   ms (response-locked). Each condition's waveform is scored at these sites; difference waves
+   are formed later in your analysis. Band power: delta 1–4, theta 4–8, alpha 8–13, beta 13–30
+   Hz over all EEG channels, in 2 s segments.
+3. **Compare**: *filters only* (high-pass × low-pass edges), *standard* (+ bad channels,
+   ICA/ICLabel threshold, epoch rejection) or *full* (+ ASR), each over the catalog's default
+   lists. The number of pipelines (and of ICA decompositions) is shown live. Steps the data or
+   the installation cannot support are left out, with the reason: no channel locations, no
+   ICLabel or clean_rawdata, or data that are already epoched. Above the search limit (500) *Run*
+   stays off; use *Advanced…* to fix some values.
+
+*Advanced…* opens the panel below with these choices filled in. The result window shows the
+recommendation and why, the recommended candidate (*) with the best others, and *Adopt*, *Save
+script…*, *All results…* (the panel's result table).
+
+## Panel (*Advanced panel…*)
+
+Open EEGLAB > Tools > NeuroQC > *Advanced panel…*. NeuroQC has no load step: it
 always works on the current EEGLAB dataset and never modifies it during a search. Each candidate
 runs on its own copy.
 

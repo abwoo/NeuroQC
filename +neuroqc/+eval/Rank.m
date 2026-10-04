@@ -288,6 +288,20 @@ classdef Rank
                 'min','median','max','range','mostInfluentialChoice','share'});
         end
 
+        function c = commonReasons(R, k)
+            % The k most frequent reasons why candidates are not feasible, as
+            % 'reason (xN)'. Each reason is kept as its own item (a step key
+            % may hold ';'), and only free-standing numbers are masked, so
+            % reasons that differ only in a value are counted together.
+            parts = [R.whyList{~strcmp(R.table.status, 'feasible')}];
+            parts = regexprep(parts, '(?<![\w.])\d+(\.\d+)?', '#');
+            [u, ~, ic] = unique(parts(~cellfun(@isempty, parts)));
+            c = {};
+            if isempty(u), return; end
+            [cnt, ord] = sort(accumarray(ic(:), 1), 'descend');
+            c = arrayfun(@(j) sprintf('%s (x%d)', u{ord(j)}, cnt(j)), 1:min(k, numel(ord)), 'UniformOutput', false);
+        end
+
         function print(R, labels)
             T = R.table; o = R.options;
             neuroqc.utils.log(['Ranking by %s gain-corrected SME (SME / signal gain; lower = more precise). diff = difference from the best, ', ...
@@ -307,17 +321,8 @@ classdef Rank
             end
             if isempty(R.byStratum)
                 neuroqc.utils.log('NO FEASIBLE PIPELINE: no candidate satisfies the constraints (none relaxed).');
-                % each reason is kept as its own item (a step key may hold ';'),
-                % and only free-standing numbers are masked, so reasons that
-                % differ only in a value are counted together
-                parts = [R.whyList{~strcmp(T.status, 'feasible')}];
-                parts = regexprep(parts, '(?<![\w.])\d+(\.\d+)?', '#');
-                [u, ~, ic] = unique(parts(~cellfun(@isempty, parts)));
-                if ~isempty(u)
-                    [cnt, ord] = sort(accumarray(ic(:), 1), 'descend');
-                    neuroqc.utils.log('Most common reasons: %s', strjoin(arrayfun(@(k) sprintf('%s (x%d)', u{ord(k)}, cnt(k)), ...
-                        1:min(3, numel(ord)), 'UniformOutput', false), '; '));
-                end
+                common = neuroqc.eval.Rank.commonReasons(R, 3);
+                if ~isempty(common), neuroqc.utils.log('Most common reasons: %s', strjoin(common, '; ')); end
                 return;
             end
             for s = 1:numel(R.byStratum)

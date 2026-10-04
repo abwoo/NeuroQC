@@ -5,6 +5,10 @@ All notable changes. Versions follow `NeuroQC.Version`; each release has a git t
 ## Unreleased
 
 **Added**
+- Simple mode: EEGLAB > Tools > NeuroQC > *Compare pipelines…* (`pop_pipecompare`). It takes three
+  choices: data type, a measure (ERP CORE component presets or a frequency band), and a recipe
+  (filters, standard, full). It shows a live pipeline count, a result window, and an
+  EEGLAB-style command in ALLCOM. The panel becomes *Advanced panel…*.
 - Band power for continuous data (e.g. resting state):
   `Contract('analysis', 'bandpower', 'segment', T, 'bands', ...)`. Segments are marked with
   `eeg_regepochs` and paired by urevent. The score is log10 band power (Hann taper), and the

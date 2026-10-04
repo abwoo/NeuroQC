@@ -8,7 +8,7 @@ Run it when no other process is driving MATLAB.
 cd /path/to/NeuroQC; addpath(pwd, fullfile(pwd, 'tests'));
 eeglab;                                   % main window
 nqc_setBase(nqc_synth(struct('seconds', 60, 'nPerCond', 10))); eeglab redraw
-neuroqc.NeuroQC.app();                    % or EEGLAB > Tools > NeuroQC > Optimize from current dataset...
+neuroqc.NeuroQC.app();                    % or EEGLAB > Tools > NeuroQC > Advanced panel...
 ```
 
 For every dialog: **OK** must fill the panel as described, **Cancel** must change nothing and show no
@@ -34,5 +34,9 @@ error. The History list must keep 1 row unless the step says *Apply now*.
 | 16 | Select a result, *Inspect selected (EEGLAB)…* > candidate > *Scroll data*. | `eegplot` titled `NeuroQC candidate n (not adopted)`; ALLEEG unchanged. |
 | 17 | Make the window small. | The panel scrolls; no part is squeezed to nothing. |
 | 18 | Start *Run search* on a plan that takes a while, then close the panel window while it runs. | No error in the Command Window when the search ends; the result is in `neuroqc_result`. Same for closing during *Inspect selected* and *Adopt selected*. |
+| 19 | EEGLAB > Tools > NeuroQC > *Compare pipelines…* | Data = Event-related with the reason `Continuous data with events: 11 (10), 31 (10).`; Measure `(choose)`, no event selected, Compare `(choose)`, *Run* greyed. |
+| 20 | Select `11` and `31`, Measure `P3`, Compare *Filters only*; *Run* | Count `12 pipelines will be compared`; after Run a window `Pipeline comparison` with the recommendation first (`*`); ALLCOM gains `EEG = pop_pipecompare(EEG, ...)`. |
+| 21 | In the result window: *Save script…*, then *Adopt*, then *All results…* | A `.m` file is written; a new EEGLAB dataset appears; the panel opens with the result table. |
+| 22 | *Compare pipelines…* again, Compare *Full*; then *Advanced…* | Count says above the limit and *Run* is greyed; *Advanced…* opens the panel with conditions, epoch, baseline, the P3 component and the full plan filled in. |
 
 Report any row whose result differs from the expected column.
