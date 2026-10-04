@@ -229,6 +229,12 @@ verifyFalse(tc, contains(w.Headline.Text, 'cutoff='));          % the settings i
 verifyTrue(tc, startsWith(w.Table.Data{1, 6}, 'high-pass '));
 verifyEqual(tc, size(w.Table.Data, 1), 5);
 verifyEqual(tc, w.Table.Data{1, 1}, sprintf('%d*', r.ranking.recommended));   % always shown, first
+w.AllBox.Value = true; w.showRows();
+verifyEqual(tc, size(w.Table.Data), [12 7]);                   % every pipeline, with why it was excluded
+i = find(strcmp(w.Table.Data(:, 2), 'passed') & ~endsWith(w.Table.Data(:, 1), '*'), 1);
+w.Table.Selection = [i 1]; k = str2double(w.Table.Data{i, 1});
+w.adopt();
+verifyEqual(tc, evalin('base', 'EEG.setname'), sprintf('%s PipeCompare#%d', EEG.setname, k));   % the selected one
 f = [tempname '.m']; c2 = onCleanup(@() delete(f)); %#ok<NASGU>
 w.saveScript(f);
 verifyTrue(tc, isfile(f));

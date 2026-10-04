@@ -45,8 +45,10 @@ off). When the choices cannot be filled in (e.g. a component's electrode is miss
 why and the dialog stays open. The result window says in one
 sentence which pipeline to use and why, naming pipelines by the settings compared (e.g. high-pass
 0.5 Hz, low-pass 30 Hz), lists it (*) with the best others (checks, noise (SME), trials kept,
-signal change, settings) above one line with the steps every pipeline shares, and offers *Use this pipeline* (a new EEGLAB dataset), *Save
-script…* and *Details…* (the panel's result table).
+signal change, settings) above one line with the steps every pipeline shares. *Show all
+pipelines* lists every pipeline with the reason it was excluded. *Use this pipeline* builds the
+pipeline again (ICA too; a progress window says so) as a new EEGLAB dataset, which is in memory
+until saved; *Save script…* writes a function that runs the steps on any recording.
 
 ## Panel (*Advanced panel…*)
 

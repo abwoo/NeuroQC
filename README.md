@@ -134,7 +134,9 @@ pipecompare_setup                         % run from the PipeCompare folder
 5. The result window says which pipeline to use and why, naming each pipeline by its settings
    (for example *high-pass 0.5 Hz, low-pass 30 Hz*). **Use this pipeline** stores it as a new
    EEGLAB dataset; **Save script…** writes it as a MATLAB function that you can run on your other
-   recordings; **Details…** opens the full result table.
+   recordings; **Show all pipelines** lists every pipeline with the reason it was excluded.
+   **Use this pipeline** runs the steps again (ICA included), so it can take a while; save the new
+   dataset afterwards with File > Save current dataset as.
 
 For any EEGLAB step, order search, several components or different constraints, open
 **Advanced…** in the dialog, or **Tools > PipeCompare > Advanced panel…**. The panel defines ERP

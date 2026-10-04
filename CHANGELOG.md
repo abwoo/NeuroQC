@@ -30,6 +30,9 @@ release has a git tag `vX.Y.Z`.
 - *Advanced…* in the simple dialog no longer leaves an empty panel and an error when the choices
   cannot be handed over (e.g. a missing electrode): it says why and the dialog stays open. It is
   off for band power, which the panel does not define.
+- Result window: *Use this pipeline* shows that it is building the pipeline again (ICA too) and
+  then says the new dataset is not saved yet; *Show all pipelines* lists every pipeline with the
+  reason it was excluded, in place of *Details…* (the panel remains in the menu).
 
 - A plan with ASR or ICLabel IC removal is now illegal when the clean_rawdata or ICLabel plugin is
   missing, with that reason, before the search starts; previously every candidate failed during it.
