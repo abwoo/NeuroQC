@@ -31,5 +31,3 @@ checkpoints/
 .env.*
 *.pem
 *.key
-__pycache__/
-.pytest_cache/

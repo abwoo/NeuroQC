@@ -16,8 +16,8 @@ classdef DataState
             assert(isstruct(EEG) && isscalar(EEG) && isfield(EEG, 'data') && ~isempty(EEG.data), ...
                 'NeuroQC:NoDataset', 'No EEG dataset with data is loaded in EEGLAB.');
             s = struct();
-            s.setname = fieldOr(EEG, 'setname', '');
-            s.filename = fullfile(fieldOr(EEG, 'filepath', ''), fieldOr(EEG, 'filename', ''));
+            s.setname = neuroqc.utils.fieldOr(EEG, 'setname', '');
+            s.filename = fullfile(neuroqc.utils.fieldOr(EEG, 'filepath', ''), neuroqc.utils.fieldOr(EEG, 'filename', ''));
             s.nbchan = EEG.nbchan;
             s.srate = EEG.srate;
             s.pnts = EEG.pnts;
@@ -25,7 +25,7 @@ classdef DataState
             s.isEpoched = EEG.trials > 1 || (isfield(EEG, 'epoch') && ~isempty(EEG.epoch));
             s.xmin = EEG.xmin; s.xmax = EEG.xmax;
             s.labels = channelLabels(EEG);
-            s.nEvents = numel(fieldOr(EEG, 'event', []));
+            s.nEvents = numel(neuroqc.utils.fieldOr(EEG, 'event', []));
             [s.eventTypes, s.eventCounts] = eventTypes(EEG);
             s.hasUrevent = isfield(EEG, 'urevent') && ~isempty(EEG.urevent);
             s.reference = referenceOf(EEG);
@@ -43,7 +43,7 @@ classdef DataState
             x = EEG.data(:, 1:min(EEG.pnts, round(10 * EEG.srate)), 1);
             s.unitGuess = 'uV';                % EEGLAB convention; 'V' when amplitudes are ~1e-6 smaller
             m = median(abs(double(x(:)))); if m > 0 && m < 1e-3, s.unitGuess = 'V'; end
-            s.history = neuroqc.live.History.parse(fieldOr(EEG, 'history', ''));
+            s.history = neuroqc.live.History.parse(neuroqc.utils.fieldOr(EEG, 'history', ''));
             s.process = s.history(ismember({s.history.kind}, {'process'}));
             s.filters = filterSummary(s.history);
             for q = numel(s.process):-1:1
@@ -81,10 +81,6 @@ classdef DataState
             end
         end
     end
-end
-
-function v = fieldOr(s, f, d)
-if isfield(s, f) && ~isempty(s.(f)), v = s.(f); else, v = d; end
 end
 
 function t = epochText(s)
@@ -196,7 +192,7 @@ ica = struct('present', false, 'nComponents', 0, 'nChannels', 0, 'flagged', [], 
 if ~isfield(EEG, 'icaweights') || isempty(EEG.icaweights), return; end
 ica.present = true;
 ica.nComponents = size(EEG.icaweights, 1);
-ica.nChannels = numel(fieldOr(EEG, 'icachansind', 1:EEG.nbchan));
+ica.nChannels = numel(neuroqc.utils.fieldOr(EEG, 'icachansind', 1:EEG.nbchan));
 if isfield(EEG, 'reject') && isfield(EEG.reject, 'gcompreject') && ~isempty(EEG.reject.gcompreject)
     ica.flagged = find(EEG.reject.gcompreject);
 end

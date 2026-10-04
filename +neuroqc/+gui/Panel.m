@@ -228,7 +228,7 @@ classdef Panel < handle
             else, locs = sprintf('channel locations: %d of %d (none for %s)', s.nLocated, s.nbchan, strjoin(s.unlocated, ', ')); end
             obj.DatasetLabel.Text = sprintf(['Set %s: %s%s\n%d ch | %g Hz | %s | %d events\n', ...
                 'Reference: %s | ICA: %s | %s\nFilters: %s'], mat2str(live.currentSet), s.setname, stored, ...
-                s.nbchan, s.srate, shape, s.nEvents, s.reference, s.ica.summary, locs, orDash(s.filters.text));
+                s.nbchan, s.srate, shape, s.nEvents, s.reference, s.ica.summary, locs, neuroqc.gui.PanelText.orDash(s.filters.text));
             obj.autoFill(s);
             obj.checkTrialRule(EEG, s);
             if isempty(s.warnings), obj.WarnArea.Value = {'No inconsistencies between data and history.'};
@@ -261,7 +261,7 @@ classdef Panel < handle
             if s.isEpoched
                 v.EpochField = sprintf('%g %g', round(1000 * s.xmin) / 1000, round(1000 * s.xmax) / 1000);
                 if ~isempty(s.lockingTypes)
-                    v.CondField = conditionsText([s.lockingTypes(:) cellfun(@(t) {t}, s.lockingTypes(:), 'UniformOutput', false)]);
+                    v.CondField = neuroqc.gui.PanelText.conditionsText([s.lockingTypes(:) cellfun(@(t) {t}, s.lockingTypes(:), 'UniformOutput', false)]);
                 end
             end
             if ~isempty(s.baselineMs), v.BaseField = sprintf('%g %g', s.baselineMs / 1000); end
@@ -287,7 +287,7 @@ classdef Panel < handle
             ctxt = struct('epoch', obj.EpochField.Value, 'baseline', obj.BaseField.Value);
             for k = 1:numel(S)
                 data{k, 1} = k; data{k, 2} = S(k).id;
-                data{k, 3} = settingsText(S(k), ctxt); data{k, 4} = S(k).pinned;
+                data{k, 3} = neuroqc.gui.PanelValues.settingsText(S(k), ctxt); data{k, 4} = S(k).pinned;
             end
             obj.PlanTable.Data = data;
             obj.OrderDrop.Value = obj.Plan.OrderMode;
@@ -312,7 +312,7 @@ classdef Panel < handle
             obj.Plan = obj.Plan.add(obj.TypeDrop.Value);
             obj.invalidate('Plan changed');
             obj.showPlan();
-            neuroqc.utils.log('Added %s: %s', obj.Plan.Slots(end).id, settingsText(obj.Plan.Slots(end)));
+            neuroqc.utils.log('Added %s: %s', obj.Plan.Slots(end).id, neuroqc.gui.PanelValues.settingsText(obj.Plan.Slots(end)));
         end
 
         function addEeglabStep(obj, label, com)
@@ -343,7 +343,7 @@ classdef Panel < handle
                 obj.Plan = obj.Plan.addNative(com, regexprep(e.fn, '^pop_', ''));
                 obj.invalidate('Plan changed');
                 obj.showPlan();
-                neuroqc.utils.log('Added %s: %s', obj.Plan.Slots(end).id, settingsText(obj.Plan.Slots(end)));
+                neuroqc.utils.log('Added %s: %s', obj.Plan.Slots(end).id, neuroqc.gui.PanelValues.settingsText(obj.Plan.Slots(end)));
             catch ME
                 uialert(obj.Fig, ME.message, 'NeuroQC');
             end
@@ -418,7 +418,7 @@ classdef Panel < handle
                         end
                         neuroqc.utils.log('%s: %s Only the step''s values were used.', slot.id, msg);
                     end
-                    alts{j} = addValues(alt, vals);
+                    alts{j} = neuroqc.gui.PanelValues.addValues(alt, vals);
                 else
                     new = stepAlt(com);
                     if strcmp(alt.type, 'eeglab') && strcmp(new.type, 'eeglab')
@@ -437,7 +437,7 @@ classdef Panel < handle
                     end
                 end
                 obj.Plan.Slots(k).alternatives = alts;
-                neuroqc.utils.log('%s: %s', slot.id, settingsText(obj.Plan.Slots(k)));
+                neuroqc.utils.log('%s: %s', slot.id, neuroqc.gui.PanelValues.settingsText(obj.Plan.Slots(k)));
                 obj.invalidate('Plan changed'); obj.showPlan();
             catch ME
                 uialert(obj.Fig, ME.message, 'NeuroQC');
@@ -451,7 +451,7 @@ classdef Panel < handle
             k = obj.selected(); if isempty(k), return; end
             alts = obj.Plan.Slots(k).alternatives;
             j = find(~cellfun(@(a) strcmp(a.type, 'none'), alts), 1);
-            alts{j} = setParam(alts{j}, name, values);
+            alts{j} = neuroqc.gui.PanelValues.setParam(alts{j}, name, values);
             obj.Plan.Slots(k).alternatives = alts;
             obj.invalidate('Plan changed'); obj.showPlan();
         end
@@ -463,7 +463,7 @@ classdef Panel < handle
             slot = obj.Plan.Slots(k);
             j = find(~cellfun(@(a) strcmp(a.type, 'none'), slot.alternatives), 1);
             alt = slot.alternatives{j};
-            rows = paramRows(alt);
+            rows = neuroqc.gui.PanelValues.paramRows(alt);
             if isempty(rows)
                 uialert(obj.Fig, sprintf('%s has no parameters of its own (settings come from the analysis contract or the workflow command).', slot.id), 'NeuroQC');
                 return;
@@ -481,15 +481,15 @@ classdef Panel < handle
             uibutton(bg, 'Text', 'OK', 'ButtonPushedFcn', @(~, ~) apply());
             function pick()
                 sel = T.Selection; if isempty(sel), return; end
-                L = obj.pickChannels(tokens(T.Data{sel(1, 1), 2}));
-                if ~isempty(L), T.Data{sel(1, 1), 2} = strjoin(cellfun(@quoteItem, L, 'UniformOutput', false), ' '); end
+                L = obj.pickChannels(neuroqc.gui.PanelText.tokens(T.Data{sel(1, 1), 2}));
+                if ~isempty(L), T.Data{sel(1, 1), 2} = strjoin(cellfun(@neuroqc.gui.PanelText.quoteItem, L, 'UniformOutput', false), ' '); end
             end
             function apply()
                 try
                     a = alt;
                     for r = 1:size(rows, 1)
                         if strcmp(T.Data{r, 2}, rows{r, 2}), continue; end
-                        a = setParam(a, rows{r, 1}, parseValues(T.Data{r, 2}, rows{r, 4}));
+                        a = neuroqc.gui.PanelValues.setParam(a, rows{r, 1}, neuroqc.gui.PanelValues.parseValues(T.Data{r, 2}, rows{r, 4}));
                     end
                     obj.Plan.Slots(k).alternatives{j} = a;
                     obj.invalidate('Plan changed'); obj.showPlan();
@@ -653,8 +653,8 @@ classdef Panel < handle
         % -------------------------------------------------------------- run
         function c = contract(obj)
             [ep, bl] = obj.windows();
-            c = neuroqc.eval.Contract('conditions', parseConditions(obj.CondField.Value), ...
-                'components', parseComponents(obj.CompField.Value), 'epoch', ep, 'baseline', bl, 'trials', obj.TrialRule);
+            c = neuroqc.eval.Contract('conditions', neuroqc.gui.PanelText.parseConditions(obj.CondField.Value), ...
+                'components', neuroqc.gui.PanelText.parseComponents(obj.CompField.Value), 'epoch', ep, 'baseline', bl, 'trials', obj.TrialRule);
         end
 
         function [ep, bl] = windows(obj)
@@ -699,7 +699,7 @@ classdef Panel < handle
                 'auto: from the amplitude scale of the dataset; V: scaled to uV on NeuroQC''s copy (ICA weights too)');
             uilabel(gl, 'Text', '');
             uilabel(gl, 'Text', 'Checkpoint folder');
-            ck = uilabel(gl, 'Text', orDash(o.checkpoint));
+            ck = uilabel(gl, 'Text', neuroqc.gui.PanelText.orDash(o.checkpoint));
             uibutton(gl, 'Text', 'Choose...', 'ButtonPushedFcn', @(~, ~) pickDir());
             uilabel(gl, 'Text', 'Parallel (Parallel Computing Toolbox)');
             pa = uicheckbox(gl, 'Text', '', 'Value', o.parallel);
@@ -719,7 +719,7 @@ classdef Panel < handle
 
         function setOptions(obj, o)
             obj.Options = o;
-            neuroqc.utils.log('Search options: unit %s, checkpoint %s, parallel %d', o.dataUnit, orDash(o.checkpoint), o.parallel);
+            neuroqc.utils.log('Search options: unit %s, checkpoint %s, parallel %d', o.dataUnit, neuroqc.gui.PanelText.orDash(o.checkpoint), o.parallel);
             obj.invalidate('Options changed');
         end
 
@@ -812,11 +812,11 @@ classdef Panel < handle
                 if isempty(idx), return; end
                 codes = s.eventTypes(idx);
                 a = inputdlg(sprintf('Name of the condition with events %s:', strjoin(codes, ', ')), ...
-                    'NeuroQC condition', 1, {sprintf('cond%d', size(parseConditions(obj.CondField.Value), 1) + 1)});
+                    'NeuroQC condition', 1, {sprintf('cond%d', size(neuroqc.gui.PanelText.parseConditions(obj.CondField.Value), 1) + 1)});
                 if isempty(a) || isempty(strtrim(a{1})), return; end
                 name = strtrim(a{1});
             end
-            conds = parseConditions(obj.CondField.Value);
+            conds = neuroqc.gui.PanelText.parseConditions(obj.CondField.Value);
             assert(~any(strcmpi(conds(:, 1), name)), 'NeuroQC:Contract', 'A condition named %s exists already.', name);
             used = intersect(cellstr(codes), [conds{:, 2}]);
             if ~isempty(used)
@@ -824,7 +824,7 @@ classdef Panel < handle
                 return;
             end
             conds(end+1, :) = {name, cellstr(codes)};
-            obj.setField(obj.CondField, conditionsText(conds));
+            obj.setField(obj.CondField, neuroqc.gui.PanelText.conditionsText(conds));
             neuroqc.utils.log('Condition %s = events %s', name, strjoin(cellstr(codes), ', '));
         end
 
@@ -846,7 +846,7 @@ classdef Panel < handle
             assert(numel(a) >= 2 && isnumeric(a{2}) && numel(a{2}) == 2, 'NeuroQC:Native', 'No epoch limits in %s', com);
             types = a{1}; if ~iscell(types), types = {types}; end
             types = cellfun(@(x) strtrim(char(string(x))), types, 'UniformOutput', false);
-            conds = parseConditions(obj.CondField.Value);
+            conds = neuroqc.gui.PanelText.parseConditions(obj.CondField.Value);
             extra = a(3:end);
             keys = extra(1:2:end); keys = keys(cellfun(@ischar, keys));
             ignored = setdiff(keys, {'epochinfo','newname'});
@@ -874,7 +874,7 @@ classdef Panel < handle
             obj.EpochField.Value = num2str(a{2});
             if isempty(conds) && ~isempty(types)
                 conds = [types(:) cellfun(@(t) {t}, types(:), 'UniformOutput', false)];
-                obj.CondField.Value = conditionsText(conds);
+                obj.CondField.Value = neuroqc.gui.PanelText.conditionsText(conds);
                 neuroqc.utils.log('Conditions set from the epoching events (one per code): %s', strjoin(types, ', '));
             end
             obj.settingsChanged();
@@ -942,13 +942,13 @@ classdef Panel < handle
                 roi = obj.pickChannels();
                 if isempty(roi), return; end
             end
-            comps = parseComponents(obj.CompField.Value);
+            comps = neuroqc.gui.PanelText.parseComponents(obj.CompField.Value);
             comps(end+1, :) = {name, win, cellstr(roi), {measure, polarity}};
-            obj.setField(obj.CompField, componentsText(comps));
+            obj.setField(obj.CompField, neuroqc.gui.PanelText.componentsText(comps));
         end
 
         function setRoi(obj, k, roi)
-            comps = parseComponents(obj.CompField.Value);
+            comps = neuroqc.gui.PanelText.parseComponents(obj.CompField.Value);
             if isempty(comps), uialert(obj.Fig, 'Add a component first.', 'NeuroQC'); return; end
             if nargin < 2
                 k = 1;
@@ -960,7 +960,7 @@ classdef Panel < handle
                 if isempty(roi), return; end
             end
             comps{k, 3} = cellstr(roi);
-            obj.setField(obj.CompField, componentsText(comps));
+            obj.setField(obj.CompField, neuroqc.gui.PanelText.componentsText(comps));
         end
 
         function labels = pickChannels(obj, current)
@@ -1041,7 +1041,7 @@ classdef Panel < handle
             obj.TrialRuleSource = '';
             EEG = neuroqc.live.Session.current();
             if ~isempty(EEG), obj.TrialRuleSource = recordingId(EEG); end
-            obj.TrialLabel.Text = trialText(rule);
+            obj.TrialLabel.Text = neuroqc.gui.PanelText.trialText(rule);
             neuroqc.utils.log('Trial rule: %s', obj.TrialLabel.Text);
             obj.settingsChanged();
         end
@@ -1067,8 +1067,8 @@ classdef Panel < handle
                 obj.TrialRule = struct('mode', 'all'); obj.TrialRuleSource = '';
                 obj.TrialLabel.Text = 'all trials';
             else
-                msg = sprintf('Trial rule kept from the previous recording (%s): check that it fits this one.', trialText(r));
-                obj.TrialLabel.Text = [trialText(r) '  (set on another recording)'];
+                msg = sprintf('Trial rule kept from the previous recording (%s): check that it fits this one.', neuroqc.gui.PanelText.trialText(r));
+                obj.TrialLabel.Text = [neuroqc.gui.PanelText.trialText(r) '  (set on another recording)'];
             end
             neuroqc.utils.log('%s', msg);
             obj.StatusLabel.Text = msg;
@@ -1159,8 +1159,8 @@ classdef Panel < handle
                 txt = r.labels{k}; if ~isempty(T.reason{k}), txt = [T.reason{k} ' | ' txt]; end
                 if ismember('note', T.Properties.VariableNames) && ~isempty(T.note{k}), txt = ['(note, see below) ' txt]; end
                 if ~isempty(T.stratum{k}), txt = ['[' T.stratum{k} '] ' txt]; end
-                data(end+1, :) = {id, T.status{k}, num(T.objective(k), '%.4g'), ci, T.notDistinguished(k), ...
-                    pctText(T.minRetention(k)), pctText(T.interpolated(k)), pctText(T.ampError(k)), pctText(T.artifactPct(k)), txt}; %#ok<AGROW>
+                data(end+1, :) = {id, T.status{k}, neuroqc.gui.PanelText.num(T.objective(k), '%.4g'), ci, T.notDistinguished(k), ...
+                    neuroqc.gui.PanelText.pctText(T.minRetention(k)), neuroqc.gui.PanelText.pctText(T.interpolated(k)), neuroqc.gui.PanelText.pctText(T.ampError(k)), neuroqc.gui.PanelText.pctText(T.artifactPct(k)), txt}; %#ok<AGROW>
             end
             obj.ResultTable.Data = data;
         end
@@ -1175,11 +1175,11 @@ classdef Panel < handle
                 switch kind
                     case 'history'
                         h = t.Data(r, :);
-                        v = {sprintf('EEG.history line %d (%s, %s):', h{1}, h{2}, orDash(h{3})), h{4}};
+                        v = {sprintf('EEG.history line %d (%s, %s):', h{1}, h{2}, neuroqc.gui.PanelText.orDash(h{3})), h{4}};
                     case 'plan'
                         slot = obj.Plan.Slots(r);
                         v = {sprintf('Step %d: %s', r, slot.id), ...
-                            ['Values: ' settingsText(slot, struct('epoch', obj.EpochField.Value, 'baseline', obj.BaseField.Value))]};
+                            ['Values: ' neuroqc.gui.PanelValues.settingsText(slot, struct('epoch', obj.EpochField.Value, 'baseline', obj.BaseField.Value))]};
                         for a = 1:numel(slot.alternatives)
                             alt = slot.alternatives{a};
                             if strcmp(alt.type, 'native'), v = [v {'EEGLAB command(s):'} neuroqc.run.Native.statements(alt.params.command)]; end %#ok<AGROW>
@@ -1195,8 +1195,8 @@ classdef Panel < handle
                         v{end+1} = sprintf(['Objective (gain-corrected SME) %.4g; difference from the best [%.3g %.3g]; not distinguished %d; ', ...
                             'min retention %s; min trials %g; interpolated %s; amplitude error %s; latency shift %.3g ms; ', ...
                             'artifactual deflection %s; waveform r %.3f; topography r %.3f'], T.objective(k), T.diffLo(k), T.diffHi(k), ...
-                            T.notDistinguished(k), pctText(T.minRetention(k)), T.minTrials(k), pctText(T.interpolated(k)), ...
-                            pctText(T.ampError(k)), T.latencyShiftMs(k), pctText(T.artifactPct(k)), T.waveformCorr(k), T.topoCorr(k));
+                            T.notDistinguished(k), neuroqc.gui.PanelText.pctText(T.minRetention(k)), T.minTrials(k), neuroqc.gui.PanelText.pctText(T.interpolated(k)), ...
+                            neuroqc.gui.PanelText.pctText(T.ampError(k)), T.latencyShiftMs(k), neuroqc.gui.PanelText.pctText(T.artifactPct(k)), T.waveformCorr(k), T.topoCorr(k));
                         c = obj.Result.cands(k);
                         if ~isempty(c.unmatched), v{end+1} = ['Signal check not decision-matched for: ' strjoin(c.unmatched, ', ')]; end
                         v = [v {'EEGLAB commands:'} c.coms(:)'];
@@ -1250,65 +1250,6 @@ classdef Panel < handle
     end
 end
 
-function tok = tokens(s)
-% whitespace-separated items; "quoted" items may contain spaces
-tok = regexp(strtrim(char(s)), '"[^"]*"|\S+', 'match');
-tok = regexprep(tok, '^"(.*)"$', '$1');
-end
-
-function t = quoteItem(x)
-x = char(x);
-if any(isspace(x)) || isempty(x), t = ['"' x '"']; else, t = x; end
-end
-
-function conds = parseConditions(txt)
-% 'target: 11 21; standard: 31' -> {'target', {'11','21'}; 'standard', {'31'}}
-conds = cell(0, 2);
-for part = strsplit(strtrim(char(txt)), ';')
-    p = strtrim(part{1}); if isempty(p), continue; end
-    k = strfind(p, ':');
-    assert(~isempty(k), 'NeuroQC:Contract', 'Conditions: name: ev1 ev2; name2: ev3');
-    ev = tokens(p(k(1)+1:end));
-    assert(~isempty(ev), 'NeuroQC:Contract', 'Condition %s has no event code.', strtrim(p(1:k(1)-1)));
-    conds(end+1, :) = {strtrim(p(1:k(1)-1)), ev}; %#ok<AGROW>
-end
-end
-
-function t = conditionsText(conds)
-parts = cell(1, size(conds, 1));
-for k = 1:size(conds, 1)
-    parts{k} = sprintf('%s: %s', conds{k, 1}, strjoin(cellfun(@quoteItem, conds{k, 2}, 'UniformOutput', false), ' '));
-end
-t = strjoin(parts, '; ');
-end
-
-function comps = parseComponents(txt)
-% 'P3: 0.3 0.6 @ Pz CPz # peakLatency negative' -> rows {name, win, roi, measure}
-comps = cell(0, 4);
-for part = strsplit(strtrim(char(txt)), ';')
-    p = strtrim(part{1}); if isempty(p), continue; end
-    tok = regexp(p, '^([^:]+):\s*([-\d\.eE]+)\s+([-\d\.eE]+)\s*@\s*([^#]+)(.*)$', 'tokens', 'once');
-    assert(~isempty(tok), 'NeuroQC:Contract', 'Components: name: start end @ ch1 ch2 [# measure polarity]; ...');
-    meas = strsplit(strtrim(strrep(tok{5}, '#', '')));
-    meas = meas(~cellfun(@isempty, meas)); if isempty(meas), meas = {'mean'}; end
-    comps(end+1, :) = {strtrim(tok{1}), [str2double(tok{2}) str2double(tok{3})], tokens(tok{4}), meas}; %#ok<AGROW>
-end
-end
-
-function t = componentsText(comps)
-parts = cell(1, size(comps, 1));
-for k = 1:size(comps, 1)
-    m = cellstr(comps{k, 4});
-    tail = '';
-    if ~(isscalar(m) && strcmp(m{1}, 'mean')) && ~(numel(m) == 2 && strcmp(m{1}, 'mean'))
-        tail = [' # ' strjoin(m, ' ')];
-    end
-    parts{k} = sprintf('%s: %g %g @ %s%s', comps{k, 1}, comps{k, 2}, ...
-        strjoin(cellfun(@quoteItem, comps{k, 3}, 'UniformOutput', false), ' '), tail);
-end
-t = strjoin(parts, '; ');
-end
-
 function id = recordingId(EEG)
 % Which recording the data come from, unchanged by filtering, epoching or
 % rejection of the same recording: its file and its original event table.
@@ -1320,194 +1261,11 @@ if n > 0 && isfield(ev, 'latency'), lat = sum(double([ev.latency]) .* (1:n)); en
 id = sprintf('%s|%d|%.12g', f, n, lat);
 end
 
-function t = trialText(r)
-switch r.mode
-    case 'all', t = 'all trials';
-    case 'marker_ranges', t = sprintf('between markers %s and %s', char(string(r.startCode)), char(string(r.endCode)));
-    case 'time_ranges'
-        t = sprintf('time ranges %s s', mat2str(r.ranges));
-        if isfield(r, 'source'), t = [t ' (' r.source ')']; end
-    case 'urevents'
-        t = sprintf('%d selected events', numel(r.ids));
-        if isfield(r, 'source'), t = [t ' (' r.source ')']; end
-    otherwise, t = r.mode;
-end
-end
-
 function fitLayout(g, pos)
 % Every part keeps the size it needs; below that the window scrolls.
 if pos(4) < 840, g.RowHeight = {80, 300, 470}; else, g.RowHeight = {80, 300, '1x'}; end
 if pos(3) < 1300, g.ColumnWidth = {560, 720}; else, g.ColumnWidth = {'1x', '1.25x'}; end
 g.Scrollable = matlab.lang.OnOffSwitchState(pos(4) < 840 || pos(3) < 1300);
-end
-
-function t = num(v, f)
-if isfinite(v), t = sprintf(f, v); else, t = '-'; end
-end
-
-function t = pctText(v)
-if isfinite(v), t = sprintf('%.1f%%', 100 * v); else, t = '-'; end
-end
-
-function t = orDash(t)
-if isempty(t), t = '-'; end
-end
-
-function t = settingsText(slot, ctxt)
-% every parameter as it will run: given, default search or default
-if nargin < 2, ctxt = struct('epoch', '', 'baseline', ''); end
-parts = {};
-for a = 1:numel(slot.alternatives)
-    alt = slot.alternatives{a};
-    if strcmp(alt.type, 'none'), parts{end+1} = 'none (skip)'; continue; end %#ok<AGROW>
-    if strcmp(alt.type, 'native')
-        parts{end+1} = ['EEGLAB: ' strjoin(neuroqc.run.Native.statements(alt.params.command), ' / ')]; %#ok<AGROW>
-        continue;
-    end
-    if strcmp(alt.type, 'eeglab')
-        A = alt.params.args;
-        kv = arrayfun(@(x) sprintf('%s = %s', x.name, valuesText(x.values)), A, 'UniformOutput', false);
-        nComb = prod(cellfun(@numel, {A.values}));
-        tail = ''; if nComb > 1, tail = sprintf('  [%d combinations]', nComb); end
-        parts{end+1} = sprintf('EEGLAB %s: %s%s', alt.params.fn, strjoin(kv, '; '), tail); %#ok<AGROW>
-        continue;
-    end
-    d = neuroqc.plan.Catalog.get(alt.type);
-    kv = {};
-    for q = d.params
-        if isfield(alt.params, q.name), kv{end+1} = sprintf('%s = %s', q.name, valText(alt.params.(q.name))); %#ok<AGROW>
-        elseif ~isempty(q.suggest), kv{end+1} = sprintf('%s = %s (default search)', q.name, valText(q.suggest)); %#ok<AGROW>
-        else, kv{end+1} = sprintf('%s = %s (default)', q.name, valText(q.default)); end %#ok<AGROW>
-    end
-    if strcmp(alt.type, 'epoch')
-        if isempty(strtrim(ctxt.epoch)), kv{end+1} = 'window: not set yet (required, analysis contract)'; %#ok<AGROW>
-        else, kv{end+1} = sprintf('window [%s] s, condition events (from the analysis contract)', ctxt.epoch); end %#ok<AGROW>
-    end
-    if strcmp(alt.type, 'baseline')
-        if isempty(strtrim(ctxt.baseline)), kv{end+1} = 'pre-stimulus [epoch start 0] s (default; from the analysis contract)'; %#ok<AGROW>
-        else, kv{end+1} = sprintf('[%s] s (from the analysis contract)', ctxt.baseline); end %#ok<AGROW>
-    end
-    if strcmp(alt.type, 'restore'), kv{end+1} = 'starting montage + channels removed before NeuroQC'; end %#ok<AGROW>
-    if numel(slot.alternatives) > 1, parts{end+1} = sprintf('%s(%s)', alt.type, strjoin(kv, '; ')); %#ok<AGROW>
-    else, parts{end+1} = strjoin(kv, '; '); end %#ok<AGROW>
-end
-t = strjoin(parts, ' | ');
-end
-
-function alt = addValues(alt, vals)
-% Values from an EEGLAB dialog join a catalog step: a value that differs
-% from those already set becomes a searched candidate.
-d = neuroqc.plan.Catalog.get(alt.type);
-for f = fieldnames(vals)'
-    name = f{1}; v = vals.(name);
-    listValued = iscell(d.params(strcmp({d.params.name}, name)).default);
-    if ~isfield(alt.params, name), alt.params.(name) = v; continue; end
-    L = asList(alt.params.(name), listValued);
-    if ~any(cellfun(@(x) isequal(x, v), L)), L{end+1} = v; end %#ok<AGROW>
-    alt.params.(name) = fromList(L, listValued);
-end
-end
-
-function L = asList(v, listValued)
-% a parameter's values as a list (one entry per value)
-if listValued
-    if iscell(v) && ~isempty(v) && all(cellfun(@iscell, v)), L = v; else, L = {v}; end
-elseif iscell(v), L = v;
-else, L = {v};
-end
-end
-
-function v = fromList(L, listValued)
-if isscalar(L), v = L{1}; else, v = L; end
-if listValued && isscalar(L) && ~iscell(v), v = {v}; end
-end
-
-function alt = setParam(alt, name, values)
-% values: cell, one entry per value; {} = back to the default
-if strcmp(alt.type, 'eeglab')
-    i = find(strcmp({alt.params.args.name}, name), 1);
-    assert(~isempty(i), 'NeuroQC:Plan', '%s has no argument %s.', alt.params.fn, name);
-    assert(~isempty(values), 'NeuroQC:Plan', 'An EEGLAB argument needs a value.');
-    alt.params.args(i).values = values(:)';
-    return;
-end
-d = neuroqc.plan.Catalog.get(alt.type);
-q = d.params(strcmp({d.params.name}, name));
-assert(~isempty(q), 'NeuroQC:Plan', 'Step %s has no parameter %s.', alt.type, name);
-if isempty(values)
-    if isfield(alt.params, name), alt.params = rmfield(alt.params, name); end
-else
-    alt.params.(name) = fromList(values(:)', iscell(q.default));
-end
-end
-
-function rows = paramRows(alt)
-% {name, values text, default text, kind} for the values dialog
-rows = cell(0, 4);
-if strcmp(alt.type, 'eeglab')
-    for a = alt.params.args
-        rows(end+1, :) = {a.name, valuesEditText(a.values), '', kindOf(a.values{1})}; %#ok<AGROW>
-    end
-    return;
-end
-if strcmp(alt.type, 'native'), return; end
-d = neuroqc.plan.Catalog.get(alt.type);
-for q = d.params
-    cur = '';
-    if isfield(alt.params, q.name), cur = valuesEditText(asList(alt.params.(q.name), iscell(q.default))); end
-    if ~isempty(q.suggest), def = ['search ' valuesEditText(q.suggest)]; else, def = valuesEditText({q.default}); end
-    if isempty(strtrim(def)), def = 'none'; end
-    k = kindOf(q.default); if iscell(q.default), k = 'labels'; end
-    rows(end+1, :) = {q.name, cur, def, k}; %#ok<AGROW>
-end
-end
-
-function k = kindOf(v)
-if iscellstr(v) || (iscell(v) && isempty(v)), k = 'labels';
-elseif ischar(v), k = 'text';
-elseif isnumeric(v) || islogical(v), k = 'number';
-else, k = 'other';
-end
-end
-
-function t = valuesEditText(L)
-% values as editable text: entries separated by " | "
-parts = cell(1, numel(L));
-for i = 1:numel(L)
-    v = L{i};
-    if iscellstr(v) || (iscell(v) && isempty(v)), parts{i} = strjoin(cellfun(@quoteItem, v, 'UniformOutput', false), ' ');
-    elseif ischar(v), parts{i} = v;
-    elseif isnumeric(v) && isscalar(v), parts{i} = num2str(v, 15);
-    elseif isnumeric(v), parts{i} = mat2str(v);
-    else, parts{i} = codeOf(v);
-    end
-end
-t = strjoin(parts, ' | ');
-end
-
-function vals = parseValues(txt, kind)
-% "a | b | c" -> {a, b, c}; numbers stay numbers, channel lists become
-% label lists; nothing is evaluated as MATLAB code.
-txt = strtrim(char(txt));
-if isempty(txt), vals = {}; return; end
-parts = strtrim(regexp(txt, '\s*\|\s*', 'split'));
-parts = parts(~cellfun(@isempty, parts));
-vals = cell(1, numel(parts));
-for i = 1:numel(parts)
-    p = parts{i};
-    switch kind
-        case 'labels'
-            vals{i} = tokens(p);
-        case 'number'
-            assert(~isempty(regexp(p, '^[\s\d\.eE+\-:\[\];,]+$', 'once')), 'NeuroQC:Plan', 'Not a number: %s', p);
-            vals{i} = str2num(p); %#ok<ST2NM> digits, signs and brackets only
-            assert(~isempty(vals{i}), 'NeuroQC:Plan', 'Not a number: %s', p);
-        case 'other'
-            error('NeuroQC:Plan', 'This argument (%s) is set in its EEGLAB dialog (Configure in EEGLAB...).', p);
-        otherwise
-            vals{i} = regexprep(p, '^[''"](.*)[''"]$', '$1');
-    end
-end
 end
 
 function type = menuDialog(command)
@@ -1529,26 +1287,6 @@ function alt = stepAlt(com)
 alt = neuroqc.run.Native.eeglabAlt(com);
 if isempty(alt), alt = neuroqc.plan.Plan.nativeAlt(com); end
 end
-
-function t = valuesText(vals)
-% one value as code; several as {v1 | v2 | ...} (the searched list)
-c = cellfun(@codeOf, vals, 'UniformOutput', false);
-if isscalar(c), t = c{1}; else, t = ['{' strjoin(c, ' | ') '}']; end
-end
-
-function t = codeOf(v)
-alt = neuroqc.run.Native.eeglabCommand('f', struct('name', 'x', 'key', false, 'values', {{v}}), {v});
-t = regexprep(alt, '^EEG = f\(EEG, (.*)\);$', '$1');
-end
-
-function t = valText(v)
-if ischar(v) || isstring(v), t = ['''' char(v) ''''];
-elseif isnumeric(v) || islogical(v), t = mat2str(v);
-elseif iscell(v), t = ['{' strjoin(cellfun(@valText, v, 'UniformOutput', false), ', ') '}'];
-else, t = class(v);
-end
-end
-
 
 function restartTimer(t)
 % Resume the live refresh after a long action, unless the panel (and its

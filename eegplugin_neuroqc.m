@@ -3,9 +3,8 @@ function v = eegplugin_neuroqc(fig, try_strings, catch_strings)
 %   Keeps EEGLAB's own try/catch strings so that steps NeuroQC applies to
 %   the current dataset go through exactly the same code path (history,
 %   ALLCOM, new dataset, redraw) as EEGLAB's menus.
-v = '0.7.0';
 addpath(fileparts(mfilename('fullpath')));
-try, v = neuroqc.NeuroQC.version(); catch, end
+v = neuroqc.NeuroQC.version();   % the one version number (NeuroQC.Version)
 if nargin >= 3 && isstruct(try_strings) && isstruct(catch_strings)
     setappdata(0, 'neuroqc_eeglab_strings', struct('try_strings', try_strings, 'catch_strings', catch_strings));
 end

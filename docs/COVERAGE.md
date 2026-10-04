@@ -1,6 +1,6 @@
 # Coverage inventory
 
-What NeuroQC 0.7 covers, and how far each part has been checked. This inventory is incomplete by
+What NeuroQC covers, and how far each part has been checked. This inventory is incomplete by
 nature: EEGLAB has hundreds of functions and plugins, and NeuroQC covers a deliberately small set of
 them. Anything not listed here is either reachable as a **native step** (any `pop_*` command, run and
 replayed verbatim, see below; in the panel through *Add EEGLAB menu step…*, which lists every
