@@ -4,7 +4,7 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %
 %   [EEG, com] = pop_pipecompare(EEG);          % dialog
 %   [EEG, com, result] = pop_pipecompare(EEG, 'measure', 'P3', ...
-%       'events', {'11'}, 'recipe', 'standard');
+%       'events', {'target'}, 'recipe', 'standard');
 %
 %   'measure'  an ERP component with ERP CORE parameters (N170, MMN, N2pc,
 %              N400, P3, LRP, ERN) or a frequency band of continuous data
