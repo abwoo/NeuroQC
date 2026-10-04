@@ -1,7 +1,7 @@
 function out = realdata_validation(file, contract)
 %REALDATA_VALIDATION Technical validation of NeuroQC on a real recording.
 %   out = realdata_validation(file, contract)
-%   file: a real .set file (never committed; pass it or set NEUROQC_REAL_RAW).
+%   file: a real .set file (never committed; pass it or set NEUROQC_REAL_SET).
 %   contract: neuroqc.eval.Contract. The default is a TECHNICAL contract
 %   (most frequent event codes, a generic 300-500 ms window): it exercises
 %   the machinery on real data and is not a scientific analysis.
@@ -11,8 +11,8 @@ function out = realdata_validation(file, contract)
 %   keep / remove / interpolate of the two most variable channels are
 %   compared, not decided in advance;
 %   injection on real data; timing of the search.
-if nargin < 1 || isempty(file), file = getenv('NEUROQC_REAL_RAW'); end
-assert(isfile(file), 'Set NEUROQC_REAL_RAW or pass a .set file.');
+if nargin < 1 || isempty(file), file = getenv('NEUROQC_REAL_SET'); end
+assert(isfile(file), 'Set NEUROQC_REAL_SET or pass a .set file.');
 before = dir(file);
 [p, n, e] = fileparts(file);
 EEG = pop_loadset('filename', [n e], 'filepath', p);

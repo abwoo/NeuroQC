@@ -365,16 +365,32 @@ classdef Executor
             com = sprintf('%s %% NeuroQC: keep only trials of the trial rule (%d removed)', com, sum(drop));
         end
 
-        function adopt(result, idx, force)
-            % Store candidate idx as a NEW EEGLAB dataset with its full history.
-            if nargin < 2 || isempty(idx), idx = result.ranking.recommended; end
-            if nargin < 3, force = false; end
+        function idx = pickCandidate(result, idx)
+            % idx, or the recommended candidate when idx is empty. With
+            % several strata there is no single recommendation, and with no
+            % feasible candidate there is none at all: both are errors that
+            % name what to do (adopt, script and writeScript share this).
+            if ~isempty(idx), return; end
+            idx = result.ranking.recommended;
             if isempty(idx) && numel(result.ranking.byStratum) > 1
                 error('NeuroQC:Adopt', ['The candidates fall into %d strata (different references) that are not ', ...
-                    'comparable; choose one: adopt(result, id) with a stratum''s recommendation %s.'], ...
+                    'comparable; choose one: pass the id of a stratum''s recommendation %s.'], ...
                     numel(result.ranking.byStratum), mat2str([result.ranking.byStratum.recommended]));
             end
-            assert(~isempty(idx), 'NeuroQC:Adopt', 'No candidate to adopt: none satisfies the constraints.');
+            assert(~isempty(idx), 'NeuroQC:Adopt', ['No recommended candidate: none satisfies the constraints. ', ...
+                'Pass a candidate id explicitly.']);
+        end
+
+        function id = identity(result)
+            % The checkpoint identity of a search (see searchIdentity).
+            id = searchIdentity(result);
+        end
+
+        function adopt(result, idx, force)
+            % Store candidate idx as a NEW EEGLAB dataset with its full history.
+            if nargin < 2, idx = []; end
+            if nargin < 3, force = false; end
+            idx = neuroqc.run.Executor.pickCandidate(result, idx);
             st = result.ranking.table.status{idx};
             if ~strcmp(st, 'feasible')
                 why = result.ranking.table.reason{idx};

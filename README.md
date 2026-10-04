@@ -33,14 +33,16 @@ What it does, and nothing more:
 
 ## Install
 
-```matlab
-addpath('/path/to/NeuroQC');        % or copy the folder into eeglab/plugins/
-neuroqc_setup                       % adds EEGLAB > Tools > NeuroQC
-```
+Copy the NeuroQC folder into `eeglab/plugins/` and start (or restart) EEGLAB: it adds
+EEGLAB > Tools > NeuroQC by itself, every time EEGLAB starts.
+
+`neuroqc_setup` is for development from another folder: it puts NeuroQC on the path and adds the
+menu to the running EEGLAB. Each later `eeglab` call rebuilds the menus, so call `neuroqc_setup`
+again after it.
 
 Requirements:
 
-- MATLAB R2021b or later.
+- Tested on MATLAB R2026a with EEGLAB 2026.0.0 (no other versions have been tested).
 - EEGLAB with firfilt (included by default).
 - The ICLabel plugin for `icremove`, and clean_rawdata for `asr`.
 - Optional: the Parallel Computing Toolbox, for `parallel`.

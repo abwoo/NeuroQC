@@ -33,5 +33,6 @@ error. The History list must keep 1 row unless the step says *Apply now*.
 | 15 | *Options…*: choose a checkpoint folder. *Run search*. | Status shows done; results appear; details area shows the selected row in full. |
 | 16 | Select a result, *Inspect selected (EEGLAB)…* > candidate > *Scroll data*. | `eegplot` titled `NeuroQC candidate n (not adopted)`; ALLEEG unchanged. |
 | 17 | Make the window small. | The panel scrolls; no part is squeezed to nothing. |
+| 18 | Start *Run search* on a plan that takes a while, then close the panel window while it runs. | No error in the Command Window when the search ends; the result is in `neuroqc_result`. Same for closing during *Inspect selected* and *Adopt selected*. |
 
 Report any row whose result differs from the expected column.
