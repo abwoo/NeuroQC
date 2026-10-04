@@ -127,6 +127,36 @@ verifyLessThan(tc, r.amplitudeError, 1e-6);
 end
 
 % ---------------------------------------------------------------- helpers
+function testSignalGainIsReportedPerMeasure(tc)
+% A pipeline that scales the data by 0.9 transfers the signal with gain
+% 0.9; Rank divides the SME by it (see test_statistics).
+[S, truth] = neuroqc.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
+S.data = 0.9 * S.data;
+r = neuroqc.eval.Injection.compare(S, tc.TestData.c, truth, {});
+verifyEqual(tc, r.gain, 0.9, 'AbsTol', 1e-6);
+verifyEqual(tc, r.amplitudeError, 0.1, 'AbsTol', 1e-6);
+end
+
+function testFieldStaysSmoothWithChannelsWithoutPositions(tc)
+% Channels without coordinates (often EOG) no longer turn the injected
+% field into a box over the ROI: located channels keep the smooth field,
+% an unlocated channel outside the ROI gets none, one inside the ROI the
+% ROI's mean field.
+EEG = tc.TestData.EEG;
+for lab = {'Fz', 'P3'}
+    k = find(strcmpi({EEG.chanlocs.labels}, lab{1}));
+    EEG.chanlocs(k).X = []; EEG.chanlocs(k).Y = []; EEG.chanlocs(k).Z = [];
+end
+c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
+    'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz', 'P3'}});
+[~, truth] = neuroqc.eval.Injection.prepare(EEG, c, neuroqc.eval.Measure.reference(EEG, c));
+w = truth.weights(:, 1); L = lower(truth.labels);
+verifyEqual(tc, w(strcmp(L, 'fz')), 0);
+verifyEqual(tc, w(strcmp(L, 'p3')), 1);
+outside = w(~ismember(L, {'fz', 'pz', 'p3'}));
+verifyTrue(tc, any(outside > 0.05 & outside < 0.95));     % graded, not a box
+end
+
 function s = inst(type, varargin)
 p = struct();
 for k = 1:2:numel(varargin), p.(varargin{k}) = varargin{k+1}; end

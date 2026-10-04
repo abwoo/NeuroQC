@@ -13,10 +13,22 @@ classdef Rank
     %          artifactual deflection <= maxArtifactPct, waveform
     %          correlation >= minWaveformCorr, topography correlation >=
     %          minTopoCorr. A metric that was not computed fails.
-    %   3. Objective (opts.objective): 'composite' = RMS of the SMEs of all
-    %      measures (when they share a unit), or the name of one measure
-    %      (e.g. 'P3.peakLatency'), needed when the units differ. The other
-    %      measures are reported, not ranked.
+    %   3. Objective (opts.objective): the gain-corrected SME, SME/g, where
+    %      g is the factor by which the candidate scales a known signal in
+    %      that measure (neuroqc.eval.Injection: window mean for mean
+    %      amplitude, peak for peak amplitude, g = 1 for latency). With a
+    %      pipeline acting linearly on signal + noise, score = g*a + e, so
+    %      the score divided by g estimates the same quantity a for every
+    %      candidate, with standard error SME/g; ranking SME/g is ranking
+    %      signal-to-noise g*a/SME (Zhang, Garrett & Luck, 2024, rank filters
+    %      by SNR = signal/SME, not by SME, because filters attenuate the
+    %      signal too). It is invariant to any overall scaling of the data,
+    %      which raw SME is not: a pipeline that shrinks signal and noise by
+    %      9% passes a 10% amplitude-error limit and would lower raw SME by
+    %      9% without being more precise. 'composite' = RMS over measures
+    %      and conditions (when they share a unit), or the name of one
+    %      measure (e.g. 'P3.peakLatency'), needed when the units differ.
+    %      The other measures are reported, not ranked.
     %   4. Uncertainty: a paired bootstrap over trials (the same resampled
     %      trials, by urevent, for every candidate). A candidate is "not
     %      distinguished from the best" unless the data show it is worse
@@ -25,8 +37,14 @@ classdef Rank
     %      declared worse stays <= ~5% for any number of candidates (alpha
     %      = 0.02 chosen by simulation for 2-24 candidates, 20-100 trials,
     %      unequal condition sizes, correlated candidates; see
-    %      test_statistics). Not distinguished = absence of evidence, not
-    %      equivalence.
+    %      test_statistics). This is the bootstrap max-statistic of White
+    %      (2000) and Romano & Wolf (2005); the set kept is a model
+    %      confidence set in the sense of Hansen, Lunde & Nason (2011). The
+    %      critical value is the ((B+1)(1-alpha))-th ordered bootstrap
+    %      maximum, with B chosen so that (B+1)*alpha is an integer
+    %      (Davison & Hinkley, 1997): B = 1999 (40 values beyond it), and
+    %      999 for peak measures whose nested bootstrap costs more (20).
+    %      Not distinguished = absence of evidence, not equivalence.
     %   5. Among candidates the data do not distinguish from the best, the
     %      recommendation is the least aggressive: highest minimum trial
     %      retention, then smallest signal distortion, then best objective.
@@ -43,17 +61,18 @@ classdef Rank
             o = struct('minTrials', 10, 'minRetention', 0.5, 'maxInterpolated', 0.2, ...
                 'maxAmplitudeError', 0.10, 'maxLatencyShiftMs', 10, 'maxArtifactPct', 0.05, ...
                 'minWaveformCorr', 0.95, 'minTopoCorr', 0.90, ...
-                'objective', 'composite', 'nBoot', 2000, 'nBootPeakOuter', 200, 'nBootPeakInner', 100, ...
+                'objective', 'composite', 'nBoot', 1999, 'nBootPeakOuter', 999, 'nBootPeakInner', 100, ...
                 'nBootPeak', 1000, 'alpha', 0.02, 'seed', 1);
         end
 
         function R = run(cands, ref, opts)
             if nargin < 3, opts = struct(); end
-            opts = withDefaults(opts, neuroqc.eval.Rank.defaults());
+            opts = neuroqc.utils.withDefaults(opts, neuroqc.eval.Rank.defaults());
             n = numel(cands);
             objName = resolveObjective(opts.objective, ref);
             nO = numel(ref.objectives);
-            status = repmat({''}, n, 1); reasons = repmat({''}, n, 1);
+            status = repmat({''}, n, 1); reasons = repmat({''}, n, 1); whyList = repmat({{}}, n, 1);
+            notes = repmat({''}, n, 1); gains = nan(n, nO);
             stratum = repmat({''}, n, 1);
             primary = nan(n, 1); minRet = nan(n, 1); minKept = nan(n, 1); interp = nan(n, 1);
             ampErr = nan(n, 1); latSh = nan(n, 1); artPct = nan(n, 1); wCorr = nan(n, 1); tCorr = nan(n, 1);
@@ -61,14 +80,17 @@ classdef Rank
             for i = 1:n
                 c = cands(i);
                 if isfield(c, 'stratum') && ~isempty(c.stratum), stratum{i} = c.stratum; end
+                if isfield(c, 'notes') && ~isempty(c.notes), notes{i} = strjoin(c.notes, '; '); end
                 if strcmp(c.status, 'rejected')      % e.g. a rejection step removed every epoch
-                    status{i} = 'rejected'; minRet(i) = 0; reasons{i} = sprintf('retention 0%% (%s)', c.message); continue;
+                    status{i} = 'rejected'; minRet(i) = 0; whyList{i} = {sprintf('retention 0%% (%s)', c.message)};
+                    reasons{i} = whyList{i}{1}; continue;
                 elseif ~strcmp(c.status, 'ok')
-                    status{i} = 'failed'; reasons{i} = c.message; continue;
+                    status{i} = 'failed'; reasons{i} = c.message; whyList{i} = {c.message}; continue;
                 end
                 m = c.m;
-                objAgg(i, :) = [m.objectives.agg];
-                primary(i) = primaryPoint(m, objName, ref);
+                g = gainOf(c, nO); gains(i, :) = g;
+                objAgg(i, :) = [m.objectives.agg] ./ g;
+                primary(i) = primaryPoint(m, objName, ref, g);
                 minRet(i) = min(m.retention); minKept(i) = min(m.kept);
                 interp(i) = c.interpolatedFraction;
                 sg = c.signal;
@@ -103,6 +125,7 @@ classdef Rank
                 end
                 if ~isfinite(primary(i)), why{end+1} = 'objective undefined'; end %#ok<AGROW>
                 if isempty(why), status{i} = 'feasible'; else, status{i} = 'rejected'; reasons{i} = strjoin(why, '; '); end
+                whyList{i} = why;
             end
 
             lo = nan(n, 1); hi = nan(n, 1); notDist = false(n, 1);
@@ -128,14 +151,15 @@ classdef Rank
             feasAll = find(strcmp(status, 'feasible'));
             order = [sortBy(feasAll, primary); find(strcmp(status, 'rejected')); find(strcmp(status, 'failed'))];
             T = table((1:n)', stratum, status, primary, lo, hi, notDist, minRet, minKept, interp, ...
-                ampErr, latSh, artPct, wCorr, tCorr, reasons, ...
+                ampErr, latSh, artPct, wCorr, tCorr, reasons, notes, ...
                 'VariableNames', {'id','stratum','status','objective','diffLo','diffHi','notDistinguished', ...
                 'minRetention','minTrials','interpolated','ampError', ...
-                'latencyShiftMs','artifactPct','waveformCorr','topoCorr','reason'});
+                'latencyShiftMs','artifactPct','waveformCorr','topoCorr','reason','note'});
             for k = 1:nO
-                T.(matlab.lang.makeValidName(['sme_' ref.objectives{k}])) = objAgg(:, k);
+                T.(matlab.lang.makeValidName(['sme_' ref.objectives{k}])) = objAgg(:, k);   % gain-corrected
+                T.(matlab.lang.makeValidName(['gain_' ref.objectives{k}])) = gains(:, k);
             end
-            R = struct('table', T, 'order', order, 'best', best, 'recommended', recommended, ...
+            R = struct('table', T, 'whyList', {whyList}, 'order', order, 'best', best, 'recommended', recommended, ...
                 'byStratum', byStratum, 'objective', objName, 'options', opts, 'units', {ref.units});
         end
 
@@ -143,7 +167,7 @@ classdef Rank
             % Paired bootstrap. Returns one (candidates x B) matrix per
             % objective in objNames ('composite' allowed).
             if nargin < 4, objNames = {'composite'}; end
-            opts = withDefaults(opts, neuroqc.eval.Rank.defaults());
+            opts = neuroqc.utils.withDefaults(opts, neuroqc.eval.Rank.defaults());
             s = RandStream('mt19937ar', 'Seed', opts.seed);
             peak = isfield(cands(1).m, 'objectives') && any(~strcmp({cands(1).m.objectives.kind}, 'scalar'));
             B = opts.nBoot; if peak, B = opts.nBootPeakOuter; end
@@ -171,8 +195,9 @@ classdef Rank
             per = zeros(numel(cands), B, nO);
             for k = 1:numel(cands)
                 objs = cands(k).m.objectives;
+                g = gainOf(cands(k), nO);
                 for o = 1:nO
-                    per(k, :, o) = neuroqc.eval.Measure.smeBoot(objs(o), W, opts, 7919 * o, scale);
+                    per(k, :, o) = neuroqc.eval.Measure.smeBoot(objs(o), W, opts, 7919 * o, scale) / g(o);
                 end
             end
             boot = cell(1, numel(objNames));
@@ -220,7 +245,7 @@ classdef Rank
 
         function print(R, labels)
             T = R.table; o = R.options;
-            neuroqc.utils.log(['Ranking by %s SME (lower = more precise measure). diff = difference from the best, ', ...
+            neuroqc.utils.log(['Ranking by %s gain-corrected SME (SME / signal gain; lower = more precise). diff = difference from the best, ', ...
                 '%.0f%% interval simultaneous over all candidates; "nd" = not distinguished from the best by these data ', ...
                 '(not equivalence).'], R.objective, 100 * (1 - o.alpha));
             fprintf('   %-4s %-9s %9s %19s %3s %6s %6s %6s %5s  %s\n', 'id', 'status', 'objective', 'diff vs best [CI]', 'nd', 'minRet', 'interp', 'ampErr', 'art', 'pipeline');
@@ -233,12 +258,15 @@ classdef Rank
                     100*T.ampError(k), 100*T.artifactPct(k), labels{k});
                 if ~isempty(T.stratum{k}), fprintf('        stratum: %s\n', T.stratum{k}); end
                 if ~isempty(T.reason{k}), fprintf('        -> %s\n', T.reason{k}); end
+                if ~isempty(T.note{k}), fprintf('        note: %s\n', T.note{k}); end
             end
             if isempty(R.byStratum)
                 neuroqc.utils.log('NO FEASIBLE PIPELINE: no candidate satisfies the constraints (none relaxed).');
-                rs = T.reason(~strcmp(T.status, 'feasible'));
-                parts = regexp(strjoin(rs', '; '), ';\s*', 'split');
-                parts = regexprep(parts, '[\d\.]+', '#');
+                % each reason is kept as its own item (a step key may hold ';'),
+                % and only free-standing numbers are masked, so reasons that
+                % differ only in a value are counted together
+                parts = [R.whyList{~strcmp(T.status, 'feasible')}];
+                parts = regexprep(parts, '(?<![\w.])\d+(\.\d+)?', '#');
                 [u, ~, ic] = unique(parts(~cellfun(@isempty, parts)));
                 if ~isempty(u)
                     [cnt, ord] = sort(accumarray(ic(:), 1), 'descend');
@@ -263,12 +291,6 @@ classdef Rank
 end
 
 % ---------------------------------------------------------------------
-function o = withDefaults(o, d)
-for f = fieldnames(d)'
-    if ~isfield(o, f{1}), o.(f{1}) = d.(f{1}); end
-end
-end
-
 function name = resolveObjective(obj, ref)
 % 'composite' (all measures share a unit) or the name of one measure.
 if iscell(obj)
@@ -286,9 +308,25 @@ else
 end
 end
 
-function v = primaryPoint(m, name, ref)
-if strcmp(name, 'composite'), v = m.composite;
-else, v = m.objectives(strcmp(ref.objectives, name)).agg; end
+function v = primaryPoint(m, name, ref, g)
+% gain-corrected objective: RMS over measures and conditions of SME/g
+if strcmp(name, 'composite')
+    v = sqrt(mean(cell2mat(arrayfun(@(k) m.objectives(k).sme / g(k), 1:numel(g), 'UniformOutput', false)) .^ 2));
+else
+    k = strcmp(ref.objectives, name);
+    v = m.objectives(k).agg / g(k);
+end
+end
+
+function g = gainOf(c, nO)
+% Signal gain per measure from the signal check (1 when the candidate has
+% none, e.g. synthetic records). A gain that is not positive leaves the
+% objective undefined: the signal was lost or inverted.
+g = ones(1, nO);
+if isfield(c, 'signal') && isstruct(c.signal) && isfield(c.signal, 'gain') && numel(c.signal.gain) == nO
+    g = double(c.signal.gain(:)');
+end
+g(~(g > 0)) = NaN;
 end
 
 function [keep, lo, hi] = bestSet(pts, Bq, ib, alpha)
@@ -316,18 +354,20 @@ for i = 1:K
     maxD = max(maxD, max(D - Dhat(i, :)', [], 1, 'omitnan'));
 end
 z = maxD(isfinite(maxD));
-if isempty(z), c = Inf; else, c = pct(z, 100 * (1 - alpha)); end
+if isempty(z), c = Inf; else, c = upperQuantile(z, alpha); end
 worse = Dhat > c;
 keep = keep | ~any(worse, 2);
 lo = Dhat(:, ib) - c; hi = Dhat(:, ib) + c;
 lo(ib) = 0; hi(ib) = 0;
 end
 
-function v = pct(x, p)
-x = sort(x(:));
-if numel(x) == 1, v = x; return; end
-r = 1 + (numel(x) - 1) * p / 100;
-v = interp1(1:numel(x), x, r, 'linear');
+function v = upperQuantile(z, alpha)
+% The (1-alpha) quantile of the bootstrap distribution as the order
+% statistic z_((B+1)(1-alpha)) (Davison & Hinkley, 1997): exact when
+% (B+1)*alpha is an integer, rounded up (conservative) otherwise.
+z = sort(z(:));
+r = min(numel(z), ceil((numel(z) + 1) * (1 - alpha) - 1e-9));
+v = z(max(r, 1));
 end
 
 function i = sortBy(idx, val)

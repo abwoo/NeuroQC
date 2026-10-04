@@ -53,6 +53,7 @@ Each item has four status columns:
 | Item | Impl. | Auto | Real |
 |---|---|---|---|
 | Mean amplitude, analytic SME | ✓ | ✓ (vs. empirical SD) | ✓ real data |
+| Gain-corrected objective (SME / signal gain) | ✓ | ✓ (invariance to scaling) | ✓ real data |
 | Peak amplitude / latency, bootstrapped SME | ✓ | ✓ (vs. replications) | ✓ synthetic |
 | Composite objective or one chosen measure; unit safety | ✓ | ✓ | ✓ |
 | Paired bootstrap, simultaneous not-distinguished set, α = 0.02 calibration (2-24 candidates) | ✓ | ✓ (simulation) | ✓ |

@@ -163,11 +163,17 @@ legal order; `p.pin(id)` keeps a step in place and `p.before(a, b)` constrains t
 6. **Ranking.**
    - Failures are reported, never ranked. Constraint violations are listed with their reasons.
      If nothing is feasible, NeuroQC says so and relaxes nothing.
-   - Objective: the composite SME of all measures (when they share a unit), or the one measure you
-     choose; the others are reported.
+   - Objective: the **gain-corrected SME**, SME divided by the factor by which the candidate scales a
+     known signal in that measure (read from the signal check). Raw SME would reward a pipeline that
+     shrinks signal and noise alike; SME/gain does not, and ranking it is ranking signal-to-noise
+     (Zhang, Garrett & Luck, 2024). Composite over measures that share a unit, or the one measure
+     you choose; the others are reported. Derivation in [docs/METHODS.md](docs/METHODS.md).
    - Paired bootstrap over trials (matched by `urevent`); intervals of the difference from the best
-     are simultaneous over all candidates, so a larger search does not produce more false "worse"
-     verdicts. *Not distinguished* is absence of evidence, not equivalence.
+     are simultaneous over all candidates (bootstrap max statistic; White, 2000; Romano & Wolf,
+     2005), so a larger search does not produce more false "worse" verdicts. *Not distinguished* is
+     absence of evidence, not equivalence.
+   - A candidate that ends with epochs marked for rejection but not removed (e.g. an ERPLAB artifact
+     detection step without a removal) carries a note: marks do not remove epochs.
    - Candidates that differ in the reference are ranked in separate strata, never against each other.
      With several strata there is no overall recommendation: each stratum has its own (marked `*`),
      and you choose the one that fits your analysis.
@@ -178,19 +184,22 @@ legal order; `p.pin(id)` keeps a step in place and `p.before(a, b)` constrains t
 
 - The contract (events, epoch and baseline windows, ROIs and time windows) defines what is measured.
   NeuroQC never searches it.
-- The signal check uses a known signal with an assumed topography: a Gaussian around the ROI when
-  channel locations exist, otherwise the ROI channels only. Real components can be affected
+- The signal check uses a known signal with an assumed topography: a Gaussian around the ROI over
+  the channels that have locations (channels without one, e.g. EOG, get none outside the ROI), or
+  the ROI channels only when no ROI channel has a location. Real components can be affected
   differently, so passing the check is necessary but not sufficient.
 - EEGLAB commands that decide from the data on their own (other than the catalog steps, captured
   mark/remove workflows and ASR) are re-run on the signal copy; the result says so.
-- Spherical interpolation needs channel locations. Without them, interpolation candidates fail with
-  that reason.
+- Spherical interpolation and ICLabel need channel locations. Without any, those steps are excluded
+  before the search runs, with the reason; a channel without a location is never reported as
+  interpolated.
 - Peak-latency precision is itself hard to estimate with few trials, so peak-latency objectives
   rarely separate candidates; mean-amplitude measures are more informative for choosing a pipeline.
 - Every candidate also runs on the signal copy (same operations and decisions), so a search costs
   roughly twice the EEGLAB computation of the pipelines themselves, filter-only plans included.
-- Depth-first execution keeps one copy of the dataset per plan depth in memory (one per worker in
-  parallel mode).
+- Depth-first execution keeps one copy of the dataset and one of the signal copy per plan depth in
+  memory (per worker in parallel mode); the expected peak is printed when it exceeds 2 GB. Resample
+  early in the plan to reduce it.
 
 ## Tests
 
@@ -238,5 +247,20 @@ lists what to click and what to expect.
   *Psychophysiology*, 61.
 - Kothe, C. A. E., & Makeig, S. (2013). BCILAB: a platform for brain-computer interface
   development. *Journal of Neural Engineering*, 10 (artifact subspace reconstruction).
+- White, H. (2000). A reality check for data snooping. *Econometrica*, 68, 1097–1126.
+- Romano, J. P., & Wolf, M. (2005). Stepwise multiple testing as formalized data snooping.
+  *Econometrica*, 73, 1237–1282.
+- Hansen, P. R., Lunde, A., & Nason, J. M. (2011). The model confidence set. *Econometrica*, 79,
+  453–497.
+- Davison, A. C., & Hinkley, D. V. (1997). *Bootstrap Methods and Their Application*. Cambridge
+  University Press.
+- Perrin, F., Pernier, J., Bertrand, O., & Echallier, J. F. (1989). Spherical splines for scalp
+  potential and current density mapping. *Electroencephalography and Clinical Neurophysiology*, 72,
+  184–187.
+- Pion-Tonachini, L., Kreutz-Delgado, K., & Makeig, S. (2019). ICLabel: An automated
+  electroencephalographic independent component classifier, dataset, and website. *NeuroImage*,
+  198, 181–197.
+
+The full derivations, and the remaining sources, are in [docs/METHODS.md](docs/METHODS.md).
 
 MIT License.

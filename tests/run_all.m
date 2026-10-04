@@ -16,7 +16,7 @@ end
 disp(table(results));
 fprintf('\n%d passed, %d failed, %d incomplete (skipped) of %d\n', sum([results.Passed]), ...
     sum([results.Failed]), sum([results.Incomplete]), numel(results));
-% machine-readable line for tools/inject.py (skipped tests count as not passed)
+% one machine-readable summary line (skipped tests count as not passed)
 fprintf('TOTAL=%d PASSED=%d FAILED=%d\n', numel(results), sum([results.Passed]), ...
     numel(results) - sum([results.Passed]));
 end

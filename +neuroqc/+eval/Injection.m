@@ -7,9 +7,13 @@ classdef Injection
     %   A noise-free copy of the starting dataset is built that contains
     %   only a known signal: one Gaussian per component (centred in its
     %   window, sigma = window/4, amplitude opts.injectUv) with a smooth
-    %   scalp topography centred on the component's ROI (or on the ROI
-    %   channels only when channel locations are missing), added at every
-    %   scored trial.
+    %   scalp topography centred on the component's ROI over the channels
+    %   that have locations (a box over the ROI only when no ROI channel
+    %   has one), added at every scored trial.
+    %
+    %   compare() also returns the gain of each measure (recovered /
+    %   expected window mean, or peak; 1 for a latency), by which Rank
+    %   divides the SME (docs/METHODS.md, section 2).
     %
     %   The executor applies to this copy exactly the operations and the
     %   data-driven DECISIONS taken on the real data (same filters, same
@@ -115,7 +119,8 @@ classdef Injection
         function r = compare(S, contract, truth, path)
             r = struct('source', 'injection', 'amplitudeError', NaN, 'latencyShiftMs', NaN, ...
                 'artifactPct', NaN, 'waveformCorr', NaN, 'topoCorr', NaN, 'chain', '', 'note', '', ...
-                'notApplicable', {{}});   % NaN in an applicable metric = check failed (Rank rejects it)
+                'notApplicable', {{}}, ...   % NaN in an applicable metric = check failed (Rank rejects it)
+                'gain', nan(1, numel(contract.components)));   % signal gain per component (see below)
             Ew = expectedWeights(truth, S, path);                    % nch_leaf x nComp
             labs = lower({S.chanlocs.labels});
             if S.trials == 1
@@ -137,7 +142,16 @@ classdef Injection
                 rec = mean(avg(roi, :), 1); xp = mean(ex(roi, :), 1);
                 mx = mean(xp(w)); s = sign(mx); if s == 0, s = 1; end
                 amp(j) = abs(mean(rec(w)) / mx - 1);
-                [~, ix] = max(s * xp(w)); [~, iy] = max(s * rec(w)); tw = times(w);
+                [px, ix] = max(s * xp(w)); [py, iy] = max(s * rec(w)); tw = times(w);
+                % Gain of the measured quantity: the factor by which the
+                % pipeline scales a signal in this component's score (a linear
+                % functional of the data). Rank divides the SME by it, so a
+                % pipeline that shrinks signal and noise alike gains nothing.
+                switch comp.measure
+                    case 'mean', r.gain(j) = mean(rec(w)) / mx;
+                    case 'peakAmplitude', r.gain(j) = py / px;
+                    otherwise, r.gain(j) = 1;   % a latency does not scale with amplitude
+                end
                 lat(j) = 1000 * abs(tw(iy) - tw(ix));
                 wc(j) = safeCorr(rec, xp);
                 tc(j) = safeCorr(mean(avg(:, w), 2), mean(ex(:, w), 2));
@@ -166,14 +180,10 @@ if ~isfield(truth, 'onsets') || isempty(truth.onsets) || ~isfield(S, 'epoch') ||
 codes = contract.allEvents();
 span = [times(1) times(end)];
 G = zeros(size(g)); n = 0;
+lock = neuroqc.eval.Measure.lockingEvents(S, codes);
 for ep = 1:numel(S.epoch)
-    % the three fields are not guaranteed to share a shape: make each a cell
-    lat = asCell(S.epoch(ep).eventlatency); typ = asCell(S.epoch(ep).eventtype); ue = asCell(S.epoch(ep).eventurevent);
-    if numel(typ) ~= numel(lat) || numel(ue) ~= numel(lat), return; end
-    typ = cellfun(@(x) strtrim(char(string(x))), typ, 'UniformOutput', false);
-    z = find(abs(cellfun(@double, lat)) < 1e-6 & ismember(typ, codes), 1);
-    if isempty(z) || isempty(ue{z}), return; end
-    k = find(truth.urevents == ue{z}, 1);
+    if lock(ep) == 0 || ~isfield(S.event, 'urevent') || isempty(S.event(lock(ep)).urevent), return; end
+    k = find(truth.urevents == S.event(lock(ep)).urevent, 1);
     if isempty(k), return; end
     L = truth.onsets(k);
     near = find(truth.onsets >= L + span(1) - diff(span) & truth.onsets <= L + span(2) + diff(span));
@@ -204,23 +214,32 @@ function v = fieldOrEmpty(c, n)
 if isfield(c, n), v = c.(n); else, v = []; end
 end
 
-function c = asCell(x)
-if iscell(x), c = x; elseif ischar(x) || isstring(x), c = {char(x)}; else, c = num2cell(x); end
+function w = topography(EEG, roi)
+% A smooth field centred on the ROI (Gaussian in the angle on the unit
+% sphere, sigma 0.5 rad), normalised to mean 1 over the ROI. Channels
+% without coordinates (often EOG/ECG) get no field outside the ROI and the
+% ROI's mean field inside it; the field is not reduced to a box because of
+% them. A box over the ROI is used only when no ROI channel has a position.
+labs = lower({EEG.chanlocs.labels});
+inRoi = ismember(labs, lower(roi)); inRoi = inRoi(:);
+has = located(EEG.chanlocs); has = has(:);
+if ~any(has & inRoi)
+    w = double(inRoi); return;
+end
+xyz = [[EEG.chanlocs(has).X]' [EEG.chanlocs(has).Y]' [EEG.chanlocs(has).Z]'];
+xyz = xyz ./ max(vecnorm(xyz, 2, 2), eps);
+c = mean(xyz(inRoi(has), :), 1); c = c / norm(c);
+ang = acos(max(-1, min(1, xyz * c')));
+w = zeros(numel(labs), 1);
+w(has) = exp(-ang .^ 2 / (2 * 0.5 ^ 2));
+w = w / mean(w(has & inRoi));
+w(~has & inRoi) = 1;
 end
 
-function w = topography(EEG, roi)
-labs = lower({EEG.chanlocs.labels});
-inRoi = ismember(labs, lower(roi));
-hasXYZ = isfield(EEG.chanlocs, 'X') && all(arrayfun(@(c) ~isempty(c.X) && ~isempty(c.Y) && ~isempty(c.Z), EEG.chanlocs));
-if ~hasXYZ
-    w = double(inRoi(:)); return;
-end
-xyz = [[EEG.chanlocs.X]' [EEG.chanlocs.Y]' [EEG.chanlocs.Z]'];
-xyz = xyz ./ max(vecnorm(xyz, 2, 2), eps);
-c = mean(xyz(inRoi, :), 1); c = c / norm(c);
-ang = acos(max(-1, min(1, xyz * c')));
-w = exp(-ang .^ 2 / (2 * 0.5 ^ 2));
-w = w / mean(w(inRoi));
+function tf = located(chanlocs)
+% channels with finite X, Y and Z
+ok = @(v) isnumeric(v) && isscalar(v) && isfinite(v);
+tf = arrayfun(@(c) isfield(c, 'X') && ok(c.X) && ok(c.Y) && ok(c.Z), chanlocs);
 end
 
 function g = template(t, contract)

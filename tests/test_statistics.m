@@ -222,3 +222,53 @@ function tf = worse(a, b, ref, o)
 R = neuroqc.eval.Rank.run([nqc_cand(a) nqc_cand(b)], ref, o);
 tf = sum(R.table.notDistinguished) < 2;
 end
+
+% ----------------------------------------------- gain-corrected objective
+function testScalingTheDataDoesNotChangeTheObjective(tc)
+% score = g*a + e: a candidate that scales signal and noise by 0.92 has a
+% raw SME 8% lower but measures the signal no more precisely. SME/g is
+% the same for both, so neither is preferred for it, and the least
+% aggressive one (no amplitude change) is recommended.
+rs = RandStream('mt19937ar', 'Seed', 11); N = 60; ref = nqc_ref(N);
+x = 3 + randn(rs, N, 1);
+sig = @(g) struct('source', 'test', 'amplitudeError', abs(g - 1), 'latencyShiftMs', 0, 'artifactPct', 0, ...
+    'waveformCorr', 1, 'topoCorr', NaN, 'chain', '', 'notApplicable', {{'topoCorr'}}, 'gain', g);
+a = nqc_cand(x, 'signal', sig(1)); b = nqc_cand(0.92 * x, 'signal', sig(0.92));
+verifyLessThan(tc, b.m.objectives.agg, a.m.objectives.agg);          % raw SME prefers b
+o = neuroqc.eval.Rank.defaults(); o.nBoot = 199;
+R = neuroqc.eval.Rank.run([a b], ref, o);
+verifyEqual(tc, R.table.objective(2), R.table.objective(1), 'RelTol', 1e-12);
+verifyTrue(tc, all(R.table.notDistinguished));
+verifyEqual(tc, R.recommended, 1);
+verifyEqual(tc, R.table.gain_P3_mean(2), 0.92);
+end
+
+function testNonPositiveGainLeavesTheObjectiveUndefined(tc)
+x = randn(RandStream('mt19937ar', 'Seed', 12), 40, 1);
+sig = struct('source', 'test', 'amplitudeError', 0, 'latencyShiftMs', 0, 'artifactPct', 0, ...
+    'waveformCorr', 1, 'topoCorr', NaN, 'chain', '', 'notApplicable', {{'topoCorr'}}, 'gain', -0.5);
+o = neuroqc.eval.Rank.defaults(); o.nBoot = 99;
+R = neuroqc.eval.Rank.run(nqc_cand(x, 'signal', sig), nqc_ref(40), o);
+verifyEqual(tc, R.table.status{1}, 'rejected');
+verifyTrue(tc, contains(R.table.reason{1}, 'objective undefined'));
+end
+
+function testBootstrapSizesGiveAnExactQuantile(tc)
+% (B+1)*alpha integer: the critical value is an order statistic of the
+% bootstrap maxima, with no interpolation (Davison & Hinkley, 1997).
+o = neuroqc.eval.Rank.defaults();
+verifyEqual(tc, mod((o.nBoot + 1) * o.alpha, 1), 0, 'AbsTol', 1e-9);
+verifyEqual(tc, mod((o.nBootPeakOuter + 1) * o.alpha, 1), 0, 'AbsTol', 1e-9);
+end
+
+function testReasonSummaryKeepsEachReasonWhole(tc)
+% A reason that contains ';' (a step key with a list) or ends with a full
+% stop is counted as one reason, not cut apart.
+x = randn(RandStream('mt19937ar', 'Seed', 3), 30, 1);
+a = nqc_cand(x); a.status = 'failed';
+a.message = 'reref(exclude={EOG1;EOG2}): channel(s) not in the dataset: EOG1, EOG2 (Edit > Channel locations).';
+o = neuroqc.eval.Rank.defaults(); o.nBoot = 99;
+R = neuroqc.eval.Rank.run([a a], nqc_ref(30), o);
+txt = evalc('neuroqc.eval.Rank.print(R, {''a'', ''b''})');
+verifyTrue(tc, contains(txt, [a.message ' (x2)']));
+end

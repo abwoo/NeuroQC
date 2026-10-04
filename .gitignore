@@ -31,26 +31,5 @@ checkpoints/
 .env.*
 *.pem
 *.key
-tools/config.local.json
 __pycache__/
 .pytest_cache/
-
-# Local-only 0.6 reproductions and obsolete presentation assets
-/docs/assets/demo-drift.gif
-/docs/assets/demo-goal.gif
-/docs/assets/demo-qc.gif
-/docs/assets/demo.gif
-/docs/assets/logo.svg
-/docs/assets/manual-vs-auto.gif
-/docs/assets/tab1-data.png
-/docs/assets/tab2-scope.png
-/docs/assets/tab3-params.png
-/docs/assets/tab3b-space.png
-/docs/assets/tab3c-preview.png
-/docs/assets/tab4-log.png
-/docs/assets/tab5-results-generated.png
-/docs/assets/tab6-results-evaluated.png
-/docs/assets/tab7-results-drift.png
-/docs/assets/tab8-qc-imported.png
-/docs/assets/tab9-goal-reranked.png
-/tests/v06_reproductions.m

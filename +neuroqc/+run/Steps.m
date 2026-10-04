@@ -66,13 +66,14 @@ classdef Steps
                     pre = [];
                     if isfield(EEG.etc.neuroqc, 'preRemoved'), pre = EEG.etc.neuroqc.preRemoved; end
                     if ~isempty(missing) || isempty(pre)
+                        requireLocations(target(ismember(lower({target.labels}), missing)), 'restore');
                         EEG = pop_interp(EEG, target, 'spherical');
                         coms = {'EEG = pop_interp(EEG, EEG.etc.neuroqc.rootChanlocs, ''spherical'');'};
                     end
                     if ~isempty(pre)
                         absent = ~ismember(lower({pre.labels}), lower({EEG.chanlocs.labels}));
                         if any(absent)
-                            requireLocations(EEG);
+                            requireLocations(pre(absent), 'restore');
                             EEG = pop_interp(EEG, pre(absent), 'spherical');
                             coms{end+1} = sprintf(['EEG = pop_interp(EEG, EEG.etc.neuroqc.preRemoved(%s), ''spherical''); ', ...
                                 '%% NeuroQC: channels removed before the plan'], mat2str(find(absent)));
@@ -103,11 +104,11 @@ classdef Steps
                     [EEG, coms, info] = neuroqc.run.Steps.icRemove(EEG, p);
                 case 'epoch'
                     c = ctx.contract;
-                    [EEG, ~, com] = pop_epoch(EEG, c.allEvents(), c.effectiveEpoch(), 'epochinfo', 'yes');
+                    [EEG, ~, com] = pop_epoch(EEG, c.allEvents(), c.epoch, 'epochinfo', 'yes');
                     coms = {com};
                 case 'baseline'
                     c = ctx.contract;
-                    assert(~isempty(c.effectiveBaseline()), 'NeuroQC:Baseline', 'The contract defines no baseline window.');
+                    assert(~isempty(c.baseline), 'NeuroQC:Baseline', 'The contract defines no baseline window.');
                     % clamp to the epoch limits (they can differ from the
                     % contract by less than one sample after resampling)
                     b = 1000 * c.baseline;
@@ -198,7 +199,7 @@ classdef Steps
                 p.measure, p.threshold, numel(elec), strjoin(labels, ' '))};
             info.interpolated = labels;
             if ~isempty(bad)
-                requireLocations(EEG);
+                requireLocations(EEG.chanlocs(bad), 'badchannels');
                 [EEG, com2] = pop_interp(EEG, bad, 'spherical');
                 coms{end+1} = com2;
             end
@@ -215,7 +216,7 @@ classdef Steps
                     [EEG, com] = pop_select(EEG, 'rmchannel', labels);
                     coms = {com}; info.removed = labels;
                 case 'interpolate'
-                    requireLocations(EEG);
+                    requireLocations(EEG.chanlocs(idx), 'channels');
                     [EEG, com] = pop_interp(EEG, idx(:)', 'spherical');
                     coms = {com}; info.interpolated = labels;
                 otherwise
@@ -390,8 +391,12 @@ function tf = isFixedTransform(stmt)
 % interpolation by explicit lists): re-running them on another dataset
 % applies exactly the same operation.
 e = neuroqc.live.History.classify(stmt);
-tf = any(strcmp(e.fn, {'pop_eegfiltnew','pop_firws','pop_resample','pop_reref','pop_rmbase', ...
-    'pop_epoch','pop_select','pop_interp'}));
+% Filters are linear time-invariant operators fixed by their design
+% parameters (Widmann, Schroger & Maess, 2015); selections by events or
+% channel lists depend on the events, which the signal copy shares.
+tf = any(strcmp(e.fn, {'pop_eegfiltnew','pop_firws','pop_firma','pop_firpm','pop_eegfilt','pop_basicfilter', ...
+    'pop_resample','pop_reref','pop_rmbase','pop_epoch','pop_select','pop_selectevent','pop_rmdat', ...
+    'pop_interp','pop_chanedit'}));
 end
 
 function L = presentChannels(EEG, wanted, what)
@@ -434,9 +439,14 @@ function v = fieldOr(s, f)
 v = []; if isfield(s, f), v = s.(f); end
 end
 
-function requireLocations(EEG)
-hasXYZ = isfield(EEG.chanlocs, 'X') && all(arrayfun(@(c) ~isempty(c.X), EEG.chanlocs));
-assert(hasXYZ, 'NeuroQC:Chanlocs', 'Spherical interpolation needs channel locations (Edit > Channel locations).');
+function requireLocations(locs, what)
+% The channels to interpolate must have positions: EEGLAB's eeg_interp
+% leaves a channel without one as it was, silently, while the step would
+% report it interpolated.
+ok = @(v) isnumeric(v) && isscalar(v) && isfinite(v);
+has = arrayfun(@(c) isfield(c, 'X') && ok(c.X) && ok(c.Y) && ok(c.Z), locs);
+assert(all(has), 'NeuroQC:Chanlocs', ['%s: no channel location for %s, so it cannot be interpolated ', ...
+    '(Edit > Channel locations, or exclude/remove it).'], what, strjoin({locs(~has).labels}, ', '));
 end
 
 function target = rootChanlocs(EEG)

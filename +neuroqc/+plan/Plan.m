@@ -154,7 +154,7 @@ classdef Plan
             %   advance (8 free steps = 40320 orders is fine when most are
             %   illegal). opts.maxVisits bounds the work (refused above it).
             if nargin < 4, opts = struct(); end
-            opts = withDefaults(opts, struct('maxLeaves', 500, 'maxVisits', 2e6));
+            opts = neuroqc.utils.withDefaults(opts, struct('maxLeaves', 500, 'maxVisits', 2e6));
             assert(~isempty(obj.Slots), 'NeuroQC:Plan', 'The plan is empty: add at least one step.');
             n = numel(obj.Slots);
             obj = obj.resolveAuto(state);
@@ -393,12 +393,6 @@ for k = 1:2:numel(c)
 end
 end
 
-function o = withDefaults(o, d)
-for f = fieldnames(d)'
-    if ~isfield(o, f{1}), o.(f{1}) = d.(f{1}); end
-end
-end
-
 function [grid, searched, defining] = paramGrid(type, given, contract)
 d = neuroqc.plan.Catalog.get(type);
 names = {d.params.name};
@@ -557,7 +551,8 @@ pruned = ~isempty(icaAt) && any(strcmp(steps(icaAt+1:end), 'icremove'));
 hp = 0; if ~isempty(s.filters.highpass), hp = max(s.filters.highpass); end
 st = struct('epoched', s.isEpoched, 'srate', s.srate, 'hasICA', s.ica.present, ...
     'icRemoved', s.ica.present && pruned, 'removed', isfield(s, 'restorableChannels') && ~isempty(s.restorableChannels), ...
-    'highpass', hp);   % removed: channels removed before NeuroQC can be restored by the plan
+    'highpass', hp, ...   % removed: channels removed before NeuroQC can be restored by the plan
+    'anyLocations', ~isfield(s, 'nLocated') || s.nLocated > 0);
 end
 
 function nodes = buildTree(leaves)

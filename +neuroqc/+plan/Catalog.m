@@ -113,6 +113,9 @@ classdef Catalog
                     end
                     if strcmp(type, 'highpass'), st.highpass = max(st.highpass, p.cutoff); end
                 case 'badchannels'
+                    if strcmp(p.action, 'interpolate') && ~st.anyLocations
+                        reason = ['interpolating bad channels' ' needs channel locations (Edit > Channel locations): spherical interpolation (Perrin et al., 1989) works on electrode positions, and the dataset has none']; return;
+                    end
                     if strcmp(p.action, 'remove')
                         if st.hasICA && ~st.icRemoved
                             reason = 'removing channels after ICA invalidates the decomposition'; return;
@@ -123,6 +126,9 @@ classdef Catalog
                     end
                 case 'channels'
                     if isempty(p.labels), reason = 'channels step needs labels'; return; end
+                    if strcmp(p.action, 'interpolate') && ~st.anyLocations
+                        reason = ['interpolating named channels' ' needs channel locations (Edit > Channel locations): spherical interpolation (Perrin et al., 1989) works on electrode positions, and the dataset has none']; return;
+                    end
                     if strcmp(p.action, 'remove')
                         if st.hasICA && ~st.icRemoved
                             reason = 'removing channels after ICA invalidates the decomposition'; return;
@@ -132,6 +138,7 @@ classdef Catalog
                         reason = 'channels action must be remove or interpolate'; return;
                     end
                 case 'restore'
+                    if ~st.anyLocations, reason = ['restoring channels' ' needs channel locations (Edit > Channel locations): spherical interpolation (Perrin et al., 1989) works on electrode positions, and the dataset has none']; return; end
                     if ~st.removed, reason = 'restore needs channels removed earlier in the plan or before NeuroQC (EEG.chaninfo.removedchans)'; return; end
                     st.removed = false;
                 case 'reref'
@@ -143,6 +150,9 @@ classdef Catalog
                     st.hasICA = true; st.icRemoved = false;
                 case 'icremove'
                     if ~st.hasICA, reason = 'IC removal needs ICA earlier in the plan or in the dataset'; return; end
+                    if ~st.anyLocations
+                        reason = 'ICLabel needs channel locations (its features include the scalp maps of the components; Pion-Tonachini et al., 2019)'; return;
+                    end
                     if st.icRemoved, reason = 'ICs of this decomposition were already removed'; return; end
                     st.icRemoved = true;
                 case 'epoch'
@@ -155,6 +165,10 @@ classdef Catalog
                     % statements call (a captured workflow has several).
                     for stmt = neuroqc.run.Native.statements(p.command)
                         e = neuroqc.live.History.classify(stmt{1});
+                        if strcmp(e.fn, 'pop_chanedit'), st.anyLocations = true; end   % locations set in the plan
+                        if any(strcmp(e.fn, {'pop_interp','pop_iclabel'})) && ~st.anyLocations
+                            reason = sprintf('native %s needs channel locations (Edit > Channel locations)', e.fn); return;
+                        end
                         switch e.step
                             case 'epoch'
                                 if st.epoched, reason = 'native pop_epoch on epoched data'; return; end

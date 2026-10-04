@@ -14,8 +14,6 @@ classdef Measure
     %     peakAmplitude precision of the peak amplitude of the averaged
     %     peakLatency   ROI waveform = bootstrapped SME (bSME: SD of the
     %                   measure over bootstrap averages; uV or ms)
-    %     logpower      trial score = log10 band power (Hann-tapered FFT,
-    %                   ROI mean); analytic SME (log10 uV^2)
     %
     %   (Luck, Stewart, Simmons & Rhemtulla, 2021, Psychophysiology.)
     %   SME falls when noise is removed and rises when trials are lost, so it
@@ -34,7 +32,7 @@ classdef Measure
         function ref = reference(EEG, contract)
             % trial identities only: the ROI may be restored later in the plan
             T = neuroqc.eval.Measure.trials(EEG, contract, true);
-            conds = contract.effectiveConditions();
+            conds = contract.conditions;
             ref = struct('ids', {cell(1, numel(conds))}, 'names', {{conds.name}});
             for c = 1:numel(conds)
                 ref.ids{c} = unique(T.id(T.cond == c))';
@@ -48,7 +46,7 @@ classdef Measure
 
         function m = candidate(EEG, contract, ref, opts)
             if nargin < 4, opts = struct(); end
-            opts = withDefaults(opts, neuroqc.eval.Measure.defaults());
+            opts = neuroqc.utils.withDefaults(opts, neuroqc.eval.Measure.defaults());
             T = neuroqc.eval.Measure.trials(EEG, contract);
             nC = numel(ref.ids); nO = numel(ref.objectives);
             m = struct('kept', zeros(1, nC), 'retention', zeros(1, nC), 'extraTrials', 0, ...
@@ -150,13 +148,33 @@ classdef Measure
             v = sqrt(acc / numel(Wc));
         end
 
+        function lock = lockingEvents(EEG, codes)
+            % For each epoch, the index in EEG.event of the event it is
+            % time-locked to: the first event of one of the codes within
+            % half a sample of time 0 (0 = none). The one definition used
+            % for scoring, for the trial rule and for the signal check.
+            halfSample = 1000 / EEG.srate / 2 + 1e-6;   % eventlatency is in ms
+            lock = zeros(1, EEG.trials);
+            for k = 1:EEG.trials
+                ep = EEG.epoch(k);
+                lat = cellify(ep.eventlatency); ev = cellify(ep.event); ty = ep.eventtype;
+                if ischar(ty) || isstring(ty), ty = {char(ty)}; elseif ~iscell(ty), ty = num2cell(ty); end
+                for q = 1:numel(lat)
+                    if abs(double(lat{q})) > halfSample, continue; end
+                    if ~any(strcmp(strtrim(char(string(ty{q}))), codes)), continue; end
+                    lock(k) = double(ev{q});
+                    break;
+                end
+            end
+        end
+
         function T = trials(EEG, contract, idsOnly)
             % One row per epoch: urevent id, condition index, per-objective data
             % (idsOnly: identities and conditions only).
             if nargin < 3, idsOnly = false; end
-            conds = contract.effectiveConditions();
+            conds = contract.conditions;
             codes = contract.allEvents();
-            win = contract.effectiveEpoch();
+            win = contract.epoch;
             if EEG.trials == 1 && (~isfield(EEG, 'epoch') || isempty(EEG.epoch))
                 [~, EEG] = evalc('pop_epoch(EEG, codes, win, ''epochinfo'', ''yes'')');
             end
@@ -171,30 +189,22 @@ classdef Measure
             if isfield(EEG, 'etc') && isfield(EEG.etc, 'neuroqc') && isfield(EEG.etc.neuroqc, 'eligibleUrevents')
                 eligible = EEG.etc.neuroqc.eligibleUrevents;
             end
-            halfSample = 1000 / EEG.srate / 2 + 1e-6; % eventlatency is in ms
-            for k = 1:nT
-                ep = EEG.epoch(k);
-                lat = cellify(ep.eventlatency); ev = cellify(ep.event); ty = ep.eventtype;
-                if ischar(ty) || isstring(ty), ty = {char(ty)}; elseif ~iscell(ty), ty = num2cell(ty); end
-                for q = 1:numel(lat)
-                    if abs(double(lat{q})) > halfSample, continue; end
-                    t = strtrim(char(string(ty{q})));
-                    ci = find(arrayfun(@(cd) any(strcmp(cd.events, t)), conds), 1);
-                    if isempty(ci), continue; end
-                    e = EEG.event(ev{q});
-                    assert(isfield(e, 'urevent') && ~isempty(e.urevent), 'NeuroQC:Urevent', ...
-                        'Time-locking events have no urevent index.');
-                    if ~isempty(eligible) && ~ismember(double(e.urevent), eligible), break; end
-                    id(k) = double(e.urevent); cond(k) = ci;
-                    break;
-                end
+            lock = neuroqc.eval.Measure.lockingEvents(EEG, codes);
+            for k = find(lock > 0)
+                e = EEG.event(lock(k));
+                t = strtrim(char(string(e.type)));
+                assert(isfield(e, 'urevent') && ~isempty(e.urevent), 'NeuroQC:Urevent', ...
+                    'Time-locking events have no urevent index.');
+                if ~isempty(eligible) && ~ismember(double(e.urevent), eligible), continue; end
+                id(k) = double(e.urevent);
+                cond(k) = find(arrayfun(@(cd) any(strcmp(cd.events, t)), conds), 1);
             end
             keep = cond > 0;
-            data = double(EEG.data(:, :, keep));
-            bl = contract.effectiveBaseline();
             T = struct('id', id(keep), 'cond', cond(keep), 'data', {{}}, 'times', {{}}, ...
                 'labels', {labels});
             if idsOnly, return; end
+            data = double(EEG.data(:, :, keep));
+            bl = contract.baseline;
             if ~isempty(bl)
                 bsel = times >= bl(1) - 1e-9 & times <= bl(2) + 1e-9;
                 assert(any(bsel), 'NeuroQC:Measure', 'No samples in the baseline window.');
@@ -218,12 +228,6 @@ classdef Measure
 end
 
 % ---------------------------------------------------------------------
-function o = withDefaults(o, d)
-for f = fieldnames(d)'
-    if ~isfield(o, f{1}), o.(f{1}) = d.(f{1}); end
-end
-end
-
 function c = cellify(x)
 if iscell(x), c = x; else, c = num2cell(x); end
 end

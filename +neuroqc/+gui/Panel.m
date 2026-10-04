@@ -223,7 +223,9 @@ classdef Panel < handle
             if s.isEpoched, shape = sprintf('%d epochs [%g %g] s', s.trials, s.xmin, s.xmax);
             else, shape = sprintf('continuous %.1f s', s.pnts / s.srate); end
             stored = ''; if ~live.stored, stored = '  (base EEG not stored in ALLEEG)'; end
-            locs = 'channel locations: yes'; if ~s.hasLocations, locs = 'channel locations: NONE (no interpolation)'; end
+            if s.hasLocations, locs = 'channel locations: yes';
+            elseif s.nLocated == 0, locs = 'channel locations: NONE (no interpolation, no ICLabel)';
+            else, locs = sprintf('channel locations: %d of %d (none for %s)', s.nLocated, s.nbchan, strjoin(s.unlocated, ', ')); end
             obj.DatasetLabel.Text = sprintf(['Set %s: %s%s\n%d ch | %g Hz | %s | %d events\n', ...
                 'Reference: %s | ICA: %s | %s\nFilters: %s'], mat2str(live.currentSet), s.setname, stored, ...
                 s.nbchan, s.srate, shape, s.nEvents, s.reference, s.ica.summary, locs, orDash(s.filters.text));
@@ -504,7 +506,7 @@ classdef Panel < handle
             has = any(cellfun(@(a) strcmp(a.type, 'none'), slot.alternatives));
             try
                 obj.Plan = obj.Plan.setSkippable(slot.id, ~has);
-                neuroqc.utils.log('%s: skipping %s.', slot.id, ternary(~has, 'is now searched as an option', 'is no longer an option'));
+                neuroqc.utils.log('%s: skipping %s.', slot.id, neuroqc.utils.ternary(~has, 'is now searched as an option', 'is no longer an option'));
                 obj.invalidate('Plan changed'); obj.showPlan();
             catch ME
                 uialert(obj.Fig, ME.message, 'NeuroQC');
@@ -595,7 +597,7 @@ classdef Panel < handle
                 [~, EEG] = evalc('neuroqc.run.Steps.run(path{q}, EEG, ctx)');
             end
             if ~isempty(path)
-                neuroqc.utils.log('Dialog on a preview copy%s after: %s', ternary(EEG.trials == 1, ' (first 120 s)', ''), ...
+                neuroqc.utils.log('Dialog on a preview copy%s after: %s', neuroqc.utils.ternary(EEG.trials == 1, ' (first 120 s)', ''), ...
                     strjoin(cellfun(@(i) i.label, path, 'UniformOutput', false), ' > '));
             end
         end
@@ -609,12 +611,12 @@ classdef Panel < handle
             c = obj.contract();
             codes = c.allEvents();
             assert(~isempty(codes), 'NeuroQC:Contract', 'Define the conditions first (the preview is epoched on their events).');
-            assert(numel(c.effectiveEpoch()) == 2, 'NeuroQC:Contract', 'Set the epoch first (EEGLAB pop_epoch...).');
-            [~, EEG] = evalc('pop_epoch(EEG, codes, c.effectiveEpoch(), ''epochinfo'', ''yes'')');
-            if ~isempty(c.effectiveBaseline())
-                [~, EEG] = evalc('pop_rmbase(EEG, 1000 * c.effectiveBaseline(), [])');
+            assert(numel(c.epoch) == 2, 'NeuroQC:Contract', 'Set the epoch first (EEGLAB pop_epoch...).');
+            [~, EEG] = evalc('pop_epoch(EEG, codes, c.epoch, ''epochinfo'', ''yes'')');
+            if ~isempty(c.baseline)
+                [~, EEG] = evalc('pop_rmbase(EEG, 1000 * c.baseline, [])');
             end
-            neuroqc.utils.log('Dialog on a preview copy epoched [%g %g] s on %s.', c.effectiveEpoch(), strjoin(codes, ', '));
+            neuroqc.utils.log('Dialog on a preview copy epoched [%g %g] s on %s.', c.epoch, strjoin(codes, ', '));
         end
 
         function applyNow(obj)
@@ -782,7 +784,7 @@ classdef Panel < handle
                 end
                 if E.trials == 1 && view > 1
                     codes = r.contract.allEvents();
-                    [~, E] = evalc('pop_epoch(E, codes, r.contract.effectiveEpoch())');
+                    [~, E] = evalc('pop_epoch(E, codes, r.contract.epoch)');
                 end
                 switch view
                     case 1, pop_eegplot(E, 1, 1, 0);
@@ -891,9 +893,9 @@ classdef Panel < handle
                     c = obj.contract();
                     codes = c.allEvents();
                     assert(~isempty(codes), 'NeuroQC:Contract', 'Define the conditions first (the preview is epoched on their events).');
-                    assert(numel(c.effectiveEpoch()) == 2, 'NeuroQC:Contract', 'Set the epoch first (EEGLAB pop_epoch...).');
-                    [~, EEG] = evalc('pop_epoch(EEG, codes, c.effectiveEpoch(), ''epochinfo'', ''yes'')');   % no baseline removed yet
-                    neuroqc.utils.log('Baseline dialog on a preview copy epoched [%g %g] s on %s.', c.effectiveEpoch(), strjoin(codes, ', '));
+                    assert(numel(c.epoch) == 2, 'NeuroQC:Contract', 'Set the epoch first (EEGLAB pop_epoch...).');
+                    [~, EEG] = evalc('pop_epoch(EEG, codes, c.epoch, ''epochinfo'', ''yes'')');   % no baseline removed yet
+                    neuroqc.utils.log('Baseline dialog on a preview copy epoched [%g %g] s on %s.', c.epoch, strjoin(codes, ', '));
                 end
                 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_rmbase(EEG);');
                 if isempty(com), return; end
@@ -1149,6 +1151,7 @@ classdef Panel < handle
                 ci = ''; if isfinite(T.diffLo(k)), ci = sprintf('[%+.3f %+.3f]', T.diffLo(k), T.diffHi(k)); end
                 id = sprintf('%d', k); if any(recs == k), id = [id '*']; end
                 txt = r.labels{k}; if ~isempty(T.reason{k}), txt = [T.reason{k} ' | ' txt]; end
+                if ismember('note', T.Properties.VariableNames) && ~isempty(T.note{k}), txt = ['(note, see below) ' txt]; end
                 if ~isempty(T.stratum{k}), txt = ['[' T.stratum{k} '] ' txt]; end
                 data(end+1, :) = {id, T.status{k}, num(T.objective(k), '%.4g'), ci, T.notDistinguished(k), ...
                     pctText(T.minRetention(k)), pctText(T.interpolated(k)), pctText(T.ampError(k)), pctText(T.artifactPct(k)), txt}; %#ok<AGROW>
@@ -1178,11 +1181,12 @@ classdef Panel < handle
                     case 'result'
                         k = str2double(strrep(t.Data{r, 1}, '*', ''));
                         T = obj.Result.ranking.table;
-                        v = {sprintf('Candidate %d (%s)%s', k, T.status{k}, ternary(endsWith(t.Data{r, 1}, '*'), ', recommended', '')), ...
+                        v = {sprintf('Candidate %d (%s)%s', k, T.status{k}, neuroqc.utils.ternary(endsWith(t.Data{r, 1}, '*'), ', recommended', '')), ...
                             ['Pipeline: ' obj.Result.labels{k}]};
                         if ~isempty(T.reason{k}), v{end+1} = ['Reason: ' T.reason{k}]; end
+                        if ismember('note', T.Properties.VariableNames) && ~isempty(T.note{k}), v{end+1} = ['Note: ' T.note{k}]; end
                         if ~isempty(T.stratum{k}), v{end+1} = ['Stratum (what is measured): ' T.stratum{k}]; end
-                        v{end+1} = sprintf(['Objective %.4g; difference from the best [%.3g %.3g]; not distinguished %d; ', ...
+                        v{end+1} = sprintf(['Objective (gain-corrected SME) %.4g; difference from the best [%.3g %.3g]; not distinguished %d; ', ...
                             'min retention %s; min trials %g; interpolated %s; amplitude error %s; latency shift %.3g ms; ', ...
                             'artifactual deflection %s; waveform r %.3f; topography r %.3f'], T.objective(k), T.diffLo(k), T.diffHi(k), ...
                             T.notDistinguished(k), pctText(T.minRetention(k)), T.minTrials(k), pctText(T.interpolated(k)), ...
@@ -1539,6 +1543,3 @@ else, t = class(v);
 end
 end
 
-function s = ternary(c, a, b)
-if c, s = a; else, s = b; end
-end

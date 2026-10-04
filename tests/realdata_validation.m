@@ -28,8 +28,15 @@ if nargin < 2 || isempty(contract)
     contract = neuroqc.eval.Contract('conditions', {['c' codes{1}], codes(1); ['c' codes{2}], codes(2)}, ...
         'epoch', [-0.2 0.8], 'baseline', [-0.2 0], 'components', {'late', [0.3 0.5], roi});
 end
+% the working copy becomes the current dataset; the user's session (ALLEEG,
+% EEG, CURRENTSET) is put back when this function returns
+saved = struct();
+for v = {'ALLEEG', 'EEG', 'CURRENTSET'}
+    if evalin('base', sprintf('exist(''%s'', ''var'')', v{1})), saved.(v{1}) = evalin('base', v{1}); end
+end
+restoreSession = onCleanup(@() restoreBase(saved)); %#ok<NASGU>
 assignin('base', 'NQC_TMP', EEG);
-evalin('base', 'global ALLCOM; ALLEEG = []; [ALLEEG, EEG, CURRENTSET] = eeg_store([], NQC_TMP, 0); clear NQC_TMP;');
+evalin('base', 'global ALLCOM; [ALLEEG, EEG, CURRENTSET] = eeg_store([], NQC_TMP, 0); clear NQC_TMP;');
 neuroqc.NeuroQC.state();
 
 labs = {EEG.chanlocs.labels};
@@ -74,4 +81,11 @@ end
 after = dir(file);
 out.fileUnchanged = isequal([before.datenum before.bytes], [after.datenum after.bytes]);
 fprintf('Original file unchanged: %d. Search time %.0f s.\n', out.fileUnchanged, out.seconds);
+end
+
+function restoreBase(saved)
+evalin('base', 'clear ALLEEG EEG CURRENTSET');
+for f = fieldnames(saved)'
+    assignin('base', f{1}, saved.(f{1}));
+end
 end

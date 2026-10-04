@@ -75,18 +75,6 @@ classdef Contract
             ev = unique([obj.conditions.events], 'stable');
         end
 
-        function c = effectiveConditions(obj)
-            c = obj.conditions;
-        end
-
-        function w = effectiveEpoch(obj)
-            w = obj.epoch;
-        end
-
-        function w = effectiveBaseline(obj)
-            w = obj.baseline;
-        end
-
         function units = objectiveUnits(obj)
             units = {};
             for k = 1:numel(obj.components)
@@ -125,9 +113,19 @@ classdef Contract
             end
             obj.validateTrialRule();
             if nargin < 2 || isempty(state), return; end
-            missing = setdiff(lower([obj.conditions.events]), lower(state.eventTypes));
-            assert(isempty(missing), 'NeuroQC:Contract', 'Event type(s) not in the dataset: %s (present: %s)', ...
-                strjoin(missing, ', '), strjoin(state.eventTypes, ', '));
+            % event types are matched exactly, as pop_epoch and the scoring match
+            % them ('S 1' and 's 1' are different types)
+            missing = setdiff([obj.conditions.events], state.eventTypes);
+            if ~isempty(missing)
+                hint = '';
+                [near, at] = ismember(lower(missing), lower(state.eventTypes));
+                if any(near)
+                    hint = sprintf(' Event types are case-sensitive: did you mean %s?', ...
+                        strjoin(strcat('''', state.eventTypes(at(near)), ''''), ', '));
+                end
+                error('NeuroQC:Contract', 'Event type(s) not in the dataset: %s (present: %s).%s', ...
+                    strjoin(missing, ', '), strjoin(state.eventTypes, ', '), hint);
+            end
             roi = obj.allRoi();
             absent = setdiff(lower(roi), lower(state.labels));
             restorable = {};
@@ -139,7 +137,7 @@ classdef Contract
             assert(all(ismember(absent, restorable)), 'NeuroQC:Contract', 'ROI channel(s) not in the dataset: %s', ...
                 strjoin(setdiff(absent, restorable), ', '));
             if state.isEpoched
-                w = obj.effectiveEpoch();
+                w = obj.epoch;
                 assert(state.xmin <= w(1) + 1.5/state.srate && state.xmax >= w(2) - 1.5/state.srate, ...
                     'NeuroQC:Contract', 'The dataset epochs [%g %g] s do not cover the contract epoch.', state.xmin, state.xmax);
             end

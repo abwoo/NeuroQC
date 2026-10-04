@@ -389,11 +389,11 @@ verifyTrue(tc, any(contains(app.DetailArea.Value, app.Result.labels{k})));      
 verifyTrue(tc, any(contains(app.DetailArea.Value, 'pop_eegfiltnew')));             % full commands
 app.HistTable.Selection = [1 1]; app.showDetails('history', app.HistTable);
 verifyTrue(tc, any(contains(app.DetailArea.Value, 'pop_loadset')));
-app.Fig.Position = [60 60 1000 640]; drawnow;
 g = app.Fig.Children(1);
+app.Fig.Position = [60 60 1000 640]; settle(g, 'on');            % the resize callback runs asynchronously
 verifyEqual(tc, char(g.Scrollable), 'on');                                         % parts keep their size, window scrolls
 verifyEqual(tc, g.RowHeight{3}, 470);
-app.Fig.Position = [60 60 1380 860]; drawnow;
+app.Fig.Position = [60 60 1380 860]; settle(g, 'off');
 verifyEqual(tc, char(g.Scrollable), 'off');
 end
 
@@ -587,6 +587,53 @@ if ~isempty(neuroqc.run.Native.menuSteps())                      % EEGLAB's main
 end
 end
 
+function testEventTypesAreMatchedExactly(tc)
+% Event types are case-sensitive, as in pop_epoch and the scoring; a type
+% that differs only in case is refused with the near match named.
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
+for k = find(strcmp(cellfun(@(x) char(string(x)), {EEG.event.type}, 'UniformOutput', false), '11'))
+    EEG.event(k).type = 'S 11';
+end
+st = neuroqc.live.DataState.fromEEG(EEG);
+c = neuroqc.eval.Contract('conditions', {'t', {'s 11'}}, 'epoch', [-0.2 1], 'baseline', [-0.2 0], ...
+    'components', {'P3', [0.3 0.5], {'Pz'}});
+try
+    c.validate(st); verifyFail(tc, 'expected NeuroQC:Contract');
+catch ME
+    verifyEqual(tc, ME.identifier, 'NeuroQC:Contract');
+    verifyTrue(tc, contains(ME.message, 'did you mean ''S 11'''));
+end
+end
+
+function testInterpolationNeedsPositionsOfTheChannelsItFills(tc)
+% EEGLAB's eeg_interp leaves a channel without a position untouched; the
+% step refuses instead of reporting it interpolated.
+EEG = nqc_synth(struct('seconds', 30, 'nPerCond', 5));
+k = find(strcmpi({EEG.chanlocs.labels}, 'Pz'));
+EEG.chanlocs(k).X = []; EEG.chanlocs(k).Y = []; EEG.chanlocs(k).Z = [];
+st = neuroqc.live.DataState.fromEEG(EEG);
+verifyEqual(tc, st.nLocated, EEG.nbchan - 1);
+verifyEqual(tc, lower(st.unlocated), {'pz'});
+in = struct('type', 'channels', 'params', struct('labels', {{'Pz'}}, 'action', 'interpolate'));
+verifyError(tc, @() neuroqc.run.Steps.run(in, EEG, struct()), 'NeuroQC:Chanlocs');
+end
+
+function testEpochsMarkedButNotRemovedAreReported(tc)
+% A step that only marks epochs (EEGLAB's pop_eegthresh with reject = 0,
+% ERPLAB's artifact detection) removes nothing; the candidate says so.
+% A rejection step that removes what it marks leaves no such note.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+nqc_setBase(EEG);
+c = nqc_contract();
+p = neuroqc.plan.Plan(); p = p.add('epoch'); p = p.add('baseline');
+p = p.addNative('EEG = pop_eegthresh(EEG, 1, 1:32, -20, 20, -0.2, 0.996, 0, 0);');
+r = neuroqc.NeuroQC.optimize(p, c);
+verifyTrue(tc, contains(r.ranking.table.note{1}, 'marked for rejection'));
+q = neuroqc.plan.Plan(); q = q.add('epoch'); q = q.add('baseline'); q = q.add('reject_threshold', 'uv', 20);
+r = neuroqc.NeuroQC.optimize(q, c);
+verifyEmpty(tc, r.ranking.table.note{1});
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');
@@ -690,4 +737,13 @@ verifyNotEmpty(tc, s.provenance);
 verifyTrue(tc, contains(txt, 'recorded in EEG.history'));
 after = dir(f);
 verifyEqual(tc, [after.datenum after.bytes], [before.datenum before.bytes]);
+end
+
+function settle(g, state)
+% wait (at most 5 s) until the layout has followed a window resize
+for k = 1:50
+    drawnow;
+    if strcmp(char(g.Scrollable), state), return; end
+    pause(0.1);
+end
 end

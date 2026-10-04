@@ -30,7 +30,7 @@ classdef Executor
     methods (Static)
         function result = run(plan, contract, opts)
             if nargin < 3, opts = struct(); end
-            opts = withDefaults(opts, struct('dryRun', false, 'injectUv', 5, ...
+            opts = neuroqc.utils.withDefaults(opts, struct('dryRun', false, 'injectUv', 5, ...
                 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal'));
             [EEG, live] = neuroqc.live.Session.current();
             assert(~isempty(EEG), 'NeuroQC:NoDataset', 'No dataset is loaded in EEGLAB.');
@@ -102,6 +102,15 @@ classdef Executor
             [S, env.truth] = neuroqc.eval.Injection.prepare(root, contract, ref, opts);
             neuroqc.utils.log(['Signal check: a known %g uV signal is carried through every candidate with the ', ...
                 'same decisions (matched-decision injection).'], opts.injectUv);
+            % depth-first execution holds the data and the signal copy once per
+            % level of the current branch (the price of sharing prefixes)
+            % (a level after a resample step holds data smaller by fs_new/fs)
+            b = whos('root'); gb = b.bytes / 2^30;
+            levels = max([1 arrayfun(@(l) dataLevels(l.path, root.srate), leaves)]);
+            if gb * 2 * levels > 2
+                neuroqc.utils.log(['Memory: up to about %.1f GB (%.2f GB of starting data, 2 copies, %.1f data-sized ', ...
+                    'levels on the deepest branch). Resampling early in the plan reduces it.'], gb * 2 * levels, gb, levels);
+            end
             if ~isempty(opts.checkpoint) && ~any(done)
                 result = neuroqc.run.Executor.writeManifest(result);
                 env.identity = result.identity; env.checkpoint = result.options.checkpoint;
@@ -166,14 +175,7 @@ classdef Executor
                         if ~matched, unmatched = {in.type}; end
                     end
                 catch ME
-                    neuroqc.utils.log('FAILED %s: %s (%d candidate(s) affected)', in.label, ME.message, numel(under));
-                    for li = under
-                        if env.done(li), continue; end
-                        c = emptyCand(); c.id = li; c.key = env.leaves(li).key; c.stratum = env.leaves(li).stratum;
-                        c.status = failStatus(ME); c.message = sprintf('%s: %s', in.label, ME.message);
-                        out(end+1, 1) = c; %#ok<AGROW>
-                        saveLeaf(env, c);
-                    end
+                    out = [out; failUnder(env, under, in, ME)]; %#ok<AGROW>
                     continue;
                 end
                 [ctx2, acc2] = advance(in, ctx, acc, info, coms, unmatched, toc(t0));
@@ -208,14 +210,7 @@ classdef Executor
                         if ~matched, unmatched = {in.type}; end
                     end
                 catch ME   % same handling as runSubtree: the candidates below fail, the search goes on
-                    under = leavesUnder(tree, child);
-                    neuroqc.utils.log('FAILED %s: %s (%d candidate(s) affected)', in.label, ME.message, numel(under));
-                    for li = under
-                        if env.done(li), continue; end
-                        c = emptyCand(); c.id = li; c.key = env.leaves(li).key; c.stratum = env.leaves(li).stratum;
-                        c.status = failStatus(ME); c.message = sprintf('%s: %s', in.label, ME.message);
-                        out(end+1, 1) = c; saveLeaf(env, c); %#ok<AGROW>
-                    end
+                    out = [out; failUnder(env, leavesUnder(tree, child), in, ME)];
                     return;
                 end
                 [ctx, acc] = advance(in, ctx, acc, info, coms, unmatched, toc(t0));
@@ -359,21 +354,10 @@ classdef Executor
                 return;
             end
             elig = EEG.etc.neuroqc.eligibleUrevents;
-            codes = contract.allEvents();
-            halfSample = 1000 / EEG.srate / 2 + 1e-6;
+            lock = neuroqc.eval.Measure.lockingEvents(EEG, contract.allEvents());
             drop = false(1, EEG.trials);
-            for k = 1:EEG.trials
-                ep = EEG.epoch(k);
-                lat = ep.eventlatency; ev = ep.event; ty = ep.eventtype;
-                if ~iscell(lat), lat = num2cell(lat); end
-                if ~iscell(ev), ev = num2cell(ev); end
-                if ischar(ty) || isstring(ty), ty = {char(ty)}; elseif ~iscell(ty), ty = num2cell(ty); end
-                for q = 1:numel(lat)
-                    if abs(double(lat{q})) > halfSample, continue; end
-                    if ~any(strcmp(strtrim(char(string(ty{q}))), codes)), continue; end
-                    drop(k) = ~ismember(double(EEG.event(ev{q}).urevent), elig);
-                    break;
-                end
+            for k = find(lock > 0)
+                drop(k) = ~ismember(double(EEG.event(lock(k)).urevent), elig);
             end
             if ~any(drop), return; end
             assert(~all(drop), 'NeuroQC:TrialRule', 'The trial rule keeps none of the output epochs.');
@@ -421,7 +405,7 @@ classdef Executor
                 same = all(abs(a - b) <= 1e-6 * max(1, abs(b))) && isequal(m.kept, result.cands(idx).m.kept);
                 neuroqc.utils.log('Replay check: objectives %s, trials %s (search: %s, %s) -> %s', mat2str(a, 5), ...
                     mat2str(m.kept), mat2str(b, 5), mat2str(result.cands(idx).m.kept), ...
-                    ternary(same, 'identical', 'DIFFERENT (non-deterministic step?)'));
+                    neuroqc.utils.ternary(same, 'identical', 'DIFFERENT (non-deterministic step?)'));
                 % the evaluation (and the constraints it passed) belongs to the
                 % searched data; a rebuilt dataset that differs is not that candidate
                 assert(same || force, 'NeuroQC:ReplayMismatch', ['The rebuilt candidate %d differs from the one ', ...
@@ -477,12 +461,6 @@ classdef Executor
 end
 
 % ---------------------------------------------------------------------
-function o = withDefaults(o, d)
-for f = fieldnames(d)'
-    if ~isfield(o, f{1}), o.(f{1}) = d.(f{1}); end
-end
-end
-
 function v = fieldOr(s, f, d)
 if isfield(s, f), v = s.(f); else, v = d; end
 end
@@ -505,9 +483,26 @@ function c = emptyCand()
 %   seconds                 run time of its steps
 %   unmatched               step types re-run (not decision-matched) on
 %                           the signal copy
+%   notes                   facts the user must know that are not
+%                           failures (e.g. epochs marked but not removed)
 % Rank.run reads status, m, signal, interpolatedFraction and stratum.
 c = struct('id', 0, 'key', '', 'stratum', '', 'status', 'pending', 'message', '', 'm', [], 'signal', [], ...
-    'interpolatedFraction', NaN, 'icsRemoved', 0, 'rejectedEpochs', 0, 'coms', {{}}, 'seconds', 0, 'unmatched', {{}});
+    'interpolatedFraction', NaN, 'icsRemoved', 0, 'rejectedEpochs', 0, 'coms', {{}}, 'seconds', 0, 'unmatched', {{}}, ...
+    'notes', {{}});
+end
+
+function out = failUnder(env, under, in, ME)
+% A step failed: every not yet evaluated candidate below it fails with the
+% reason (the search goes on with the other branches).
+neuroqc.utils.log('FAILED %s: %s (%d candidate(s) affected)', in.label, ME.message, numel(under));
+out = repmat(emptyCand(), 0, 1);
+for li = under
+    if env.done(li), continue; end
+    c = emptyCand(); c.id = li; c.key = env.leaves(li).key; c.stratum = env.leaves(li).stratum;
+    c.status = failStatus(ME); c.message = sprintf('%s: %s', in.label, ME.message);
+    out(end+1, 1) = c; %#ok<AGROW>
+    saveLeaf(env, c);
+end
 end
 
 function s = failStatus(ME)
@@ -556,6 +551,12 @@ c.interpolatedFraction = numel(acc.interpolated) / env.nbchan;
 c.unmatched = acc.unmatched;
 try
     c.m = neuroqc.eval.Measure.candidate(E, env.contract, env.ref, env.opts);
+    nm = markedNotRemoved(E);
+    if nm > 0
+        c.notes{end+1} = sprintf(['%d epoch(s) are marked for rejection (EEG.reject) but still in the data; ', ...
+            'marks do not remove epochs, so they count in the scores. Remove them in the plan ', ...
+            '(e.g. pop_rejepoch) if they should not count.'], nm);
+    end
     [~, ~, tcom] = evalc('neuroqc.run.Executor.selectEligible(E, env.contract)');
     if ~isempty(tcom), c.coms{end+1} = tcom; end
     if ~isempty(S)
@@ -584,6 +585,35 @@ if isfield(env.opts, 'stopAfter') && numel(dir(fullfile(env.checkpoint, 'leaf_*.
     % simulated interruption (tests): everything saved so far is kept
     error('NeuroQC:Interrupted', 'Search interrupted after %d candidates (opts.stopAfter).', env.opts.stopAfter);
 end
+end
+
+function n = dataLevels(path, fs0)
+% Copies of the data a depth-first branch holds, in units of the starting
+% data (the start, then one per step; resampling shrinks what follows).
+f = 1; n = 1;
+for q = 1:numel(path)
+    if strcmp(path{q}.type, 'resample'), f = f * path{q}.params.fs / fs0; fs0 = path{q}.params.fs; end
+    n = n + f;
+end
+end
+
+function n = markedNotRemoved(EEG)
+% Epochs that a marking step (EEGLAB's pop_eegthresh/pop_jointprob/...,
+% ERPLAB's artifact detection, which marks EEG.reject.rejmanual) flagged
+% but no step removed. EEGLAB keeps marks and data apart: only
+% pop_rejepoch removes epochs (Delorme & Makeig, 2004); ERPLAB's averager
+% honours its own flags (Lopez-Calderon & Luck, 2014), NeuroQC's scores
+% do not.
+n = 0;
+if EEG.trials <= 1 || ~isfield(EEG, 'reject') || ~isstruct(EEG.reject), return; end
+f = {'rejmanual','rejthresh','rejconst','rejjp','rejkurt','rejfreq'};
+any_ = false(1, EEG.trials);
+for k = 1:numel(f)
+    if isfield(EEG.reject, f{k}) && numel(EEG.reject.(f{k})) == EEG.trials
+        any_ = any_ | logical(EEG.reject.(f{k})(:)');
+    end
+end
+n = sum(any_);
 end
 
 function hp = rootHighpass(state)
@@ -644,9 +674,6 @@ elig = unique(ure(keep));
 assert(~isempty(elig), 'NeuroQC:TrialRule', 'The trial rule keeps no trials.');
 end
 
-function s = ternary(c, a, b)
-if c, s = a; else, s = b; end
-end
 
 function EEG = evalWithEEG(EEG, NEUROQC_CMD__)
 % Run a script line on EEG exactly as the exported script will.
@@ -661,7 +688,12 @@ o = result.options;
 o = rmfield(o, intersect(fieldnames(o), {'checkpoint','stopAfter','parallel','verbose','dryRun'}));
 md = java.security.MessageDigest.getInstance('SHA-256');
 root = result.root;
-md.update(typecast(double(root.data(:)), 'uint8'));
+% the data in blocks: the same bytes as double(root.data(:)), without a
+% double copy of the whole recording in memory
+N = numel(root.data); step = 2^22;
+for i0 = 1:step:N
+    md.update(typecast(double(root.data(i0:min(N, i0 + step - 1))), 'uint8'));
+end
 parts = {getByteStreamFromArray(result.rootComs), getByteStreamFromArray(result.contract.toStruct()), ...
     getByteStreamFromArray(result.labels), getByteStreamFromArray(o), ...
     getByteStreamFromArray({root.chanlocs.labels}), getByteStreamFromArray(root.srate), ...

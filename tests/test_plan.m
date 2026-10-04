@@ -196,6 +196,28 @@ for k = 1:numel(l)
 end
 end
 
+function testStepsThatNeedLocationsAreExcludedWithoutThem(tc)
+% Without any channel location, interpolation and ICLabel cannot run: such
+% pipelines are excluded before anything runs, with the reason, instead of
+% failing one by one in the middle of the search.
+st = nqc_fakeState(false, 250); st.nLocated = 0;
+c = nqc_contract();
+p = neuroqc.plan.Plan(); p = p.add('badchannels', 'measure', 'kurt', 'threshold', 5);   % interpolate (default)
+try
+    p.enumerate(st, c); verifyFail(tc, 'expected NeuroQC:NoLegalPipeline');
+catch ME
+    verifyEqual(tc, ME.identifier, 'NeuroQC:NoLegalPipeline');
+    verifyTrue(tc, contains(ME.message, 'needs channel locations'));
+end
+p2 = neuroqc.plan.Plan(); p2 = p2.add('badchannels', 'measure', 'kurt', 'threshold', 5, 'action', 'remove');
+verifyNumElements(tc, p2.enumerate(st, c), 1);
+p3 = neuroqc.plan.Plan(); p3 = p3.add('ica'); p3 = p3.add('icremove', 'threshold', 0.9);
+verifyError(tc, @() p3.enumerate(st, c), 'NeuroQC:NoLegalPipeline');
+st.nLocated = 30;
+verifyNumElements(tc, p.enumerate(st, c), 1);
+verifyNumElements(tc, p3.enumerate(st, c), 1);
+end
+
 function testDifferentFixedArgumentsAreDifferentPipelines(tc)
 % Two configurations that differ only in a fixed argument (high-pass 0.1
 % vs 0.5, both searching the low-pass) are four pipelines, none dropped.

@@ -33,8 +33,11 @@ classdef DataState
             s.restorableChannels = restorableIdx(EEG);   % indices into chaninfo.removedchans
             s.ica = icaState(EEG);
             s.lineFreq = lineFrequency(EEG);   % 50 or 60 Hz mains, from the data ([] if not clear)
-            s.hasLocations = isfield(EEG, 'chanlocs') && ~isempty(EEG.chanlocs) && isfield(EEG.chanlocs, 'X') && ...
-                all(arrayfun(@(c) ~isempty(c.X), EEG.chanlocs));
+            loc = located(EEG);
+            s.nLocated = sum(loc);             % channels with finite X, Y, Z
+            s.hasLocations = ~isempty(loc) && all(loc);
+            s.unlocated = {};
+            if s.nLocated > 0 && ~s.hasLocations, s.unlocated = {EEG.chanlocs(~loc).labels}; end
             [s.lockingTypes, s.lockingCounts] = lockingEvents(EEG);   % event types at time 0 of the epochs
             s.baselineMs = [];                 % window of the last pop_rmbase in the history, if any
             x = EEG.data(:, 1:min(EEG.pnts, round(10 * EEG.srate)), 1);
@@ -171,9 +174,9 @@ function f0 = lineFrequency(EEG)
 f0 = [];
 fs = EEG.srate;
 if fs < 130, return; end
-X = double(EEG.data(:, :));
-n = min(size(X, 2), round(60 * fs));
-X = X(:, 1:n); X = X - mean(X, 2);
+n = min(EEG.pnts * EEG.trials, round(60 * fs));
+X = double(EEG.data(:, 1:n));                   % the first 60 s only (no copy of the whole recording)
+X = X - mean(X, 2);
 P = mean(abs(fft(X, [], 2)) .^ 2, 1);
 f = (0:n-1) * fs / n;
 ratio = [0 0];
@@ -342,4 +345,11 @@ end
 
 function r = row(c, i, d)
 r = struct('category', c, 'item', i, 'detail', d);
+end
+
+function tf = located(EEG)
+% channels with finite X, Y and Z
+if ~isfield(EEG, 'chanlocs') || isempty(EEG.chanlocs) || ~isfield(EEG.chanlocs, 'X'), tf = false(1, EEG.nbchan); return; end
+ok = @(v) isnumeric(v) && isscalar(v) && isfinite(v);
+tf = arrayfun(@(c) ok(c.X) && ok(c.Y) && ok(c.Z), EEG.chanlocs);
 end

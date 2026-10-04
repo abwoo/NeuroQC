@@ -27,7 +27,7 @@ classdef NeuroQC
             assert(~isempty(EEG), 'NeuroQC:NoDataset', 'No dataset is loaded in EEGLAB.');
             s = neuroqc.live.DataState.fromEEG(EEG);
             neuroqc.utils.log('Current set: %s%s', mat2str(live.currentSet), ...
-                ternary(live.stored, '', ' (base EEG modified, not stored in ALLEEG)'));
+                neuroqc.utils.ternary(live.stored, '', ' (base EEG modified, not stored in ALLEEG)'));
             neuroqc.live.DataState.print(s);
             neuroqc.live.History.print(s.history);
             P = s.provenance;
@@ -80,6 +80,3 @@ classdef NeuroQC
     end
 end
 
-function s = ternary(c, a, b)
-if c, s = a; else, s = b; end
-end
