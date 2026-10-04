@@ -139,6 +139,16 @@ for k = 1:numel(full.cands)
 end
 verifyEqual(tc, res.ranking.recommended, full.ranking.recommended);
 verifyEqual(tc, res.rootFingerprint, full.rootFingerprint);   % identity of the starting dataset kept
+% resuming with the relative folder name still stores the absolute path
+% (it is used to read the starting dataset back from any folder later)
+[parent, name] = fileparts(d);
+here = pwd; cd(parent); c3 = onCleanup(@() cd(here)); %#ok<NASGU>
+res2 = neuroqc.NeuroQC.resume(name);
+cd(here);
+w = what(d); verifyEqual(tc, res2.options.checkpoint, w(1).path);
+res2.root = [];
+E = neuroqc.run.Executor.rootOf(res2);
+verifyEqual(tc, E.nbchan, EEG.nbchan);
 end
 
 function testParallelEqualsSerial(tc)

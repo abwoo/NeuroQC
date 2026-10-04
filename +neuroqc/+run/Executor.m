@@ -63,7 +63,7 @@ classdef Executor
                 '(manifest.mat) do not belong to the same search (or were written by an older NeuroQC).'], dirName);
             result = M.result; result.root = R.root;
             result.identity = M.identity;
-            result.options.checkpoint = dirName;
+            w = what(dirName); result.options.checkpoint = w(1).path;   % absolute, as writeManifest stores it
             assert(strcmp(searchIdentity(result), M.identity), 'NeuroQC:Checkpoint', ...
                 '%s: the stored starting dataset no longer matches the search identity.', dirName);
             v = versions();

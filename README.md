@@ -126,8 +126,11 @@ legal order; `p.pin(id)` keeps a step in place and `p.before(a, b)` constrains t
 2. **Legal pipelines.**
    - The plan expands into all combinations of searched values, alternatives and orders. Each is
      checked against the simulated data state; excluded combinations are counted with their reason.
-   - Every legal pipeline is run; above `maxLeaves` the search is refused with its size, never
-     sampled or truncated.
+   - Every legal pipeline is run; above `maxLeaves` (500 by default) the search is refused with its
+     size, never sampled or truncated. To bring a large search within reach: fix the values you
+     are already sure of, pin steps or add `before()` rules instead of searching every order, or
+     search in stages (search the early steps, adopt the result, then search the later steps from
+     that dataset). Raising `maxLeaves` is possible but every pipeline really runs.
 3. **Execution.**
    - Pipelines run as a prefix tree, so a shared prefix (e.g. one ICA before several IC thresholds)
      is computed once.
@@ -178,6 +181,8 @@ legal order; `p.pin(id)` keeps a step in place and `p.before(a, b)` constrains t
   that reason.
 - Peak-latency precision is itself hard to estimate with few trials, so peak-latency objectives
   rarely separate candidates; mean-amplitude measures are more informative for choosing a pipeline.
+- Every candidate also runs on the signal copy (same operations and decisions), so a search costs
+  roughly twice the EEGLAB computation of the pipelines themselves, filter-only plans included.
 - Depth-first execution keeps one copy of the dataset per plan depth in memory (one per worker in
   parallel mode).
 
