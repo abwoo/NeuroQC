@@ -24,8 +24,10 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %              (stopping keeps the pipelines already run) and opens the
 %              results window; 'off' does neither
 %
-%   The dataset is not modified (EEG is returned unchanged); the result is
-%   also stored in the base variable pipecompare_result. com is the command
+%   The Command Window shows a short summary; the full log (every EEGLAB
+%   command of every pipeline) goes to pipecompare_last_run.log in
+%   tempdir. The dataset is not modified (EEG is returned unchanged); the
+%   result is also stored in the base variable pipecompare_result. com is the command
 %   that repeats this comparison (EEGLAB puts it in ALLCOM). The panel
 %   (EEGLAB > Tools > PipeCompare > Advanced panel) offers every option.
 com = ''; result = [];
@@ -69,8 +71,18 @@ if ~strcmp(opts.show, 'off')
     runOpts.progress = @progress;
 end
 closeFig = onCleanup(@() delete(fig(isvalid(fig)))); %#ok<NASGU>   % also on an error
-result = pipecompare.PipeCompare.optimize(plan, c, runOpts);
+% the full log goes to a file; the Command Window gets the summary
+t0 = tic;
+logText = evalc('result = pipecompare.PipeCompare.optimize(plan, c, runOpts);');
 delete(fig(isvalid(fig)));
+logFile = fullfile(tempdir, 'pipecompare_last_run.log');
+fid = fopen(logFile, 'w');
+if fid > 0, fprintf(fid, '%s', logText); fclose(fid); end
+T = result.ranking.table;
+pipecompare.utils.log('%d pipelines compared on %s in %s; %d passed the checks%s.', height(T), state.setname, ...
+    timeText(toc(t0)), sum(strcmp(T.status, 'feasible')), pipecompare.utils.ternary(isempty(result.ranking.recommended), ...
+    '', sprintf('; recommended: pipeline %d', result.ranking.recommended)));
+if fid > 0, pipecompare.utils.log('Full log (every EEGLAB command): %s', logFile); end
 assignin('base', 'pipecompare_result', result);
 args = {'measure', opts.measure};
 if strcmpi(opts.measure, 'custom'), args = [args {'window', opts.window}]; end

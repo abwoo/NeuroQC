@@ -33,6 +33,9 @@ release has a git tag `vX.Y.Z`.
 - Result window: *Use this pipeline* shows that it is building the pipeline again (ICA too) and
   then says the new dataset is not saved yet; *Show all pipelines* lists every pipeline with the
   reason it was excluded, in place of *Details…* (the panel remains in the menu).
+- `pop_pipecompare` prints a two-line summary instead of about 900 lines; the full log goes to
+  `pipecompare_last_run.log` in `tempdir`. The menu item *Show dataset state and history* is
+  removed (it only printed to the Command Window); `pipecompare.PipeCompare.state()` remains.
 
 - A plan with ASR or ICLabel IC removal is now illegal when the clean_rawdata or ICLabel plugin is
   missing, with that reason, before the search starts; previously every candidate failed during it.

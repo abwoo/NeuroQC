@@ -130,7 +130,8 @@ pipecompare_setup                         % run from the PipeCompare folder
    and ICLabel require channel locations. To compare ASR (artifact subspace reconstruction) or
    other steps, use the advanced panel or a script.
 4. Press **Run**. A progress window shows how many pipelines are done and the time left; **Stop**
-   ends the search and keeps the pipelines already finished.
+   ends the search and keeps the pipelines already finished. The Command Window gets a short
+   summary; the full log goes to `pipecompare_last_run.log` in MATLAB's `tempdir`.
 5. The result window says which pipeline to use and why, naming each pipeline by its settings
    (for example *high-pass 0.5 Hz, low-pass 30 Hz*). **Use this pipeline** stores it as a new
    EEGLAB dataset; **Save script…** writes it as a MATLAB function that you can run on your other

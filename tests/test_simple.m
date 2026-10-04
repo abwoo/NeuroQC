@@ -199,7 +199,10 @@ end
 function testPopFunctionFromAScript(tc)
 EEG = tc.TestData.EEG;
 nqc_setBase(EEG);
-[out, com, r] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'recipe', 'filters', 'show', 'off');
+txt = evalc('[out, com, r] = pop_pipecompare(EEG, ''measure'', ''P3'', ''events'', {''11'', ''31''}, ''recipe'', ''filters'', ''show'', ''off'');');
+verifyLessThanOrEqual(tc, numel(splitlines(strtrim(txt))), 4);  % a summary in the Command Window
+verifyTrue(tc, contains(txt, '12 pipelines compared'));
+verifyTrue(tc, contains(fileread(fullfile(tempdir, 'pipecompare_last_run.log')), 'pop_eegfiltnew'));   % the full log
 verifyEqual(tc, out, EEG);                                      % the dataset is not modified
 verifyEqual(tc, numel(r.cands), 12);
 verifyEqual(tc, com, 'EEG = pop_pipecompare(EEG, ''measure'',''P3'',''events'',{''11'',''31''},''recipe'',''filters'');');

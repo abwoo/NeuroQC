@@ -38,7 +38,9 @@ Two choices (what to measure; for ERP, the event types); the recipe is preselect
 *Run* shows a progress window (pipelines done, time left) with *Stop*: stopping keeps the
 pipelines already run, and the result covers those. The time left is estimated from the
 pipelines after the first, which alone runs the shared steps (ICA included). Data stored in volts
-are recognised from the amplitude scale and compared in µV.
+are recognised from the amplitude scale and compared in µV. The Command Window gets a two-line
+summary; the full log (every EEGLAB command of every pipeline) is written to
+`pipecompare_last_run.log` in MATLAB's `tempdir`, replaced by the next run.
 
 *Advanced…* opens the panel below with these choices filled in (ERP only: for band power it is
 off). When the choices cannot be filled in (e.g. a component's electrode is missing), it says

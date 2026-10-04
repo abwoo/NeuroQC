@@ -704,7 +704,7 @@ uimenu(f, 'Label', 'Tools', 'Tag', 'tools');
 ts = struct('no_check', 'try,'); cs = struct('add_to_hist', '');
 evalc('eegplugin_pipecompare(f, ts, cs)');
 items = findobj(findobj(f, 'Tag', 'pipecompare_menu'), 'Type', 'uimenu', '-not', 'Tag', 'pipecompare_menu');
-verifyNumElements(tc, items, 3);                                  % simple mode, panel, state
+verifyNumElements(tc, items, 2);                                  % simple mode, panel
 for k = 1:numel(items)
     cb = items(k).MenuSelectedFcn;
     verifyTrue(tc, startsWith(cb, 'try,') && contains(cb, 'catch, eeglab_error; end'));
