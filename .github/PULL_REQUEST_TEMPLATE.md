@@ -4,15 +4,14 @@
 
 ## Type of change
 
-- [ ] Documentation (typo, step, section, translation)
-- [ ] Screenshot / demo asset (synthetic data only)
-- [ ] Config (`configs/`)
-- [ ] Examples (reference scripts)
+- [ ] Code (`+neuroqc/`, plugin entry files)
+- [ ] Documentation (`README.md`, `docs/`, `CHANGELOG.md`)
+- [ ] Tests (`tests/`)
 - [ ] CI / repository meta (`.github/`)
 
 ## Checklist
 
-- [ ] `docs-links` CI is green (all relative links resolve)
+- [ ] `addpath(fullfile(pwd,'tests')); run_all()` passes locally (MATLAB + EEGLAB versions: ...)
+- [ ] Changes to the panel were checked by hand with `tests/MANUAL_GUI_CHECK.md`
+- [ ] `CHANGELOG.md` updated for user-visible changes
 - [ ] No real subject data, real names, or local filesystem paths are included
-- [ ] Screenshots (if changed) come from the synthetic demo dataset
-- [ ] Version numbers / dates in touched docs still match the release they document

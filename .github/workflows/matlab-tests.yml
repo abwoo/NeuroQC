@@ -1,0 +1,39 @@
+name: matlab-tests
+
+# The suites that need no window: plan enumeration, history parsing, the
+# panel's text parsing, statistics and invariants. The suites that drive
+# EEGLAB's window or run whole searches (test_eeglab, test_engine,
+# test_signal) run locally (see CONTRIBUTING.md).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: MATLAB tests without GUI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout NeuroQC
+        uses: actions/checkout@v4
+        with:
+          path: NeuroQC
+
+      - name: Checkout EEGLAB
+        run: git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: latest
+
+      - name: Run tests
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
+            cd NeuroQC; addpath(pwd); addpath(fullfile(pwd, 'tests'));
+            r = run_all({'test_history', 'test_plan', 'test_panel_text', 'test_statistics', 'test_invariants'});
+            assert(~any([r.Failed]), 'NeuroQC:CI', '%d test(s) failed', sum([r.Failed]));

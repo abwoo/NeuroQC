@@ -18,7 +18,7 @@ classdef NeuroQC
     %   See neuroqc.plan.Plan, neuroqc.eval.Contract, neuroqc.eval.Rank.
 
     properties (Constant)
-        Version = '0.7.0'
+        Version = '0.7.1'
     end
 
     methods (Static)

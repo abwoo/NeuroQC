@@ -7,6 +7,71 @@ Notation. A candidate pipeline is a sequence of EEGLAB operations. For one compo
 window, measure) and one condition, trial *i* gives a score *y*ᵢ (*i* = 1…*N*), e.g. the mean
 amplitude over the ROI channels and the window after baseline correction.
 
+## Overview: how a search runs
+
+1. **Starting point.**
+   - The current state is read from the EEG structure: epoched or not, sampling rate, channels and
+     their locations, ICA matrices, IC flags and reference.
+   - `EEG.history` is parsed in order, without deduplication; continuation lines (`...`) are joined.
+   - Where the history cannot describe the data, NeuroQC says so instead of guessing.
+   - The data unit (uV or V) is judged from the amplitude scale (or set with `dataUnit`); volts are
+     converted on NeuroQC's copy.
+   - A floating-point sampling-rate residue (common after EDF import) is rounded on the copy, and
+     the change is recorded.
+2. **Legal pipelines.**
+   - The plan expands into all combinations of searched values, alternatives and orders. Each is
+     checked against the simulated data state; excluded combinations are counted with their reason.
+   - Every legal pipeline is run; above `maxLeaves` (500 by default) the search is refused with its
+     size, never sampled or truncated. To bring a large search within reach: fix the values you
+     are already sure of, pin steps or add `before()` rules instead of searching every order, or
+     search in stages (search the early steps, adopt the result, then search the later steps from
+     that dataset). Raising `maxLeaves` is possible but every pipeline really runs.
+3. **Execution.**
+   - Pipelines run as a prefix tree, so a shared prefix (e.g. one ICA before several IC thresholds)
+     is computed once.
+   - Every step is a native EEGLAB call. Its command is printed and appended to that candidate's
+     `EEG.history`.
+   - Each candidate is checkpointed. `resume` continues and gives the same result as an
+     uninterrupted run.
+   - `parallel = true` distributes independent subtrees over a pool.
+4. **What is measured.**
+   - The contract defines the measures: mean amplitude, peak amplitude or peak latency per
+     component.
+   - No experimental effect is used, so choosing a pipeline cannot inflate the effect you test later.
+   - The data quality of each measure is its standardized measurement error (SME): analytic for
+     means, bootstrapped for peaks and latencies (Luck et al., 2021). SME falls when noise is removed
+     and rises when trials are lost, so it prices the rejection trade-off.
+5. **Signal preservation.** A known signal is used to catch processing that removes the effect along
+   with the noise.
+   - A copy containing only a known signal is carried through every candidate with the same
+     operations and the same decisions as the real data (bad channels, ICA, removed components,
+     rejected epochs, ASR reconstructions). Native commands that decide from the data on their own
+     are re-run on the copy and flagged.
+   - Amplitude error, peak shift, artifactual deflection, and waveform and topography correlation
+     are each checked against a limit.
+6. **Ranking.**
+   - Failures are reported, never ranked. Constraint violations are listed with their reasons.
+     If nothing is feasible, NeuroQC says so and relaxes nothing.
+   - Objective: the **gain-corrected SME**, SME divided by the factor by which the candidate scales a
+     known signal in that measure (read from the signal check). Raw SME would reward a pipeline that
+     shrinks signal and noise alike; SME/gain does not, and ranking it is ranking signal-to-noise
+     (Zhang, Garrett & Luck, 2024). Composite over measures that share a unit, or the one measure
+     you choose; the others are reported. Derivation in section 2 below.
+   - Paired bootstrap over trials (matched by `urevent`); intervals of the difference from the best
+     are simultaneous over all candidates (bootstrap max statistic; White, 2000; Romano & Wolf,
+     2005), so a larger search does not produce more false "worse" verdicts. *Not distinguished* is
+     absence of evidence, not equivalence.
+   - A multiverse summary reports, for each measure and condition, the spread of its value over the
+     feasible pipelines and the searched choice behind most of it (`result.robustness`; Steegen et
+     al., 2016). It shows sensitivity to processing and is not used for the ranking.
+   - A candidate that ends with epochs marked for rejection but not removed (e.g. an ERPLAB artifact
+     detection step without a removal) carries a note: marks do not remove epochs.
+   - Candidates that differ in the reference are ranked in separate strata, never against each other.
+     With several strata there is no overall recommendation: each stratum has its own (marked `*`),
+     and you choose the one that fits your analysis.
+   - The recommendation is the least aggressive candidate among those not distinguished from the
+     best: most trials kept, then least distortion.
+
 ## 1. Data quality: the standardized measurement error
 
 For a mean-amplitude score the averaged ERP's score is ȳ, and its standard error is the analytic
@@ -183,6 +248,8 @@ contains no comparison between conditions. [`neuroqc.eval.Rank.robustness`, `res
 - Efron, B., & Tibshirani, R. J. (1993). *An Introduction to the Bootstrap*. Chapman & Hall.
 - Hansen, P. R., Lunde, A., & Nason, J. M. (2011). The model confidence set. *Econometrica, 79*(2),
   453–497.
+- Kothe, C. A. E., & Makeig, S. (2013). BCILAB: a platform for brain-computer interface development.
+  *Journal of Neural Engineering, 10*(5), 056014 (artifact subspace reconstruction).
 - Lopez-Calderon, J., & Luck, S. J. (2014). ERPLAB: an open-source toolbox for the analysis of
   event-related potentials. *Frontiers in Human Neuroscience, 8*, 213.
 - Luck, S. J., Stewart, A. X., Simmons, A. M., & Rhemtulla, M. (2021). Standardized measurement

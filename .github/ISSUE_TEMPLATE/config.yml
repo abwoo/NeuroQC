@@ -1,8 +1,1 @@
 blank_issues_enabled: false
-contact_links:
-  - name: Questions & discussion
-    url: https://github.com/abwoo/NeuroQC/discussions
-    about: Ask usage questions or discuss the NeuroQC approach (enable GitHub Discussions for this repo).
-  - name: English documentation
-    url: https://github.com/abwoo/NeuroQC/blob/main/README.md
-    about: The English README — current full documents are in Chinese.
