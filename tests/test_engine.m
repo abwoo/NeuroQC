@@ -251,6 +251,7 @@ function testAsrDecisionsAreReplayedOnTheSignalCopy(tc)
 % (verified against EEGLAB's own output) and applied to the injected copy:
 % decision-matched, like every other data-driven step.
 assumeTrue(tc, exist('pop_clean_rawdata', 'file') == 2, 'clean_rawdata plugin not installed');
+assumeTrue(tc, exist('yulewalk', 'file') == 2, 'ASR at 250 Hz needs the Signal Processing Toolbox');
 EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 20));
 nqc_setBase(EEG);
 p = pipecompare.plan.Plan();

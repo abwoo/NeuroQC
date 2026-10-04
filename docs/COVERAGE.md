@@ -23,7 +23,7 @@ Each item has four status columns:
 | `linenoise` | `pop_eegfiltnew` (revfilt) | ✓ | ✓ | ✓ | injection | FIR band-stop at the mains frequency detected in the recording (50/60 Hz) unless set; CleanLine/Zapline only as native steps |
 | `highpass` | `pop_eegfiltnew` | ✓ | ✓ | ✓ real data | injection | |
 | `lowpass` | `pop_eegfiltnew` | ✓ | ✓ | ✓ real data | injection | |
-| `asr` | `pop_clean_rawdata` | ✓ | ✓ | ✓ | injection, decision-matched: the window-by-window reconstructions ASR chose on the real data are recorded and applied (`pipecompare.run.AsrRecord`, checked to reproduce EEGLAB's output exactly; otherwise re-run and flagged) | needs clean_rawdata; Euclidean ASR, burst correction only |
+| `asr` | `pop_clean_rawdata` | ✓ | ✓ | ✓ | injection, decision-matched: the window-by-window reconstructions ASR chose on the real data are recorded and applied (`pipecompare.run.AsrRecord`, checked to reproduce EEGLAB's output exactly; otherwise re-run and flagged) | needs clean_rawdata (and the Signal Processing Toolbox at rates without a precomputed ASR filter); Euclidean ASR, burst correction only |
 | `badchannels` | `pop_rejchan` (+ `pop_interp`) | ✓ | ✓ | ✓ | injection, matched | |
 | `channels` | `pop_select` / `pop_interp` | ✓ | ✓ | ✓ real data | injection, matched | interpolation needs channel locations |
 | `restore` | `pop_interp` | ✓ | ✓ | ✓ | injection, matched | |

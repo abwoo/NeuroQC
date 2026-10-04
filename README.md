@@ -69,7 +69,7 @@ pipeline does not bias the statistical test you run afterwards.
 | MATLAB | R2026a (tested). GNU Octave is not supported: the interface uses `uifigure`. |
 | EEGLAB | 2026.0.0 (tested), started with its main window (not `eeglab nogui`) |
 | EEGLAB plugins | firfilt (bundled with EEGLAB); ICLabel for IC removal; clean_rawdata for ASR |
-| Optional | Parallel Computing Toolbox, for parallel execution |
+| Optional | Parallel Computing Toolbox, for parallel execution; Signal Processing Toolbox, for ASR at sampling rates other than 100, 128, 200, 256, 300, 500 and 512 Hz |
 
 Other MATLAB and EEGLAB versions have not been tested. PipeCompare reads the current dataset from
 EEGLAB's base-workspace variables `EEG`, `ALLEEG` and `CURRENTSET`, and stores adopted pipelines

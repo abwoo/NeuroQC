@@ -105,7 +105,10 @@ classdef Catalog
                     st.srate = p.fs;
                 case {'highpass','lowpass','linenoise','asr'}
                     if st.epoched, reason = sprintf('%s must run on continuous data (before epoching)', type); return; end
-                    if strcmp(type, 'asr'), reason = missingPlugin('pop_clean_rawdata'); if ~isempty(reason), return; end; end
+                    if strcmp(type, 'asr')
+                        reason = missingPlugin('pop_clean_rawdata'); if ~isempty(reason), return; end
+                        reason = asrFilter(st.srate); if ~isempty(reason), return; end
+                    end
                     if any(strcmp(type, {'highpass','lowpass'})) && p.cutoff >= st.srate/2
                         reason = sprintf('%s %g Hz is at/above Nyquist (%g Hz)', type, p.cutoff, st.srate/2); return;
                     end
@@ -203,6 +206,18 @@ plugins = struct('pop_clean_rawdata', 'clean_rawdata', 'pop_iclabel', 'ICLabel')
 reason = '';
 if isfield(plugins, fn) && exist(fn, 'file') ~= 2
     reason = sprintf('%s needs the %s plugin (EEGLAB > File > Manage EEGLAB extensions)', fn, plugins.(fn));
+end
+end
+
+function reason = asrFilter(srate)
+% ASR's spectral filter is designed with yulewalk (Signal Processing
+% Toolbox); without it asr_calibrate has the filter only for some rates.
+% At other rates clean_artifacts catches the error and returns the data
+% unchanged, so ASR would silently do nothing.
+reason = '';
+if exist('yulewalk', 'file') ~= 2 && ~ismember(round(srate, 6), [100 128 200 256 300 500 512])   % srate is rounded like the run's copy
+    reason = sprintf(['ASR at %g Hz needs the Signal Processing Toolbox (yulewalk); without it clean_rawdata ', ...
+        'has its filter only for 100, 128, 200, 256, 300, 500 and 512 Hz (resample first)'], srate);
 end
 end
 

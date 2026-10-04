@@ -64,6 +64,7 @@ jobs:
         uses: matlab-actions/setup-matlab@v2
         with:
           release: latest
+          products: Signal_Processing_Toolbox   # ASR's filter at 250 Hz (the synthetic data)
 
       - name: Run tests
         uses: matlab-actions/run-command@v2

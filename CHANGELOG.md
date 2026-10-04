@@ -7,6 +7,9 @@ release has a git tag `vX.Y.Z`.
 
 - A plan with ASR or ICLabel IC removal is now illegal when the clean_rawdata or ICLabel plugin is
   missing, with that reason, before the search starts; previously every candidate failed during it.
+- ASR is also illegal when its filter cannot be built: without the Signal Processing Toolbox,
+  clean_rawdata has it only for 100, 128, 200, 256, 300, 500 and 512 Hz, and at other rates it
+  returned the data unchanged, so ASR candidates silently did nothing.
 - Simple mode, *Standard*: bad channels are detected once (kurtosis, z = 5) and ICA is fitted once,
   before the filters, so all filter choices share one decomposition: 108 pipelines and 1 ICA
   instead of 432 pipelines and 48 ICAs. *Full* is removed from the simple mode (it was always above
