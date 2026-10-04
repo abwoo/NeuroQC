@@ -5,6 +5,19 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Simple mode reads the data unit from the amplitude scale, as the panel does: on data stored in
+  volts the epoch-rejection thresholds previously removed nothing.
+- Simple mode no longer compares filter edges the data already have (from the history): they left
+  the data unchanged but filtered the known signal, which favoured the lower high-pass edges.
+- The result window names pipelines by the settings compared (*high-pass 0.5 Hz, low-pass
+  30 Hz, …*) instead of the full step key, with one line for the steps all pipelines share; with
+  no feasible pipeline it gives one pipeline's reason with its numbers.
+- The time left is estimated from the pipelines after the first (which alone runs ICA), shown as
+  hours and minutes; *Stop* says it stops after the current step.
+- Simple mode: `boundary` markers are not offered as events; on epoched data the time-locking
+  types are preselected; selected types can be scored as one condition (`'pool'`); a condition
+  with fewer than 10 events is flagged before *Run* instead of excluding every pipeline after it.
+
 - A plan with ASR or ICLabel IC removal is now illegal when the clean_rawdata or ICLabel plugin is
   missing, with that reason, before the search starts; previously every candidate failed during it.
 - ASR is also illegal when its filter cannot be built: without the Signal Processing Toolbox,

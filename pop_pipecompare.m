@@ -10,6 +10,8 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %              N400, P3, LRP, ERN) or a frequency band of continuous data
 %              (delta, theta, alpha, beta); see pipecompare.simple.Presets
 %   'events'   ERP: the time-locking event types, one condition each
+%   'pool'     ERP: true scores all the event types as one condition
+%              (default false)
 %   'recipe'   'filters' | 'standard': which steps are compared
 %   'segment'  band power: segment length in s (default 2)
 %   'show'     'on' (default) shows a progress window with a Stop button
@@ -27,10 +29,10 @@ if nargin < 2
     opts = pipecompare.gui.SimpleDialog.ask(EEG);
     if isempty(opts), return; end                       % cancelled, or continued in the panel
 else
-    opts = struct('measure', '', 'events', {{}}, 'recipe', '', 'segment', 2, 'show', 'on');
+    opts = struct('measure', '', 'events', {{}}, 'pool', false, 'recipe', '', 'segment', 2, 'show', 'on');
     for k = 1:2:numel(varargin)
         f = lower(char(varargin{k}));
-        assert(isfield(opts, f), 'PipeCompare:Simple', 'Unknown option %s (measure, events, recipe, segment, show).', f);
+        assert(isfield(opts, f), 'PipeCompare:Simple', 'Unknown option %s (measure, events, pool, recipe, segment, show).', f);
         opts.(f) = varargin{k+1};
     end
     opts.events = cellstr(opts.events);
@@ -40,15 +42,21 @@ cur = pipecompare.live.Session.current();
 assert(~isempty(cur) && strcmp(pipecompare.live.Session.fingerprint(cur), pipecompare.live.Session.fingerprint(EEG)), ...
     'PipeCompare:Simple', 'pop_pipecompare works on the current EEGLAB dataset; make this dataset current first.');
 state = pipecompare.live.DataState.fromEEG(EEG);
-c = pipecompare.simple.Presets.contract(EEG, opts.measure, opts.events, opts.segment);
+c = pipecompare.simple.Presets.contract(EEG, opts.measure, opts.events, opts.segment, opts.pool);
 [plan, notes] = pipecompare.simple.Presets.recipe(opts.recipe, state, c);
 for k = 1:numel(notes), pipecompare.utils.log('Recipe %s: %s.', opts.recipe, notes{k}); end
-runOpts = struct(); fig = gobjects(0); dlg = []; nDone = 0; nTotal = 0; t0 = tic;
+% the unit judged from the amplitude scale, as in the panel: rejection
+% thresholds in uV would remove nothing from data stored in V
+runOpts = struct('dataUnit', state.unitGuess);
+if strcmp(state.unitGuess, 'V'), pipecompare.utils.log('The data are in volts (judged from the amplitude scale); they are compared in uV.'); end
+fig = gobjects(0); dlg = []; nDone = 0; nTotal = 0; t1 = []; stopping = false;
 if ~strcmp(opts.show, 'off')
     nTotal = numel(plan.enumerate(state, c, struct('maxLeaves', Inf)));
+    first = 'the first one runs every step from the start';
+    if any(strcmp({plan.Slots.id}, 'ica')), first = 'ICA is fitted first (once; the slow part)'; end
     fig = uifigure('Name', 'PipeCompare', 'Position', [300 300 460 150]);
     dlg = uiprogressdlg(fig, 'Title', 'Comparing pipelines', 'Cancelable', 'on', 'CancelText', 'Stop', ...
-        'Message', sprintf('Running %d pipelines. The first one takes longest (it includes ICA when compared).', nTotal));
+        'Message', sprintf('Running %d pipelines; %s.', nTotal, first));
     runOpts.progress = @progress;
 end
 closeFig = onCleanup(@() delete(fig(isvalid(fig)))); %#ok<NASGU>   % also on an error
@@ -56,7 +64,9 @@ result = pipecompare.PipeCompare.optimize(plan, c, runOpts);
 delete(fig(isvalid(fig)));
 assignin('base', 'pipecompare_result', result);
 args = {'measure', opts.measure};
-if ~any(strcmpi(opts.measure, pipecompare.simple.Presets.bandNames())), args = [args {'events', opts.events}];
+if ~any(strcmpi(opts.measure, pipecompare.simple.Presets.bandNames()))
+    args = [args {'events', opts.events}];
+    if opts.pool, args = [args {'pool', true}]; end
 elseif opts.segment ~= 2, args = [args {'segment', opts.segment}]; end
 args = [args {'recipe', opts.recipe}];
 com = sprintf('EEG = pop_pipecompare(EEG, %s);', vararg2str(args));
@@ -66,14 +76,29 @@ if ~strcmp(opts.show, 'off'), pipecompare.gui.SimpleResults(result); end
         % the Executor's progress callback: n more pipelines are finished
         if ~isvalid(dlg), stop = true; return; end   % the window was closed: stop as well
         nDone = nDone + n;
-        if n > 0
-            left = toc(t0) / nDone * (nTotal - nDone);
-            if left < 90, when = sprintf('%.0f s', left); else, when = sprintf('%.0f min', left / 60); end
+        if n > 0 && ~stopping
+            % the time after the first pipeline: it alone runs the shared
+            % steps (ICA included), so it would inflate the estimate
+            if isempty(t1), t1 = tic; end
             dlg.Value = min(1, nDone / nTotal);
-            dlg.Message = sprintf('%d of %d pipelines done, about %s left. Stop keeps the finished ones.', ...
-                nDone, nTotal, when);
+            if nDone >= nTotal
+                dlg.Message = 'All pipelines done; ranking them...';
+            elseif nDone < 3
+                dlg.Message = sprintf('%d of %d pipelines done; estimating the time left...', nDone, nTotal);
+            else
+                dlg.Message = sprintf('%d of %d pipelines done, about %s left. Stop keeps the finished ones.', ...
+                    nDone, nTotal, timeText(toc(t1) / (nDone - 1) * (nTotal - nDone)));
+            end
         end
         drawnow;
         stop = dlg.CancelRequested;
+        if stop && ~stopping, stopping = true; dlg.Message = 'Stopping after the current step...'; drawnow; end
     end
+end
+
+function t = timeText(sec)
+% 'about 40 s', '12 min', '2 h 10 min'
+if sec < 90, t = sprintf('%.0f s', sec);
+elseif sec < 3600, t = sprintf('%.0f min', sec / 60);
+else, t = sprintf('%d h %d min', floor(sec / 3600), round(mod(sec, 3600) / 60)); end
 end

@@ -131,7 +131,8 @@ pipecompare_setup                         % run from the PipeCompare folder
    other steps, use the advanced panel or a script.
 4. Press **Run**. A progress window shows how many pipelines are done and the time left; **Stop**
    ends the search and keeps the pipelines already finished.
-5. The result window says which pipeline to use and why. **Use this pipeline** stores it as a new
+5. The result window says which pipeline to use and why, naming each pipeline by its settings
+   (for example *high-pass 0.5 Hz, low-pass 30 Hz*). **Use this pipeline** stores it as a new
    EEGLAB dataset; **Save script…** writes it as a MATLAB function; **Details…** opens the full
    result table.
 

@@ -69,11 +69,13 @@ classdef Presets
             end
         end
 
-        function c = contract(EEG, measure, events, segment)
+        function c = contract(EEG, measure, events, segment, pool)
             % The analysis contract of a simple-mode choice. measure: an ERP
             % component or a band name; events: the event types (ERP: one
-            % condition per type) - ignored for a band.
+            % condition per type, or one condition for all when pool is
+            % true) - ignored for a band.
             if nargin < 4 || isempty(segment), segment = 2; end
+            if nargin < 5, pool = false; end
             labels = {EEG.chanlocs.labels};
             if any(strcmpi(measure, pipecompare.simple.Presets.bandNames()))
                 roi = pipecompare.simple.Presets.eegChannels(EEG);
@@ -88,6 +90,7 @@ classdef Presets
             assert(all(ok), 'PipeCompare:Simple', ['%s is measured at %s (ERP CORE); the dataset has no %s. ', ...
                 'Use Advanced... to choose other channels.'], p.name, strjoin(p.sites, '/'), strjoin(p.sites(~ok), ', '));
             conds = [events(:) cellfun(@(e) {e}, events(:), 'UniformOutput', false)];
+            if pool, conds = {strjoin(events, '+'), events(:)'}; end
             c = pipecompare.eval.Contract('conditions', conds, 'epoch', p.epoch, 'baseline', p.baseline, ...
                 'components', {p.name, p.window, labels(at), {'mean', p.polarity}});
         end
@@ -126,7 +129,11 @@ classdef Presets
                 end
             end
             if continuous
-                plan = plan.add('highpass'); plan = plan.add('lowpass');
+                % filter edges the data already have are not alternatives:
+                % they leave the data unchanged but filter the known
+                % signal, which would bias the comparison
+                [plan, notes] = addFilter(plan, notes, 'highpass', state.filters.highpass, @(v, done) v > done, @max);
+                [plan, notes] = addFilter(plan, notes, 'lowpass', state.filters.lowpass, @(v, done) v < done, @min);
             else
                 notes{end+1} = 'the data are already epoched, so filters are not compared (they must run before epoching)';
             end
@@ -136,4 +143,20 @@ classdef Presets
             if standard, plan = plan.add('reject_threshold'); end
         end
     end
+end
+
+function [plan, notes] = addFilter(plan, notes, type, earlier, keep, edge)
+% Add a filter step searched over the catalog's values that still change
+% the data, given the edges in the dataset's history.
+d = pipecompare.plan.Catalog.get(type);
+vals = [d.params.suggest{:}];
+if ~isempty(earlier)
+    done = edge(earlier); drop = vals(~keep(vals, done)); vals = vals(keep(vals, done));
+    if ~isempty(drop)
+        name = strrep(type, 'pass', '-pass');
+        notes{end+1} = sprintf('%s %s Hz (the data are already %s-filtered at %g Hz)', name, ...
+            strjoin(arrayfun(@(v) sprintf('%g', v), drop, 'UniformOutput', false), ', '), name, done);
+    end
+end
+if ~isempty(vals), plan = plan.add(type, 'cutoff', num2cell(vals)); end
 end
