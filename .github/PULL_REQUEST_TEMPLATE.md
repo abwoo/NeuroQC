@@ -4,7 +4,7 @@
 
 ## Type of change
 
-- [ ] Code (`+neuroqc/`, plugin entry files)
+- [ ] Code (`+pipecompare/`, plugin entry files)
 - [ ] Documentation (`README.md`, `docs/`, `CHANGELOG.md`)
 - [ ] Tests (`tests/`)
 - [ ] CI / repository meta (`.github/`)

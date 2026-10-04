@@ -1,7 +1,7 @@
 classdef DataState
     %DATASTATE What has been done to the current dataset, and what it is now.
     %
-    %   s = neuroqc.live.DataState.fromEEG(EEG)
+    %   s = pipecompare.live.DataState.fromEEG(EEG)
     %
     %   The current state is read from the EEG structure itself (that is
     %   the ground truth: epoched or not, sampling rate, channels, ICA
@@ -14,10 +14,10 @@ classdef DataState
     methods (Static)
         function s = fromEEG(EEG)
             assert(isstruct(EEG) && isscalar(EEG) && isfield(EEG, 'data') && ~isempty(EEG.data), ...
-                'NeuroQC:NoDataset', 'No EEG dataset with data is loaded in EEGLAB.');
+                'PipeCompare:NoDataset', 'No EEG dataset with data is loaded in EEGLAB.');
             s = struct();
-            s.setname = neuroqc.utils.fieldOr(EEG, 'setname', '');
-            s.filename = fullfile(neuroqc.utils.fieldOr(EEG, 'filepath', ''), neuroqc.utils.fieldOr(EEG, 'filename', ''));
+            s.setname = pipecompare.utils.fieldOr(EEG, 'setname', '');
+            s.filename = fullfile(pipecompare.utils.fieldOr(EEG, 'filepath', ''), pipecompare.utils.fieldOr(EEG, 'filename', ''));
             s.nbchan = EEG.nbchan;
             s.srate = EEG.srate;
             s.pnts = EEG.pnts;
@@ -25,7 +25,7 @@ classdef DataState
             s.isEpoched = EEG.trials > 1 || (isfield(EEG, 'epoch') && ~isempty(EEG.epoch));
             s.xmin = EEG.xmin; s.xmax = EEG.xmax;
             s.labels = channelLabels(EEG);
-            s.nEvents = numel(neuroqc.utils.fieldOr(EEG, 'event', []));
+            s.nEvents = numel(pipecompare.utils.fieldOr(EEG, 'event', []));
             [s.eventTypes, s.eventCounts] = eventTypes(EEG);
             s.hasUrevent = isfield(EEG, 'urevent') && ~isempty(EEG.urevent);
             s.reference = referenceOf(EEG);
@@ -43,7 +43,7 @@ classdef DataState
             x = EEG.data(:, 1:min(EEG.pnts, round(10 * EEG.srate)), 1);
             s.unitGuess = 'uV';                % EEGLAB convention; 'V' when amplitudes are ~1e-6 smaller
             m = median(abs(double(x(:)))); if m > 0 && m < 1e-3, s.unitGuess = 'V'; end
-            s.history = neuroqc.live.History.parse(neuroqc.utils.fieldOr(EEG, 'history', ''));
+            s.history = pipecompare.live.History.parse(pipecompare.utils.fieldOr(EEG, 'history', ''));
             s.process = s.history(ismember({s.history.kind}, {'process'}));
             s.filters = filterSummary(s.history);
             for q = numel(s.process):-1:1
@@ -59,25 +59,25 @@ classdef DataState
         end
 
         function print(s)
-            neuroqc.utils.log('Dataset "%s": %d channels, %g Hz, %s, %d events.', ...
+            pipecompare.utils.log('Dataset "%s": %d channels, %g Hz, %s, %d events.', ...
                 s.setname, s.nbchan, s.srate, epochText(s), s.nEvents);
-            neuroqc.utils.log('Reference: %s. ICA: %s.', s.reference, s.ica.summary);
-            if ~isempty(s.filters.text), neuroqc.utils.log('Filters from history: %s.', s.filters.text); end
+            pipecompare.utils.log('Reference: %s. ICA: %s.', s.reference, s.ica.summary);
+            if ~isempty(s.filters.text), pipecompare.utils.log('Filters from history: %s.', s.filters.text); end
             if ~isempty(s.removedChannels)
-                neuroqc.utils.log('Removed channels (chaninfo.removedchans): %s', strjoin(s.removedChannels, ', '));
+                pipecompare.utils.log('Removed channels (chaninfo.removedchans): %s', strjoin(s.removedChannels, ', '));
             end
             steps = {s.process.step};
             if isempty(steps)
-                neuroqc.utils.log('Processing steps in history: none.');
+                pipecompare.utils.log('Processing steps in history: none.');
             else
-                neuroqc.utils.log('Processing steps in history (in order): %s', strjoin(steps, ' > '));
+                pipecompare.utils.log('Processing steps in history (in order): %s', strjoin(steps, ' > '));
             end
-            for k = 1:numel(s.warnings), neuroqc.utils.log('WARNING: %s', s.warnings{k}); end
+            for k = 1:numel(s.warnings), pipecompare.utils.log('WARNING: %s', s.warnings{k}); end
             P = s.provenance;
             cats = unique({P.category}, 'stable');
             for c = 1:numel(cats)
                 n = sum(strcmp({P.category}, cats{c}));
-                neuroqc.utils.log('Provenance - %s: %d item(s)', cats{c}, n);
+                pipecompare.utils.log('Provenance - %s: %d item(s)', cats{c}, n);
             end
         end
     end
@@ -192,7 +192,7 @@ ica = struct('present', false, 'nComponents', 0, 'nChannels', 0, 'flagged', [], 
 if ~isfield(EEG, 'icaweights') || isempty(EEG.icaweights), return; end
 ica.present = true;
 ica.nComponents = size(EEG.icaweights, 1);
-ica.nChannels = numel(neuroqc.utils.fieldOr(EEG, 'icachansind', 1:EEG.nbchan));
+ica.nChannels = numel(pipecompare.utils.fieldOr(EEG, 'icachansind', 1:EEG.nbchan));
 if isfield(EEG, 'reject') && isfield(EEG.reject, 'gcompreject') && ~isempty(EEG.reject.gcompreject)
     ica.flagged = find(EEG.reject.gcompreject);
 end
@@ -281,25 +281,26 @@ if med > 0 && med < 1e-3
     w{end+1} = sprintf('Median |amplitude| is %.2g: data look like volts, not microvolts. Amplitude thresholds (e.g. 100 uV) would be meaningless.', med);
 end
 if EEG.srate ~= round(EEG.srate) && abs(EEG.srate - round(EEG.srate)) < 1e-6
-    w{end+1} = sprintf('EEG.srate is %.17g, not an exact integer (common after EDF import); ICLabel fails on such data. NeuroQC rounds it on its own copy.', EEG.srate);
+    w{end+1} = sprintf('EEG.srate is %.17g, not an exact integer (common after EDF import); ICLabel fails on such data. PipeCompare rounds it on its own copy.', EEG.srate);
 end
 if ~s.hasUrevent
-    w{end+1} = 'EEG.urevent is empty; NeuroQC will rebuild it (eeg_checkset makeur) on its own copy to track trials.';
+    w{end+1} = 'EEG.urevent is empty; PipeCompare will rebuild it (eeg_checkset makeur) on its own copy to track trials.';
 end
 s.warnings = w;
 end
 
 function P = provenance(s, EEG)
 % Where each piece of knowledge about the dataset comes from:
-%   recorded in EEG.history | executed by NeuroQC (tagged lines) |
+%   recorded in EEG.history | executed by PipeCompare (tagged lines) |
 %   session command (ALLCOM) not in this dataset's history |
 %   inferred from the data structure | cannot be verified
 P = struct('category', {}, 'item', {}, 'detail', {});
 h = s.history;
 for k = 1:numel(h)
     if ~any(strcmp(h(k).kind, {'process','mark','load'})), continue; end
-    if contains(h(k).raw, '% NeuroQC') || startsWith(strtrim(h(k).statement), 'EEGica')
-        P(end+1) = row('executed by NeuroQC', h(k).step, h(k).statement); %#ok<AGROW>
+    % lines tagged by PipeCompare, or by NeuroQC (its name up to 0.7)
+    if contains(h(k).raw, '% PipeCompare') || contains(h(k).raw, '% NeuroQC') || startsWith(strtrim(h(k).statement), 'EEGica')
+        P(end+1) = row('executed by PipeCompare', h(k).step, h(k).statement); %#ok<AGROW>
     else
         P(end+1) = row('recorded in EEG.history', h(k).step, sprintf('line %d: %s', h(k).line, h(k).statement)); %#ok<AGROW>
     end
@@ -312,7 +313,7 @@ if iscell(ALLCOM)
     histText = char(EEG.history); histText = histText(:)';
     for k = numel(ALLCOM):-1:1
         c = strtrim(char(ALLCOM{k}));
-        e = neuroqc.live.History.classify(c);
+        e = pipecompare.live.History.classify(c);
         if ~strcmp(e.kind, 'process') || contains(histText, c), continue; end
         P(end+1) = row('session command (ALLCOM) not in this dataset''s history', e.step, ...
             [c ' (may concern another dataset)']); %#ok<AGROW>

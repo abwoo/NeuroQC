@@ -16,10 +16,10 @@ jobs:
     name: MATLAB tests without GUI
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout NeuroQC
+      - name: Checkout PipeCompare
         uses: actions/checkout@v4
         with:
-          path: NeuroQC
+          path: PipeCompare
 
       - name: Checkout EEGLAB
         run: git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
@@ -34,6 +34,6 @@ jobs:
         with:
           command: |
             addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
-            cd NeuroQC; addpath(pwd); addpath(fullfile(pwd, 'tests'));
+            cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
             r = run_all({'test_history', 'test_plan', 'test_panel_text', 'test_statistics', 'test_invariants'});
-            assert(~any([r.Failed]), 'NeuroQC:CI', '%d test(s) failed', sum([r.Failed]));
+            assert(~any([r.Failed]), 'PipeCompare:CI', '%d test(s) failed', sum([r.Failed]));

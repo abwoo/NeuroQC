@@ -1,8 +1,8 @@
 classdef Injection
     %INJECTION Does a known signal survive the candidate's processing?
     %
-    %   [EEGsig, truth] = neuroqc.eval.Injection.prepare(root, contract, ref, opts)
-    %   r = neuroqc.eval.Injection.compare(EEGsig, contract, truth, path)
+    %   [EEGsig, truth] = pipecompare.eval.Injection.prepare(root, contract, ref, opts)
+    %   r = pipecompare.eval.Injection.compare(EEGsig, contract, truth, path)
     %
     %   A noise-free copy of the starting dataset is built that contains
     %   only a known signal: one Gaussian per component (centred in its
@@ -19,7 +19,7 @@ classdef Injection
     %   data-driven DECISIONS taken on the real data (same filters, same
     %   reference, same bad channels interpolated, same ICA matrices and
     %   removed components, same rejected epochs; see
-    %   neuroqc.run.Steps.replayDecision). Because all of these are linear
+    %   pipecompare.run.Steps.replayDecision). Because all of these are linear
     %   given the decisions, the processed copy is exactly how the
     %   candidate transfers the signal. It is compared with the expected
     %   signal (the injected one, re-referenced like the candidate - a
@@ -32,7 +32,7 @@ classdef Injection
     %     topoCorr        min correlation of recovered vs expected topography
     %
     %   ASR applies the reconstructions it chose on the real data
-    %   (neuroqc.run.AsrRecord). Native commands other than mark/remove
+    %   (pipecompare.run.AsrRecord). Native commands other than mark/remove
     %   workflows are re-run on the copy instead of replayed; such
     %   candidates carry a note. The expected re-referenced field uses the
     %   channels present WHEN each reference was applied (recorded on the
@@ -50,7 +50,7 @@ classdef Injection
             S.icaact = [];
             nch = root.nbchan; fs = root.srate;
             % the field over the whole montage, including channels removed before
-            % NeuroQC that a restore step can interpolate back (their expected
+            % PipeCompare that a restore step can interpolate back (their expected
             % value after restoring is the true field there)
             [full, labels] = montage(root);
             if strcmp(contract.analysis, 'bandpower')
@@ -113,10 +113,10 @@ classdef Injection
                 % an EEGLAB pop_reref command: its reference and excluded
                 % channels, resolved to labels on the data as they are now
                 labs = {S.chanlocs.labels};
-                for stmt = neuroqc.run.Native.statements(inst.params.command)
-                    e = neuroqc.live.History.classify(stmt{1});
+                for stmt = pipecompare.run.Native.statements(inst.params.command)
+                    e = pipecompare.live.History.classify(stmt{1});
                     if ~strcmp(e.step, 'reref'), continue; end
-                    a = neuroqc.run.Native.argsOf(stmt{1}, 'pop_reref');
+                    a = pipecompare.run.Native.argsOf(stmt{1}, 'pop_reref');
                     ref = []; if ~isempty(a), ref = a{1}; end
                     if isempty(ref), mode = 'average'; else, mode = 'channels'; chans = toLabels(ref, labs); end
                     k = find(cellfun(@(x) ischar(x) && strcmpi(x, 'exclude'), a(2:end)), 1);
@@ -125,8 +125,8 @@ classdef Injection
             end
             if isempty(mode), return; end
             rec = struct('mode', mode, 'channels', {chans}, 'exclude', {ex}, 'labels', {{S.chanlocs.labels}});
-            if ~isfield(S.etc, 'neuroqc') || ~isfield(S.etc.neuroqc, 'refLog'), S.etc.neuroqc.refLog = {}; end
-            S.etc.neuroqc.refLog{end+1} = rec;
+            if ~isfield(S.etc, 'pipecompare') || ~isfield(S.etc.pipecompare, 'refLog'), S.etc.pipecompare.refLog = {}; end
+            S.etc.pipecompare.refLog{end+1} = rec;
         end
 
         function r = compare(S, contract, truth, path)
@@ -213,7 +213,7 @@ if ~isfield(truth, 'onsets') || isempty(truth.onsets) || ~isfield(S, 'epoch') ||
 codes = contract.allEvents();
 span = [times(1) times(end)];
 G = zeros(size(g)); n = 0;
-lock = neuroqc.eval.Measure.lockingEvents(S, codes);
+lock = pipecompare.eval.Measure.lockingEvents(S, codes);
 for ep = 1:numel(S.epoch)
     if lock(ep) == 0 || ~isfield(S.event, 'urevent') || isempty(S.event(lock(ep)).urevent), return; end
     k = find(truth.urevents == S.event(lock(ep)).urevent, 1);
@@ -232,12 +232,12 @@ end
 
 function [full, labels] = montage(root)
 % channel labels and positions: the data's channels, then the restorable
-% channels removed before NeuroQC
+% channels removed before PipeCompare
 f = {'labels', 'X', 'Y', 'Z'};
-pick = @(c) cell2struct(cellfun(@(n) neuroqc.utils.fieldOr(c, n), f, 'UniformOutput', false), f, 2);
+pick = @(c) cell2struct(cellfun(@(n) pipecompare.utils.fieldOr(c, n), f, 'UniformOutput', false), f, 2);
 full = arrayfun(pick, root.chanlocs);
-if isfield(root, 'etc') && isstruct(root.etc) && isfield(root.etc, 'neuroqc') && isfield(root.etc.neuroqc, 'preRemoved')
-    full = [full(:); arrayfun(pick, root.etc.neuroqc.preRemoved(:))]';
+if isfield(root, 'etc') && isstruct(root.etc) && isfield(root.etc, 'pipecompare') && isfield(root.etc.pipecompare, 'preRemoved')
+    full = [full(:); arrayfun(pick, root.etc.pipecompare.preRemoved(:))]';
 end
 full = full(:)';
 labels = {full.labels};
@@ -282,18 +282,18 @@ end
 function E = expectedWeights(truth, S, path)
 % True field at the channels present now, re-referenced like the candidate.
 % Each reference is applied over the channels present at that moment
-% (S.etc.neuroqc.refLog); channels absent then but restored later are
+% (S.etc.pipecompare.refLog); channels absent then but restored later are
 % interpolated from re-referenced data and carry the same offset.
 leafLabels = {S.chanlocs.labels};
 log = {};
-if isfield(S, 'etc') && isfield(S.etc, 'neuroqc') && isfield(S.etc.neuroqc, 'refLog')
-    log = S.etc.neuroqc.refLog;
+if isfield(S, 'etc') && isfield(S.etc, 'pipecompare') && isfield(S.etc.pipecompare, 'refLog')
+    log = S.etc.pipecompare.refLog;
 else
     % no record (copy not produced by the executor): assume the reference
     % saw the final channel set
     for q = 1:numel(path)
-        rec = neuroqc.eval.Injection.noteReference(struct('chanlocs', {S.chanlocs}, 'etc', struct()), path{q});
-        if isfield(rec.etc, 'neuroqc'), log = [log rec.etc.neuroqc.refLog]; end %#ok<AGROW>
+        rec = pipecompare.eval.Injection.noteReference(struct('chanlocs', {S.chanlocs}, 'etc', struct()), path{q});
+        if isfield(rec.etc, 'pipecompare'), log = [log rec.etc.pipecompare.refLog]; end %#ok<AGROW>
     end
 end
 F = truth.weights;                              % all starting channels x nComp

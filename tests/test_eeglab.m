@@ -1,7 +1,7 @@
 function tests = test_eeglab
 %TEST_EEGLAB Integration with the live EEGLAB session: dataset detection,
 %   EEGLAB's own command path, adoption into ALLEEG, the panel, and
-%   (optionally) a real dataset given by NEUROQC_REAL_SET (never committed;
+%   (optionally) a real dataset given by PIPECOMPARE_REAL_SET (never committed;
 %   only working copies are processed).
 tests = functiontests(localfunctions);
 end
@@ -9,16 +9,16 @@ end
 function setupOnce(tc)
 addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
 assert(exist('pop_epoch', 'file') == 2, 'EEGLAB must be on the path');
-tc.TestData.realSet = getenv('NEUROQC_REAL_SET');
+tc.TestData.realSet = getenv('PIPECOMPARE_REAL_SET');
 end
 
 % ------------------------------------------------------------ live session
 function testLiveDetectionAndUnstoredWarning(tc)
 nqc_setBase(nqc_synth(struct('seconds', 60, 'nPerCond', 10)));
-[cur, info] = neuroqc.live.Session.current();
+[cur, info] = pipecompare.live.Session.current();
 verifyEqual(tc, cur.setname, 'nqc_synth'); verifyTrue(tc, info.stored);
 evalin('base', 'EEG.setname = ''changed on the command line'';');
-[cur, info] = neuroqc.live.Session.current();
+[cur, info] = pipecompare.live.Session.current();
 verifyEqual(tc, cur.setname, 'changed on the command line'); verifyFalse(tc, info.stored);
 end
 
@@ -28,11 +28,11 @@ B = nqc_synth(struct('seconds', 60, 'nPerCond', 10, 'seed', 3)); B.setname = 'B'
 nqc_setBase(A);
 assignin('base', 'NQC_TMP', B);
 evalin('base', '[ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, NQC_TMP, 0); clear NQC_TMP');
-cur = neuroqc.live.Session.current(); verifyEqual(tc, cur.setname, 'B');
+cur = pipecompare.live.Session.current(); verifyEqual(tc, cur.setname, 'B');
 evalin('base', '[ALLEEG, EEG, CURRENTSET] = pop_newset(ALLEEG, EEG, CURRENTSET, ''retrieve'', 1, ''gui'', ''off'');');
-cur = neuroqc.live.Session.current(); verifyEqual(tc, cur.setname, 'A');
+cur = pipecompare.live.Session.current(); verifyEqual(tc, cur.setname, 'A');
 evalin('base', 'ALLEEG = pop_delset(ALLEEG, [1 2]); EEG = eeg_emptyset(); CURRENTSET = 0;');
-verifyEmpty(tc, neuroqc.live.Session.current());
+verifyEmpty(tc, pipecompare.live.Session.current());
 end
 
 % ------------------------------------------------------ EEGLAB code paths
@@ -43,10 +43,10 @@ function testApplyThroughEeglabCodePathRecordsHistory(tc)
 nqc_setBase(nqc_synth(struct('seconds', 60, 'nPerCond', 10)));
 evalin('base', 'DEBUG_EEGLAB_MENUS = 1;');
 cleanup = onCleanup(@() evalin('base', 'clear DEBUG_EEGLAB_MENUS')); %#ok<NASGU>
-neuroqc.run.Native.applyCall('[EEG, LASTCOM] = pop_reref(EEG, []);', 'reref');
+pipecompare.run.Native.applyCall('[EEG, LASTCOM] = pop_reref(EEG, []);', 'reref');
 cur = evalin('base', 'EEG');
 verifyTrue(tc, contains(cur.history, 'pop_reref( EEG, [])'));
-s = neuroqc.live.DataState.fromEEG(cur);
+s = pipecompare.live.DataState.fromEEG(cur);
 verifyEqual(tc, s.process(end).step, 'reref');
 global ALLCOM %#ok<GVMIS>
 verifyTrue(tc, any(contains(ALLCOM, 'pop_reref')));
@@ -60,10 +60,10 @@ evalin('base', 'DEBUG_EEGLAB_MENUS = 1;');
 cleanup = onCleanup(@() evalin('base', 'clear DEBUG_EEGLAB_MENUS')); %#ok<NASGU>
 EEG = evalin('base', 'EEG'); [~, com] = pop_reref(EEG, []);
 eegh(com);                                   % the previous session command is the same call
-neuroqc.run.Native.applyCall('[EEG, LASTCOM] = pop_reref(EEG, []);', 'reref');
+pipecompare.run.Native.applyCall('[EEG, LASTCOM] = pop_reref(EEG, []);', 'reref');
 cur = evalin('base', 'EEG');
 verifyEqual(tc, numel(strfind(cur.history, 'pop_reref')), 1);
-neuroqc.run.Native.applyCall('[EEG, LASTCOM] = pop_reref(EEG, []);', 'reref');
+pipecompare.run.Native.applyCall('[EEG, LASTCOM] = pop_reref(EEG, []);', 'reref');
 cur = evalin('base', 'EEG');
 verifyEqual(tc, numel(strfind(cur.history, 'pop_reref')), 2);
 end
@@ -72,14 +72,14 @@ function testFingerprintSeesEventEdits(tc)
 % Audit: changing one event's type (same count, no history entry) gave the
 % same fingerprint, so stale-result protection missed it.
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
-f0 = neuroqc.live.Session.fingerprint(EEG);
+f0 = pipecompare.live.Session.fingerprint(EEG);
 E = EEG; E.event(5).type = '99';
-verifyNotEqual(tc, neuroqc.live.Session.fingerprint(E), f0);
+verifyNotEqual(tc, pipecompare.live.Session.fingerprint(E), f0);
 E = EEG; E.event(5).latency = E.event(5).latency + 1;
-verifyNotEqual(tc, neuroqc.live.Session.fingerprint(E), f0);
+verifyNotEqual(tc, pipecompare.live.Session.fingerprint(E), f0);
 E = EEG; E.chanlocs(3).labels = 'X3';
-verifyNotEqual(tc, neuroqc.live.Session.fingerprint(E), f0);
-verifyEqual(tc, neuroqc.live.Session.fingerprint(EEG), f0);
+verifyNotEqual(tc, pipecompare.live.Session.fingerprint(E), f0);
+verifyEqual(tc, pipecompare.live.Session.fingerprint(EEG), f0);
 end
 
 function testCapturedNativeStepCanBeAppliedAndReedited(tc)
@@ -89,19 +89,19 @@ nqc_setBase(nqc_synth(struct('seconds', 60, 'nPerCond', 10)));
 evalin('base', 'DEBUG_EEGLAB_MENUS = 1;');
 cleanup = onCleanup(@() evalin('base', 'clear DEBUG_EEGLAB_MENUS')); %#ok<NASGU>
 com = 'EEG = pop_eegfiltnew(EEG, ''locutoff'',0.5,''plotfreqz'',0);';
-neuroqc.run.Native.applyCommand(com);
+pipecompare.run.Native.applyCommand(com);
 cur = evalin('base', 'EEG');
 verifyTrue(tc, contains(cur.history, 'pop_eegfiltnew(EEG, ''locutoff'',0.5'));
 verifyEqual(tc, evalin('base', 'ALLEEG(CURRENTSET).history'), cur.history);   % stored, not only in base EEG
-verifyEqual(tc, neuroqc.run.Native.typeOfCommand(com), 'filter');           % re-edit opens the filter dialog
-verifyEqual(tc, neuroqc.run.Native.typeOfCommand('EEG = pop_reref(EEG, []);'), 'reref');
+verifyEqual(tc, pipecompare.run.Native.typeOfCommand(com), 'filter');           % re-edit opens the filter dialog
+verifyEqual(tc, pipecompare.run.Native.typeOfCommand('EEG = pop_reref(EEG, []);'), 'reref');
 end
 
 function testPanelClearsResultsWhenThePlanChanges(tc)
 % Audit: after removing a plan step the old results stayed visible and
 % could be adopted as if they belonged to the new plan.
 nqc_setBase(nqc_synth(struct('seconds', 90, 'nPerCond', 20)));
-app = neuroqc.gui.Panel();
+app = pipecompare.gui.Panel();
 app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.TypeDrop.Value = 'highpass'; app.addStep();
@@ -126,15 +126,15 @@ end
 function testNativeCommandArgumentsAreRead(tc)
 % Settings come back from EEGLAB dialogs as commands; their arguments are
 % evaluated, not pattern-matched.
-a = neuroqc.run.Native.argsOf('EEG = pop_epoch( EEG, {  ''11''  ''S  1''  }, [-0.2           1], ''newname'', ''x'', ''epochinfo'', ''yes'');', 'pop_epoch');
+a = pipecompare.run.Native.argsOf('EEG = pop_epoch( EEG, {  ''11''  ''S  1''  }, [-0.2           1], ''newname'', ''x'', ''epochinfo'', ''yes'');', 'pop_epoch');
 verifyEqual(tc, a{1}, {'11', 'S  1'});
 verifyEqual(tc, a{2}, [-0.2 1]);
 verifyEqual(tc, a(3:6), {'newname', 'x', 'epochinfo', 'yes'});
-a = neuroqc.run.Native.argsOf('EEG = pop_rmbase( EEG, [-200 0] ,[]);', 'pop_rmbase');
+a = pipecompare.run.Native.argsOf('EEG = pop_rmbase( EEG, [-200 0] ,[]);', 'pop_rmbase');
 verifyEqual(tc, a, {[-200 0], []});
-a = neuroqc.run.Native.argsOf('[EEG, ~, LASTCOM] = pop_epoch(EEG);', 'pop_epoch');
+a = pipecompare.run.Native.argsOf('[EEG, ~, LASTCOM] = pop_epoch(EEG);', 'pop_epoch');
 verifyEmpty(tc, a);
-verifyError(tc, @() neuroqc.run.Native.argsOf('EEG = pop_reref(EEG, []);', 'pop_epoch'), 'NeuroQC:Native');
+verifyError(tc, @() pipecompare.run.Native.argsOf('EEG = pop_reref(EEG, []);', 'pop_epoch'), 'PipeCompare:Native');
 end
 
 function testPanelContractFromEeglabDialogs(tc)
@@ -144,7 +144,7 @@ function testPanelContractFromEeglabDialogs(tc)
 % what the panel shows.
 EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30, 'artifactTrials', 0));
 nqc_setBase(EEG);
-app = neuroqc.gui.Panel();
+app = pipecompare.gui.Panel();
 app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.addCondition('target', {'11'});
@@ -192,7 +192,7 @@ function testPanelCandidateConfigsSkipAndOrderRules(tc)
 % adds the values that differ; settings the step cannot hold are kept as
 % the whole EEGLAB command when chosen; "skip" and order rules.
 nqc_setBase(nqc_synth(struct('seconds', 60, 'nPerCond', 10)));
-app = neuroqc.gui.Panel();
+app = pipecompare.gui.Panel();
 cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.TypeDrop.Value = 'lowpass'; app.addStep();
 app.TypeDrop.Value = 'highpass'; app.addStep();
@@ -216,7 +216,7 @@ app.PlanTable.Selection = [2 1];
 app.mustBefore('lowpass');
 verifyEqual(tc, app.Plan.Precedence, {'highpass', 'lowpass'});
 verifyTrue(tc, contains(app.ConstraintLabel.Text, 'highpass before lowpass'));
-verifyEqual(tc, neuroqc.run.Native.typeOfCommand(sprintf('EEG = pop_eegthresh(EEG,1,[1:32],-60,120,-0.2,0.996,0,0);\nEEG = pop_rejepoch(EEG, EEG.reject.rejthresh, 0);')), 'reject_threshold');
+verifyEqual(tc, pipecompare.run.Native.typeOfCommand(sprintf('EEG = pop_eegthresh(EEG,1,[1:32],-60,120,-0.2,0.996,0,0);\nEEG = pop_rejepoch(EEG, EEG.reject.rejthresh, 0);')), 'reject_threshold');
 app.clearOrderRules();
 verifyEmpty(tc, app.Plan.Precedence);
 % the values editor: numbers and channel lists, nothing evaluated as code
@@ -232,7 +232,7 @@ function testDialogArgumentsAreSearchedOneByOne(tc)
 % dialog turns the arguments that differ into searched lists (combined),
 % the others stay as set; each argument is in the per-parameter summary.
 nqc_setBase(nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0)));
-app = neuroqc.gui.Panel();
+app = pipecompare.gui.Panel();
 app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
@@ -268,7 +268,7 @@ function testCatalogValuesFromEeglabDialogCommands(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 [~, Ep] = evalc('pop_epoch(EEG, {''11'',''31''}, [-0.2 1])');
 L = {EEG.chanlocs.labels};
-V = @(t, com, E) neuroqc.run.Native.catalogValues(t, com, E);
+V = @(t, com, E) pipecompare.run.Native.catalogValues(t, com, E);
 [~, com] = pop_eegfiltnew(EEG, 'locutoff', 0.5, 'plotfreqz', 0);
 verifyEqual(tc, V('highpass', com, EEG), struct('cutoff', 0.5));
 [~, com] = pop_eegfiltnew(EEG, 'hicutoff', 30, 'plotfreqz', 0);
@@ -300,7 +300,7 @@ v = V('asr', 'EEG = pop_clean_rawdata(EEG, ''FlatlineCriterion'',''off'',''Chann
 verifyEqual(tc, v.cutoff, 15);
 % in the panel: each dialog adds its value to the catalog step's search
 nqc_setBase(EEG);
-app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app = pipecompare.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 app.TypeDrop.Value = 'lowpass'; app.addStep(); app.PlanTable.Selection = [1 1];
 app.configureStep('EEG = pop_eegfiltnew(EEG, ''hicutoff'',30,''plotfreqz'',1);', EEG);
@@ -320,7 +320,7 @@ function testPanelOptionsResumeAndInspect(tc)
 % resume), the objective list, and EEGLAB viewers on a candidate.
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
 nqc_setBase(EEG);
-app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app = pipecompare.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
 app.addComponent('P3', [0.3 0.5], {'Pz', 'P3', 'P4'}, 'mean', 'positive');
@@ -332,7 +332,7 @@ app.TypeDrop.Value = 'epoch'; app.addStep(); app.TypeDrop.Value = 'baseline'; ap
 o = app.Options;
 d = tempname; c2 = onCleanup(@() rmdir(d, 's')); %#ok<NASGU>
 o.checkpoint = d; app.setOptions(o);
-verifyError(tc, @() neuroqc.NeuroQC.optimize(app.Plan, app.contract(), struct('checkpoint', d, 'stopAfter', 1)), 'NeuroQC:Interrupted');
+verifyError(tc, @() pipecompare.PipeCompare.optimize(app.Plan, app.contract(), struct('checkpoint', d, 'stopAfter', 1)), 'PipeCompare:Interrupted');
 app.resume(d);
 verifyEqual(tc, numel(app.Result.cands), 3);
 verifyTrue(tc, all(strcmp({app.Result.cands.status}, 'ok')));
@@ -349,7 +349,7 @@ end
 function testTrialTimeRangesFromEeglabSelection(tc)
 EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30));
 nqc_setBase(EEG);
-app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app = pipecompare.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
 [~, com] = pop_select(EEG, 'time', [30 120]);          % what EEGLAB's data selection returns
@@ -369,7 +369,7 @@ function testEveryPartShowsItsFullContent(tc)
 % text of any selected row, and a usable layout at a small window size.
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
 nqc_setBase(EEG);
-app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app = pipecompare.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
 app.addComponent('P3', [0.3 0.5], {'Pz', 'P3', 'P4'}, 'mean', 'positive');
@@ -397,8 +397,8 @@ app.Fig.Position = [60 60 1380 860];
 % the window manager may shrink a window to the screen: the layout must
 % follow the size the window really has
 big = @() app.Fig.Position(4) >= 840 && app.Fig.Position(3) >= 1300;
-settle(g, neuroqc.utils.ternary(big(), 'off', 'on'));
-verifyEqual(tc, char(g.Scrollable), neuroqc.utils.ternary(big(), 'off', 'on'));
+settle(g, pipecompare.utils.ternary(big(), 'off', 'on'));
+verifyEqual(tc, char(g.Scrollable), pipecompare.utils.ternary(big(), 'off', 'on'));
 end
 
 function testNothingIsPrefilledAndDefaultsComeFromTheData(tc)
@@ -408,7 +408,7 @@ function testNothingIsPrefilledAndDefaultsComeFromTheData(tc)
 % and data unit from the recording.
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 nqc_setBase(EEG);
-app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app = pipecompare.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 verifyEmpty(tc, app.CondField.Value); verifyEmpty(tc, app.CompField.Value);
 verifyEmpty(tc, app.EpochField.Value); verifyEmpty(tc, app.BaseField.Value);
 verifyFalse(tc, any(contains({app.CondField.Placeholder, app.CompField.Placeholder}, {'11', '31', 'P3', 'Pz'})));
@@ -422,20 +422,20 @@ verifyEqual(tc, ep, [Ep.xmin Ep.xmax], 'AbsTol', 1e-9);                   % the 
 verifyEqual(tc, bl, [Ep.xmin 0], 'AbsTol', 1e-9);
 verifyTrue(tc, contains(app.EpochField.Placeholder, 'the data''s epochs'));
 % line frequency and unit from the recording, not a fixed 50 Hz / uV
-s = neuroqc.live.DataState.fromEEG(EEG);
+s = pipecompare.live.DataState.fromEEG(EEG);
 verifyEqual(tc, s.lineFreq, 50); verifyEqual(tc, s.unitGuess, 'uV');
 E60 = EEG; t = (0:E60.pnts-1) / E60.srate;
 E60.data = E60.data - 4 * sin(2*pi*50*t) + 6 * sin(2*pi*60*t);            % a 60 Hz recording
-s = neuroqc.live.DataState.fromEEG(E60); verifyEqual(tc, s.lineFreq, 60);
+s = pipecompare.live.DataState.fromEEG(E60); verifyEqual(tc, s.lineFreq, 60);
 EV = EEG; EV.data = EV.data * 1e-6;
-s = neuroqc.live.DataState.fromEEG(EV); verifyEqual(tc, s.unitGuess, 'V');
-p = neuroqc.plan.Plan(); p = p.add('linenoise');
-leaves = p.enumerate(neuroqc.live.DataState.fromEEG(E60), nqc_contract());
+s = pipecompare.live.DataState.fromEEG(EV); verifyEqual(tc, s.unitGuess, 'V');
+p = pipecompare.plan.Plan(); p = p.add('linenoise');
+leaves = p.enumerate(pipecompare.live.DataState.fromEEG(E60), nqc_contract());
 verifyEqual(tc, leaves(1).path{1}.params.freq, 60);
 EF = EEG; EF.data = EF.data - 4 * sin(2*pi*50*t);                          % no mains peak
-verifyError(tc, @() p.enumerate(neuroqc.live.DataState.fromEEG(EF), nqc_contract()), 'NeuroQC:NoLegalPipeline');
-q = neuroqc.plan.Plan(); q = q.add('resample');                            % no default target rate
-verifyError(tc, @() q.enumerate(s, nqc_contract()), 'NeuroQC:NoLegalPipeline');
+verifyError(tc, @() p.enumerate(pipecompare.live.DataState.fromEEG(EF), nqc_contract()), 'PipeCompare:NoLegalPipeline');
+q = pipecompare.plan.Plan(); q = q.add('resample');                            % no default target rate
+verifyError(tc, @() q.enumerate(s, nqc_contract()), 'PipeCompare:NoLegalPipeline');
 end
 
 function testFieldsAreFilledFromTheDatasetItself(tc)
@@ -447,7 +447,7 @@ EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
 [~, Ep] = evalc('pop_epoch(EEG, {''11'', ''31''}, [-0.25 0.9], ''epochinfo'', ''yes'')');
 [Ep, com] = pop_rmbase(Ep, [-250 0]); Ep = eegh(com, Ep);
 nqc_setBase(EEG);
-app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app = pipecompare.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 verifyEmpty(tc, app.CondField.Value); verifyEmpty(tc, app.EpochField.Value);   % continuous: nothing to say
 nqc_setBase(Ep); app.refreshLive(false);
 verifyEqual(tc, app.CondField.Value, '11: 11; 31: 31');                         % time-locking events
@@ -469,7 +469,7 @@ function testNoDialogSettingIsDroppedSilently(tc)
 % the user decides (keep the whole EEGLAB command or the step's values).
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 [~, Ep] = evalc('pop_epoch(EEG, {''11'',''31''}, [-0.2 1])');
-V = @(t, com, E) neuroqc.run.Native.catalogValues(t, com, E);
+V = @(t, com, E) pipecompare.run.Native.catalogValues(t, com, E);
 has = @(notes, txt) any(contains(notes, txt));
 [~, n] = V('ica', 'EEG = pop_runica(EEG, ''icatype'',''runica'',''extended'',1,''pca'',20);', EEG);
 verifyTrue(tc, has(n, 'pca = 20'));
@@ -501,7 +501,7 @@ function testDialogsSeeTheDataAtTheirPlanStep(tc)
 % channel lists), epoched (for epoch rejection).
 EEG = nqc_synth(struct('seconds', 200, 'nPerCond', 30));
 nqc_setBase(EEG);
-app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app = pipecompare.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.EpochField.Value = '-0.2 1';
 app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
 app.TypeDrop.Value = 'channels'; app.addStep(); app.PlanTable.Selection = [1 1];
@@ -528,7 +528,7 @@ function testTrialRuleFollowsItsRecording(tc)
 A = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
 B = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'seed', 3));
 nqc_setBase(A);
-app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app = pipecompare.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
 app.setTrialRule(struct('mode', 'urevents', 'ids', [A.event(1:10).urevent]));
 [~, A2] = evalc('pop_eegfiltnew(A, ''locutoff'', 0.5, ''plotfreqz'', 0)');
@@ -548,7 +548,7 @@ function testEpochAndBaselineConflictsAreDecidedByTheUser(tc)
 % baseline on a channel subset, are resolved by the user's choice.
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 nqc_setBase(EEG);
-app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app = pipecompare.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.addCondition('target', {'11'});
 [~, ~, com] = pop_epoch(EEG, {'11', '31'}, [-0.3 0.9], 'epochinfo', 'yes');
 app.epochFromEEGLAB(com, 'keep');
@@ -571,7 +571,7 @@ function testAnyEeglabMenuOperationIsAPlanStep(tc)
 % step's own dialog reopens for Configure in EEGLAB.
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
 nqc_setBase(EEG);
-app = neuroqc.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app = pipecompare.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 evalc('[~, com] = pop_firma(EEG, ''forder'', 4);');            % what the dialog returns
 app.addEeglabStep('', com);
 s = app.Plan.Slots(end);
@@ -581,13 +581,13 @@ app.PlanTable.Selection = [numel(app.Plan.Slots) 1];
 app.setValues('forder', {4, 8});                                 % searched like any argument
 c = nqc_contract();
 p = app.Plan; p = p.add('epoch'); p = p.add('baseline');
-r = neuroqc.NeuroQC.optimize(p, c);
+r = pipecompare.PipeCompare.optimize(p, c);
 verifyEqual(tc, numel(r.cands), 2);
 verifyTrue(tc, all(arrayfun(@(x) any(contains(x.coms, 'pop_firma')), r.cands)));
 verifyEqual(tc, sort(cellfun(@(x) sum(contains(x, '''forder'',8')), {r.cands.coms})), [0 1]);
-if ~isempty(neuroqc.run.Native.menuSteps())                      % EEGLAB's main window is open
+if ~isempty(pipecompare.run.Native.menuSteps())                      % EEGLAB's main window is open
     verifyEqual(tc, app.dialogType(s), 'call:[EEG LASTCOM] = pop_firma(EEG);');
-    verifyTrue(tc, any(strcmp({neuroqc.run.Native.menuSteps().label}, 'Tools > Filter the data > Moving average FIR filter')));
+    verifyTrue(tc, any(strcmp({pipecompare.run.Native.menuSteps().label}, 'Tools > Filter the data > Moving average FIR filter')));
 end
 end
 
@@ -598,13 +598,13 @@ EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 for k = find(strcmp(cellfun(@(x) char(string(x)), {EEG.event.type}, 'UniformOutput', false), '11'))
     EEG.event(k).type = 'S 11';
 end
-st = neuroqc.live.DataState.fromEEG(EEG);
-c = neuroqc.eval.Contract('conditions', {'t', {'s 11'}}, 'epoch', [-0.2 1], 'baseline', [-0.2 0], ...
+st = pipecompare.live.DataState.fromEEG(EEG);
+c = pipecompare.eval.Contract('conditions', {'t', {'s 11'}}, 'epoch', [-0.2 1], 'baseline', [-0.2 0], ...
     'components', {'P3', [0.3 0.5], {'Pz'}});
 try
-    c.validate(st); verifyFail(tc, 'expected NeuroQC:Contract');
+    c.validate(st); verifyFail(tc, 'expected PipeCompare:Contract');
 catch ME
-    verifyEqual(tc, ME.identifier, 'NeuroQC:Contract');
+    verifyEqual(tc, ME.identifier, 'PipeCompare:Contract');
     verifyTrue(tc, contains(ME.message, 'did you mean ''S 11'''));
 end
 end
@@ -615,11 +615,11 @@ function testInterpolationNeedsPositionsOfTheChannelsItFills(tc)
 EEG = nqc_synth(struct('seconds', 30, 'nPerCond', 5));
 k = find(strcmpi({EEG.chanlocs.labels}, 'Pz'));
 EEG.chanlocs(k).X = []; EEG.chanlocs(k).Y = []; EEG.chanlocs(k).Z = [];
-st = neuroqc.live.DataState.fromEEG(EEG);
+st = pipecompare.live.DataState.fromEEG(EEG);
 verifyEqual(tc, st.nLocated, EEG.nbchan - 1);
 verifyEqual(tc, lower(st.unlocated), {'pz'});
 in = struct('type', 'channels', 'params', struct('labels', {{'Pz'}}, 'action', 'interpolate'));
-verifyError(tc, @() neuroqc.run.Steps.run(in, EEG, struct()), 'NeuroQC:Chanlocs');
+verifyError(tc, @() pipecompare.run.Steps.run(in, EEG, struct()), 'PipeCompare:Chanlocs');
 end
 
 function testEpochsMarkedButNotRemovedAreReported(tc)
@@ -629,12 +629,12 @@ function testEpochsMarkedButNotRemovedAreReported(tc)
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
 nqc_setBase(EEG);
 c = nqc_contract();
-p = neuroqc.plan.Plan(); p = p.add('epoch'); p = p.add('baseline');
+p = pipecompare.plan.Plan(); p = p.add('epoch'); p = p.add('baseline');
 p = p.addNative('EEG = pop_eegthresh(EEG, 1, 1:32, -20, 20, -0.2, 0.996, 0, 0);');
-r = neuroqc.NeuroQC.optimize(p, c);
+r = pipecompare.PipeCompare.optimize(p, c);
 verifyTrue(tc, contains(r.ranking.table.note{1}, 'marked for rejection'));
-q = neuroqc.plan.Plan(); q = q.add('epoch'); q = q.add('baseline'); q = q.add('reject_threshold', 'uv', 20);
-r = neuroqc.NeuroQC.optimize(q, c);
+q = pipecompare.plan.Plan(); q = q.add('epoch'); q = q.add('baseline'); q = q.add('reject_threshold', 'uv', 20);
+r = pipecompare.PipeCompare.optimize(q, c);
 verifyEmpty(tc, r.ranking.table.note{1});
 end
 
@@ -644,27 +644,27 @@ function testScriptRefusesWhenThereIsNoSingleRecommendation(tc)
 r = struct('ranking', struct('recommended', [], 'byStratum', struct('recommended', {3, 5})), ...
     'labels', {{}}, 'rootComs', {{}}, 'cands', []);
 f = [tempname '.m'];
-verifyError(tc, @() neuroqc.NeuroQC.writeScript(r, [], f), 'NeuroQC:Adopt');
+verifyError(tc, @() pipecompare.PipeCompare.writeScript(r, [], f), 'PipeCompare:Adopt');
 verifyFalse(tc, isfile(f));
-verifyError(tc, @() neuroqc.NeuroQC.script(r), 'NeuroQC:Adopt');
+verifyError(tc, @() pipecompare.PipeCompare.script(r), 'PipeCompare:Adopt');
 r.ranking.byStratum = r.ranking.byStratum([]);
-verifyError(tc, @() neuroqc.NeuroQC.writeScript(r, [], f), 'NeuroQC:Adopt');
+verifyError(tc, @() pipecompare.PipeCompare.writeScript(r, [], f), 'PipeCompare:Adopt');
 verifyFalse(tc, isfile(f));
 end
 
 function testScriptIncludesThePreparationLines(tc)
 % script() must rebuild the candidate from the starting dataset as it is
-% in EEGLAB, so it carries NeuroQC's preparation (here volts -> uV).
+% in EEGLAB, so it carries PipeCompare's preparation (here volts -> uV).
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
 EEG.data = EEG.data * 1e-6;                                % stored in volts
 nqc_setBase(EEG);
 c = nqc_contract();
-p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', 0.5); p = p.add('epoch'); p = p.add('baseline');
-r = neuroqc.NeuroQC.optimize(p, c, struct('dataUnit', 'V'));
-txt = neuroqc.NeuroQC.script(r, 1);
+p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', 0.5); p = p.add('epoch'); p = p.add('baseline');
+r = pipecompare.PipeCompare.optimize(p, c, struct('dataUnit', 'V'));
+txt = pipecompare.PipeCompare.script(r, 1);
 verifyTrue(tc, contains(txt, 'volts -> microvolts'));
 [~, out] = evalc('runScript(EEG, txt)');
-m = neuroqc.eval.Measure.candidate(out, c, r.ref);
+m = pipecompare.eval.Measure.candidate(out, c, r.ref);
 verifyEqual(tc, [m.objectives.agg], [r.cands(1).m.objectives.agg], 'RelTol', 1e-9);
 end
 
@@ -673,23 +673,23 @@ function testCheckpointIdentityFollowsTheData(tc)
 % sample of the data (it is computed block by block).
 EEG = nqc_synth(struct('seconds', 30, 'nPerCond', 5));
 r = struct('root', EEG, 'rootComs', {{}}, 'contract', nqc_contract(), 'labels', {{'a'}}, 'options', struct());
-a = neuroqc.run.Executor.identity(r);
-verifyEqual(tc, neuroqc.run.Executor.identity(r), a);
+a = pipecompare.run.Executor.identity(r);
+verifyEqual(tc, pipecompare.run.Executor.identity(r), a);
 r.root.data(3, 100) = r.root.data(3, 100) + 1e-3;
-verifyNotEqual(tc, neuroqc.run.Executor.identity(r), a);
+verifyNotEqual(tc, pipecompare.run.Executor.identity(r), a);
 end
 
 function testScoredTrialsAreTheOutputTrials(tc)
 % The trials that are scored (Measure.trials) and the trials a candidate
 % hands on (Executor.selectEligible) come from one time-locking rule.
 EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30));
-c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], 'baseline', [-0.2 0], ...
+c = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], 'baseline', [-0.2 0], ...
     'components', {'P3', [0.3 0.5], {'Pz'}}, 'trials', struct('mode', 'time_ranges', 'ranges', [30 Inf]));
-[~, root] = evalc('neuroqc.run.Executor.prepareRoot(EEG, c)');
+[~, root] = evalc('pipecompare.run.Executor.prepareRoot(EEG, c)');
 [~, E] = evalc('pop_epoch(root, c.allEvents(), c.epoch, ''epochinfo'', ''yes'')');
-T = neuroqc.eval.Measure.trials(E, c, true);
-[~, out] = evalc('neuroqc.run.Executor.selectEligible(E, c)');
-lock = neuroqc.eval.Measure.lockingEvents(out, c.allEvents());
+T = pipecompare.eval.Measure.trials(E, c, true);
+[~, out] = evalc('pipecompare.run.Executor.selectEligible(E, c)');
+lock = pipecompare.eval.Measure.lockingEvents(out, c.allEvents());
 verifyEqual(tc, sort(arrayfun(@(k) double(out.event(k).urevent), lock)), sort(T.id'));
 verifyLessThan(tc, out.trials, E.trials);                       % the rule did remove trials
 end
@@ -698,19 +698,19 @@ function testPluginMenusUseEeglabErrorHandling(tc)
 % Menu callbacks are wrapped like EEGLAB's own (try ... catch,
 % eeglab_error; end), so an error shows EEGLAB's error window.
 f = figure('Visible', 'off'); cleanup = onCleanup(@() delete(f)); %#ok<NASGU>
-saved = getappdata(0, 'neuroqc_eeglab_strings');                 % EEGLAB's real strings, put back after
-restore = onCleanup(@() setappdata(0, 'neuroqc_eeglab_strings', saved)); %#ok<NASGU>
+saved = getappdata(0, 'pipecompare_eeglab_strings');                 % EEGLAB's real strings, put back after
+restore = onCleanup(@() setappdata(0, 'pipecompare_eeglab_strings', saved)); %#ok<NASGU>
 uimenu(f, 'Label', 'Tools', 'Tag', 'tools');
 ts = struct('no_check', 'try,'); cs = struct('add_to_hist', '');
-evalc('eegplugin_neuroqc(f, ts, cs)');
-items = findobj(findobj(f, 'Tag', 'neuroqc_menu'), 'Type', 'uimenu', '-not', 'Tag', 'neuroqc_menu');
+evalc('eegplugin_pipecompare(f, ts, cs)');
+items = findobj(findobj(f, 'Tag', 'pipecompare_menu'), 'Type', 'uimenu', '-not', 'Tag', 'pipecompare_menu');
 verifyNumElements(tc, items, 3);                                  % simple mode, panel, state
 for k = 1:numel(items)
     cb = items(k).MenuSelectedFcn;
     verifyTrue(tc, startsWith(cb, 'try,') && contains(cb, 'catch, eeglab_error; end'));
 end
-evalc('eegplugin_neuroqc(f, ts, cs)');                            % a second call adds nothing
-verifyNumElements(tc, findobj(f, 'Tag', 'neuroqc_menu'), 1);
+evalc('eegplugin_pipecompare(f, ts, cs)');                            % a second call adds nothing
+verifyNumElements(tc, findobj(f, 'Tag', 'pipecompare_menu'), 1);
 end
 
 function testQuickSignatureAndFullFingerprint(tc)
@@ -718,18 +718,18 @@ function testQuickSignatureAndFullFingerprint(tc)
 % contents; the full fingerprint (at least every 5 s, and before a search
 % or Adopt) does. Its cost does not grow with the events.
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
-q = neuroqc.live.Session.quickPrint(EEG); f = neuroqc.live.Session.fingerprint(EEG);
+q = pipecompare.live.Session.quickPrint(EEG); f = pipecompare.live.Session.fingerprint(EEG);
 E = EEG; E.event(3).type = 'edited';                               % same count, other content
-verifyEqual(tc, neuroqc.live.Session.quickPrint(E), q);
-verifyNotEqual(tc, neuroqc.live.Session.fingerprint(E), f);
+verifyEqual(tc, pipecompare.live.Session.quickPrint(E), q);
+verifyNotEqual(tc, pipecompare.live.Session.fingerprint(E), f);
 E = EEG; E.event(end) = [];                                        % a count changes
-verifyNotEqual(tc, neuroqc.live.Session.quickPrint(E), q);
+verifyNotEqual(tc, pipecompare.live.Session.quickPrint(E), q);
 E = EEG; E.data(1) = E.data(1) + 1;                                % a sampled data value changes
-verifyNotEqual(tc, neuroqc.live.Session.quickPrint(E), q);
+verifyNotEqual(tc, pipecompare.live.Session.quickPrint(E), q);
 n = 20000; E = EEG;
 E.event = struct('type', repmat({'x'}, 1, n), 'latency', num2cell(sort(randi(E.pnts, 1, n))), 'urevent', num2cell(1:n));
-t0 = tic; for k = 1:5, neuroqc.live.Session.quickPrint(E); end; tq = toc(t0);
-t0 = tic; for k = 1:5, neuroqc.live.Session.fingerprint(E); end; tf = toc(t0);
+t0 = tic; for k = 1:5, pipecompare.live.Session.quickPrint(E); end; tq = toc(t0);
+t0 = tic; for k = 1:5, pipecompare.live.Session.fingerprint(E); end; tf = toc(t0);
 verifyLessThan(tc, tq, tf / 5);                                    % measured: ~1 ms vs ~55 ms
 end
 
@@ -741,10 +741,10 @@ function testMultiverseSummaryNamesTheInfluentialChoice(tc)
 EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30));
 nqc_setBase(EEG);
 c = nqc_contract();
-p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', {0.1, 1.5}); p = p.add('lowpass', 'cutoff', {30, 40});
+p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', {0.1, 1.5}); p = p.add('lowpass', 'cutoff', {30, 40});
 p = p.add('epoch'); p = p.add('baseline');
 lim = struct('maxAmplitudeError', 1, 'minWaveformCorr', 0, 'minTopoCorr', 0, 'maxLatencyShiftMs', 1000, 'maxArtifactPct', 1);
-r = neuroqc.NeuroQC.optimize(p, c, lim);
+r = pipecompare.PipeCompare.optimize(p, c, lim);
 T = r.robustness;
 verifyEqual(tc, height(T), 1);                                     % one measure, one condition
 verifyEqual(tc, T.nPipelines, 4);
@@ -753,11 +753,25 @@ verifyGreaterThan(tc, T.share, 0.9);
 verifyEqual(tc, T.range, T.max - T.min);
 end
 
+function testDatasetsFromNeuroQCStillWork(tc)
+% Datasets adopted with NeuroQC (<= 0.7) carry EEG.etc.neuroqc and
+% '% NeuroQC' history lines: an old trial rule is cleared before a search,
+% and the tagged lines are still recognized as the tool's own.
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
+EEG.etc.neuroqc.eligibleUrevents = [1 2 3];
+EEG.history = sprintf('%s\nEEG = pop_interp(EEG, EEG.etc.neuroqc.preRemoved([1]), ''spherical''); %% NeuroQC: channels removed before the plan', EEG.history);
+[~, root, coms] = evalc('pipecompare.run.Executor.prepareRoot(EEG, nqc_contract())');
+verifyFalse(tc, isfield(root.etc.neuroqc, 'eligibleUrevents'));
+verifyTrue(tc, any(contains(coms, 'EEG.etc.neuroqc = rmfield(EEG.etc.neuroqc, ''eligibleUrevents'')')));
+st = pipecompare.live.DataState.fromEEG(EEG);
+verifyTrue(tc, any(strcmp({st.provenance.category}, 'executed by PipeCompare')));
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
-com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');
+com = pipecompare.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');
 verifyTrue(tc, startsWith(com, 'EEG = pop_eegfiltnew('));
-p = neuroqc.plan.Plan(); p = p.addNative(com);     % becomes a fixed step
+p = pipecompare.plan.Plan(); p = p.addNative(com);     % becomes a fixed step
 verifyEqual(tc, p.Slots(1).alternatives{1}.type, 'eeglab');   % one call: its arguments are step parameters
 end
 
@@ -765,11 +779,11 @@ function testScoresIgnoreChannelOffsets(tc)
 % 0.6 split-half metrics were driven by per-channel DC offsets
 % (v06_reproductions R2). Scores here are baseline-corrected per trial.
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0));
-c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
+c = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
     'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz','P3','P4','POz'}});
-ref = neuroqc.eval.Measure.reference(EEG, c);
+ref = pipecompare.eval.Measure.reference(EEG, c);
 off = EEG; off.data = off.data + single((1:off.nbchan)' * 50);
-a = neuroqc.eval.Measure.candidate(EEG, c, ref); b = neuroqc.eval.Measure.candidate(off, c, ref);
+a = pipecompare.eval.Measure.candidate(EEG, c, ref); b = pipecompare.eval.Measure.candidate(off, c, ref);
 verifyEqual(tc, b.objectives(1).agg, a.objectives(1).agg, 'AbsTol', 1e-3);
 end
 
@@ -777,15 +791,15 @@ end
 function testAdoptRefusesStaleStartingDataset(tc)
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
 nqc_setBase(EEG);
-p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('epoch'); p = p.add('baseline');
-r = neuroqc.NeuroQC.optimize(p, nqc_contract());
+p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('epoch'); p = p.add('baseline');
+r = pipecompare.PipeCompare.optimize(p, nqc_contract());
 % the starting dataset is changed in place and the old copy is gone
 evalin('base', ['[EEG, LASTCOM] = pop_reref(EEG, []); EEG = eegh(LASTCOM, EEG); ', ...
     '[ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG, CURRENTSET);']);
 n0 = evalin('base', 'numel(ALLEEG)');
-verifyError(tc, @() neuroqc.NeuroQC.adopt(r, 1), 'NeuroQC:StaleState');
+verifyError(tc, @() pipecompare.PipeCompare.adopt(r, 1), 'PipeCompare:StaleState');
 verifyEqual(tc, evalin('base', 'numel(ALLEEG)'), n0);           % nothing stored
-neuroqc.NeuroQC.adopt(r, 1, true);                               % explicit override
+pipecompare.PipeCompare.adopt(r, 1, true);                               % explicit override
 verifyEqual(tc, evalin('base', 'numel(ALLEEG)'), n0 + 1);
 ad = evalin('base', 'EEG');
 verifyTrue(tc, contains(ad.history, 'pop_eegfiltnew'));
@@ -795,22 +809,22 @@ end
 function testWriteScriptReproducesCandidate(tc)
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
 nqc_setBase(EEG);
-p = neuroqc.plan.Plan(); p = p.add('highpass', 'cutoff', 0.5); p = p.add('epoch'); p = p.add('baseline');
+p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', 0.5); p = p.add('epoch'); p = p.add('baseline');
 c = nqc_contract();
-r = neuroqc.NeuroQC.optimize(p, c);
+r = pipecompare.PipeCompare.optimize(p, c);
 d = tempname; mkdir(d); cleanup = onCleanup(@() rmdir(d, 's')); %#ok<NASGU>
 f = fullfile(d, 'nqc_pipeline_test.m');
-neuroqc.NeuroQC.writeScript(r, 1, f);
+pipecompare.PipeCompare.writeScript(r, 1, f);
 addpath(d); c2 = onCleanup(@() rmpath(d)); %#ok<NASGU>
 out = nqc_pipeline_test(EEG);
-m = neuroqc.eval.Measure.candidate(out, c, r.ref);
+m = pipecompare.eval.Measure.candidate(out, c, r.ref);
 verifyEqual(tc, [m.objectives.agg], [r.cands(1).m.objectives.agg], 'RelTol', 1e-9);
 end
 
 % -------------------------------------------------------------------- GUI
 function testPanelFollowsLiveDatasetAndRuns(tc)
 nqc_setBase(nqc_synth(struct('seconds', 120, 'nPerCond', 30)));
-app = neuroqc.gui.Panel();
+app = pipecompare.gui.Panel();
 app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 verifyEqual(tc, size(app.HistTable.Data, 1), 1);
@@ -831,13 +845,13 @@ app.ObjectiveField.Value = 'composite';
 app.run(false);
 verifyEqual(tc, size(app.ResultTable.Data, 1), 2);
 verifyEqual(tc, size(app.ResultTable.Data, 2), 10);
-verifyTrue(tc, evalin('base', 'exist(''neuroqc_result'', ''var'')') == 1);
+verifyTrue(tc, evalin('base', 'exist(''pipecompare_result'', ''var'')') == 1);
 % a latency objective through the panel syntax
 app.CompField.Value = 'P3: 0.3 0.5 @ Pz # peakLatency positive';
 app.settingsChanged();                               % what editing the field triggers
 app.ObjectiveField.Value = 'P3.peakLatency';
 app.run(false);
-r = evalin('base', 'neuroqc_result');
+r = evalin('base', 'pipecompare_result');
 verifyEqual(tc, r.ranking.units, {'ms'});
 end
 
@@ -845,12 +859,12 @@ end
 function testRealDatasetStateOnWorkingCopy(tc)
 % Reads the real dataset's history and state; the file on disk must not change.
 f = tc.TestData.realSet;
-assumeTrue(tc, ~isempty(f) && isfile(f), 'NEUROQC_REAL_SET not set');
+assumeTrue(tc, ~isempty(f) && isfile(f), 'PIPECOMPARE_REAL_SET not set');
 before = dir(f);
 [p, n, e] = fileparts(f);
 EEG = pop_loadset('filename', [n e], 'filepath', p);
 nqc_setBase(EEG);
-txt = evalc('s = neuroqc.NeuroQC.state();');
+txt = evalc('s = pipecompare.PipeCompare.state();');
 verifyNotEmpty(tc, s.history);
 verifyNotEmpty(tc, s.provenance);
 verifyTrue(tc, contains(txt, 'recorded in EEG.history'));

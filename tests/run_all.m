@@ -1,8 +1,8 @@
 function results = run_all(names)
-%RUN_ALL Run the NeuroQC test suite and print a summary.
+%RUN_ALL Run the PipeCompare test suite and print a summary.
 %   results = run_all()              all suites
 %   results = run_all({'test_plan'}) selected suites
-%   Needs EEGLAB on the path. Set NEUROQC_REAL_SET to a real .set file
+%   Needs EEGLAB on the path. Set PIPECOMPARE_REAL_SET to a real .set file
 %   (never committed) to include the real-data test.
 here = fileparts(mfilename('fullpath'));
 addpath(here); addpath(fullfile(here, '..'));

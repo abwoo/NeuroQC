@@ -1,14 +1,14 @@
 classdef Native
-    %NATIVE Open EEGLAB's own dialogs from NeuroQC.
+    %NATIVE Open EEGLAB's own dialogs from PipeCompare.
     %
-    %   neuroqc.run.Native.applyNow(type)
+    %   pipecompare.run.Native.applyNow(type)
     %       Opens the EEGLAB dialog for this kind of step on the CURRENT
     %       dataset, exactly as the EEGLAB menu does (same try/catch
     %       strings, eegh, new dataset, redraw). The operation is recorded
-    %       in EEG.history and ALLCOM by EEGLAB itself; NeuroQC's live view
+    %       in EEG.history and ALLCOM by EEGLAB itself; PipeCompare's live view
     %       picks it up from the history.
     %
-    %   com = neuroqc.run.Native.capture(type)
+    %   com = pipecompare.run.Native.capture(type)
     %       Opens the same dialog on a temporary copy (shortened for slow
     %       functions) and returns the EEGLAB command it produced, without
     %       touching the dataset. The command becomes a fixed 'native' step
@@ -36,7 +36,7 @@ classdef Native
                 case {'select_data','channels'}, call = '[EEG, LASTCOM] = pop_select(EEG);';
                 case 'select_events', call = '[EEG, ~, LASTCOM] = pop_selectevent(EEG);';
                 case 'chanlocs', call = '[EEG, ~, ~, LASTCOM] = pop_chanedit(EEG);';
-                otherwise, error('NeuroQC:Native', 'No EEGLAB dialog for %s', type);
+                otherwise, error('PipeCompare:Native', 'No EEGLAB dialog for %s', type);
             end
         end
 
@@ -63,22 +63,22 @@ classdef Native
         end
 
         function applyNow(type)
-            neuroqc.run.Native.applyCall(neuroqc.run.Native.menuCall(type), type);
+            pipecompare.run.Native.applyCall(pipecompare.run.Native.menuCall(type), type);
         end
 
         function applyCommand(command)
             % Run a captured command (a fixed 'native' plan step) on the
             % current dataset, wrapped like an EEGLAB menu callback, so the
             % operation is stored and recorded in EEG.history.
-            st = neuroqc.run.Native.statements(command);
+            st = pipecompare.run.Native.statements(command);
             for k = 1:numel(st)
-                assert(~isempty(regexp(st{k}, '^\s*\[?\s*EEG\>', 'once')), 'NeuroQC:Native', ...
+                assert(~isempty(regexp(st{k}, '^\s*\[?\s*EEG\>', 'once')), 'PipeCompare:Native', ...
                     'Only commands that return EEG can be applied: %s', st{k});
                 if ~endsWith(st{k}, ';'), st{k} = [st{k} ';']; end
             end
             cmd = strjoin(st, ' ');   % a workflow is one EEGLAB operation (one new dataset)
             call = sprintf('%s LASTCOM = ''%s'';', cmd, strrep(cmd, '''', ''''''));
-            neuroqc.run.Native.applyCall(call, 'native');
+            pipecompare.run.Native.applyCall(call, 'native');
         end
 
         function alt = eeglabAlt(command)
@@ -90,11 +90,11 @@ classdef Native
             % Returns [] when the command is not one EEG = pop_x(EEG, ...)
             % call (e.g. a captured multi-step workflow).
             alt = [];
-            st = neuroqc.run.Native.statements(command);
+            st = pipecompare.run.Native.statements(command);
             if ~isscalar(st), return; end
-            [fn, ~, lhs] = neuroqc.live.History.callParts(st{1});
+            [fn, ~, lhs] = pipecompare.live.History.callParts(st{1});
             if isempty(fn) || ~startsWith(fn, 'pop_') || isempty(regexp(lhs, '^\[?\s*EEG\>', 'once')), return; end
-            a = neuroqc.run.Native.argsOf(st{1}, fn);
+            a = pipecompare.run.Native.argsOf(st{1}, fn);
             % trailing name-value pairs: char keys at every other position
             kv = numel(a) + 1;
             for i = numel(a)-1:-2:1
@@ -146,17 +146,17 @@ classdef Native
             % in notes, never dropped silently: Configure in EEGLAB then offers
             % to keep the whole command instead.
             vals = struct(); notes = {};
-            st = neuroqc.run.Native.statements(command);
+            st = pipecompare.run.Native.statements(command);
             com = st{end};
             setter = struct('icremove', 'pop_icflag', 'reject_threshold', 'pop_eegthresh', ...
                 'reject_jointprob', 'pop_jointprob', 'reject_kurtosis', 'pop_rejkurt');
             if isfield(setter, type)                % the statement that holds the settings
                 k = find(contains(st, setter.(type)), 1);
-                assert(~isempty(k), 'NeuroQC:Native', 'No %s in the dialog command.', setter.(type));
+                assert(~isempty(k), 'PipeCompare:Native', 'No %s in the dialog command.', setter.(type));
                 com = st{k};
             end
-            [fn] = neuroqc.live.History.callParts(com);
-            a = neuroqc.run.Native.argsOf(com, fn);
+            [fn] = pipecompare.live.History.callParts(com);
+            a = pipecompare.run.Native.argsOf(com, fn);
             labs = {EEG.chanlocs.labels};
             [nv, pos] = nameValues(a);
             function chk(allowed)
@@ -176,19 +176,19 @@ classdef Native
             end
             switch type
                 case {'highpass','lowpass','linenoise'}
-                    assert(strcmp(fn, 'pop_eegfiltnew'), 'NeuroQC:Native', 'Expected pop_eegfiltnew, got %s', fn);
-                    lo = neuroqc.utils.fieldOr(nv, 'locutoff', []); hi = neuroqc.utils.fieldOr(nv, 'hicutoff', []); rev = neuroqc.utils.fieldOr(nv, 'revfilt', 0);
+                    assert(strcmp(fn, 'pop_eegfiltnew'), 'PipeCompare:Native', 'Expected pop_eegfiltnew, got %s', fn);
+                    lo = pipecompare.utils.fieldOr(nv, 'locutoff', []); hi = pipecompare.utils.fieldOr(nv, 'hicutoff', []); rev = pipecompare.utils.fieldOr(nv, 'revfilt', 0);
                     switch type
                         case 'highpass'
-                            assert(~isempty(lo) && lo > 0 && ~rev, 'NeuroQC:Native', 'The dialog did not set a high-pass edge (lower edge).');
+                            assert(~isempty(lo) && lo > 0 && ~rev, 'PipeCompare:Native', 'The dialog did not set a high-pass edge (lower edge).');
                             vals.cutoff = lo;
                             if ~isempty(hi) && hi > 0, notes{end+1} = sprintf('the low-pass edge %g Hz is not part of the highpass step', hi); end
                         case 'lowpass'
-                            assert(~isempty(hi) && hi > 0 && ~rev, 'NeuroQC:Native', 'The dialog did not set a low-pass edge (higher edge).');
+                            assert(~isempty(hi) && hi > 0 && ~rev, 'PipeCompare:Native', 'The dialog did not set a low-pass edge (higher edge).');
                             vals.cutoff = hi;
                             if ~isempty(lo) && lo > 0, notes{end+1} = sprintf('the high-pass edge %g Hz is not part of the lowpass step', lo); end
                         case 'linenoise'
-                            assert(~isempty(lo) && ~isempty(hi) && rev, 'NeuroQC:Native', 'Set a notch: both edges and "notch filter the data instead of pass band".');
+                            assert(~isempty(lo) && ~isempty(hi) && rev, 'PipeCompare:Native', 'Set a notch: both edges and "notch filter the data instead of pass band".');
                             vals.freq = (lo + hi) / 2; vals.halfwidth = (hi - lo) / 2;
                     end
                     chk({'locutoff','hicutoff','revfilt','plotfreqz'});
@@ -199,7 +199,7 @@ classdef Native
                     end
                     chk({});
                 case 'asr'
-                    vals.cutoff = neuroqc.utils.fieldOr(nv, 'BurstCriterion', 20);
+                    vals.cutoff = pipecompare.utils.fieldOr(nv, 'BurstCriterion', 20);
                     off = {'FlatlineCriterion','ChannelCriterion','LineNoiseCriterion','Highpass','WindowCriterion'};
                     on = off(cellfun(@(f) isfield(nv, f) && ~(ischar(nv.(f)) && strcmpi(nv.(f), 'off')), off));
                     if ~isempty(on), notes{end+1} = sprintf('the asr step only corrects bursts; %s not used', strjoin(on, ', ')); end
@@ -211,8 +211,8 @@ classdef Native
                         'BurstCriterionRefMaxBadChns','BurstCriterionRefTolerances','WindowCriterionTolerances', ...
                         'ChannelCriterionMaxBadTime','NoLocsChannelCriterion','NoLocsChannelCriterionExcluded', 'fusechanrej'}]);
                 case 'badchannels'
-                    vals.measure = neuroqc.utils.fieldOr(nv, 'measure', 'kurt'); vals.threshold = neuroqc.utils.fieldOr(nv, 'threshold', 5);
-                    elec = neuroqc.utils.fieldOr(nv, 'elec', 1:numel(labs));
+                    vals.measure = pipecompare.utils.fieldOr(nv, 'measure', 'kurt'); vals.threshold = pipecompare.utils.fieldOr(nv, 'threshold', 5);
+                    elec = pipecompare.utils.fieldOr(nv, 'elec', 1:numel(labs));
                     if numel(elec) < numel(labs), vals.exclude = labs(setdiff(1:numel(labs), elec)); end
                     if numel(vals.threshold) > 1, notes{end+1} = 'only the upper threshold is used'; vals.threshold = max(vals.threshold); end
                     differs('norm', 'on', '''on'' (z-scored measure)');
@@ -228,7 +228,7 @@ classdef Native
                     if isfield(nv, 'rmchannel'), vals.labels = asLabels(nv.rmchannel, labs);
                     elseif isfield(nv, 'nochannel'), vals.labels = asLabels(nv.nochannel, labs);
                     elseif isfield(nv, 'channel'), vals.labels = setdiff(labs, asLabels(nv.channel, labs), 'stable');
-                    else, error('NeuroQC:Native', 'The dialog selected no channels to remove.');
+                    else, error('PipeCompare:Native', 'The dialog selected no channels to remove.');
                     end
                     vals.action = 'remove';
                     chk({'rmchannel','nochannel','channel'});
@@ -240,7 +240,7 @@ classdef Native
                     if numel(elec) < numel(labs), vals.exclude = labs(setdiff(1:numel(labs), elec)); end
                     if strcmp(type, 'reject_threshold')
                         lo = pos{3}; hi = pos{4};
-                        assert(isscalar(lo) && isscalar(hi), 'NeuroQC:Native', 'Per-channel limits: keep the whole EEGLAB command to use them.');
+                        assert(isscalar(lo) && isscalar(hi), 'PipeCompare:Native', 'Per-channel limits: keep the whole EEGLAB command to use them.');
                         vals.uv = hi;
                         if lo ~= -hi, notes{end+1} = sprintf('asymmetric limits [%g %g]: the step uses +/-%g', lo, hi, hi); end
                         if numel(pos) >= 6 && EEG.trials > 1 && (abs(pos{5} - EEG.xmin) > 1 / EEG.srate || abs(pos{6} - EEG.xmax) > 1 / EEG.srate)
@@ -253,7 +253,7 @@ classdef Native
                         end
                     end
                 case 'ica'
-                    vals.extended = neuroqc.utils.fieldOr(nv, 'extended', 1);
+                    vals.extended = pipecompare.utils.fieldOr(nv, 'extended', 1);
                     differs('icatype', 'runica', 'runica');
                     differs('rndreset', 'no', '''no'' (reproducible)');
                     if isfield(nv, 'pca') && ~isempty(nv.pca), notes{end+1} = sprintf('pca = %s: the ica step does not reduce the dimension (EEGLAB limits it to the data rank)', valueCode(nv.pca)); end
@@ -265,8 +265,8 @@ classdef Native
                     T = pos{1};
                     cats = {'Brain','Muscle','Eye','Heart','Line Noise','Channel Noise','Other'};
                     rows = find(all(isfinite(T), 2))';
-                    assert(~isempty(rows), 'NeuroQC:Native', 'No ICLabel class was flagged.');
-                    assert(~ismember(1, rows), 'NeuroQC:Native', 'Flagging Brain components is not an artifact-removal step.');
+                    assert(~isempty(rows), 'PipeCompare:Native', 'No ICLabel class was flagged.');
+                    assert(~ismember(1, rows), 'PipeCompare:Native', 'Flagging Brain components is not an artifact-removal step.');
                     vals.classes = cats(rows);
                     th = T(rows, 1);
                     vals.threshold = min(th);
@@ -274,7 +274,7 @@ classdef Native
                         notes{end+1} = 'different thresholds per class (or an upper limit < 1): the step uses one threshold';
                     end
                 otherwise
-                    error('NeuroQC:Native', 'No EEGLAB dialog values for %s.', type);
+                    error('PipeCompare:Native', 'No EEGLAB dialog values for %s.', type);
             end
         end
 
@@ -296,39 +296,39 @@ classdef Native
             %   icremove
             %       pop_iclabel, pop_icflag (classes and thresholds), then
             %       pop_subcomp of the flagged components
-            if nargin < 2, EEG = neuroqc.live.Session.current(); end
-            assert(~isempty(EEG), 'NeuroQC:NoDataset', 'No dataset is loaded in EEGLAB.');
+            if nargin < 2, EEG = pipecompare.live.Session.current(); end
+            assert(~isempty(EEG), 'PipeCompare:NoDataset', 'No dataset is loaded in EEGLAB.');
             com = '';
             switch type
                 case {'reject_threshold','reject_jointprob','reject_kurtosis'}
-                    assert(EEG.trials > 1, 'NeuroQC:Native', 'Epoch rejection needs epoched (preview) data.');
+                    assert(EEG.trials > 1, 'PipeCompare:Native', 'Epoch rejection needs epoched (preview) data.');
                     field = struct('reject_threshold', 'rejthresh', 'reject_jointprob', 'rejjp', 'reject_kurtosis', 'rejkurt');
-                    c1 = neuroqc.run.Native.captureCall(EEG, neuroqc.run.Native.menuCall(type));
+                    c1 = pipecompare.run.Native.captureCall(EEG, pipecompare.run.Native.menuCall(type));
                     if isempty(c1), return; end
                     c1 = strtrim(regexprep(c1, '^\s*\w+\s*=\s*pop_eegthresh\([^;]*\);\s*(?=EEG\s*=)', ''));  % 'Indexes = ...' prefix, if any
-                    e = neuroqc.live.History.classify(c1);
+                    e = pipecompare.live.History.classify(c1);
                     com = c1;
                     if ~strcmp(e.step, 'reject_epochs')            % marked only: remove the marked epochs
                         com = sprintf('%s\nEEG = pop_rejepoch(EEG, EEG.reject.%s, 0);', c1, field.(type));
                     end
                 case 'icremove'
-                    assert(~isempty(EEG.icaweights), 'NeuroQC:Native', ['The dataset has no ICA decomposition, so the ', ...
+                    assert(~isempty(EEG.icaweights), 'PipeCompare:Native', ['The dataset has no ICA decomposition, so the ', ...
                         'ICLabel dialogs cannot run. For ICA inside the plan use the icremove step and its settings.']);
-                    [c1, E1] = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_iclabel(EEG);');
+                    [c1, E1] = pipecompare.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_iclabel(EEG);');
                     if isempty(c1), return; end
-                    c2 = neuroqc.run.Native.captureCall(E1, '[EEG, LASTCOM] = pop_icflag(EEG);');
+                    c2 = pipecompare.run.Native.captureCall(E1, '[EEG, LASTCOM] = pop_icflag(EEG);');
                     if isempty(c2), return; end
                     com = sprintf('%s\n%s\nEEG = pop_subcomp(EEG, [], 0);', c1, c2);
                 otherwise
-                    error('NeuroQC:Native', 'No EEGLAB workflow for %s', type);
+                    error('PipeCompare:Native', 'No EEGLAB workflow for %s', type);
             end
-            neuroqc.utils.log('Captured workflow:\n%s', com);
+            pipecompare.utils.log('Captured workflow:\n%s', com);
         end
 
         function type = typeOfCommand(command)
             % The dialog(s) that produce a captured command ('' if none).
-            st = neuroqc.run.Native.statements(command);
-            e = neuroqc.live.History.classify(st{1});
+            st = pipecompare.run.Native.statements(command);
+            e = pipecompare.live.History.classify(st{1});
             wf = {'pop_eegthresh','reject_threshold'; 'pop_jointprob','reject_jointprob'; ...
                 'pop_rejkurt','reject_kurtosis'; 'pop_iclabel','icremove'};
             k = find(strcmp(wf(:, 1), e.fn), 1);
@@ -342,8 +342,8 @@ classdef Native
         function applyCall(call, type)
             % Evaluate an EEGLAB call on the current dataset in the base
             % workspace, wrapped exactly like an EEGLAB menu callback.
-            [tryStr, catchStr] = neuroqc.run.Native.eeglabStrings(type);
-            neuroqc.utils.log('EEGLAB on the current dataset: %s', call);
+            [tryStr, catchStr] = pipecompare.run.Native.eeglabStrings(type);
+            pipecompare.utils.log('EEGLAB on the current dataset: %s', call);
             evalin('base', 'NQC_COM__ = '''';');
             evalin('base', [tryStr call ' NQC_COM__ = LASTCOM;' catchStr]);
             com = strtrim(char(evalin('base', 'NQC_COM__')));
@@ -359,15 +359,15 @@ classdef Native
                 assignin('base', 'NQC_EEG__', EEG);
                 evalin('base', ['EEG = NQC_EEG__; clear NQC_EEG__; ' ...
                     '[ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG, CURRENTSET);']);
-                neuroqc.utils.log(['EEGLAB did not add "%s" to EEG.history (it repeats the previous ', ...
-                    'session command); NeuroQC added it.'], com);
+                pipecompare.utils.log(['EEGLAB did not add "%s" to EEG.history (it repeats the previous ', ...
+                    'session command); PipeCompare added it.'], com);
             end
         end
 
         function com = capture(type, EEG)
             % Run the dialog on a copy and return the command it produced.
-            if nargin < 2, EEG = neuroqc.live.Session.current(); end
-            assert(~isempty(EEG), 'NeuroQC:NoDataset', 'No dataset is loaded in EEGLAB.');
+            if nargin < 2, EEG = pipecompare.live.Session.current(); end
+            assert(~isempty(EEG), 'PipeCompare:NoDataset', 'No dataset is loaded in EEGLAB.');
             slow = {'resample','highpass','lowpass','linenoise','filter','asr','badchannels','ica'};
             if any(strcmp(type, slow))
                 if EEG.trials == 1
@@ -375,13 +375,13 @@ classdef Native
                 else
                     EEG = pop_select(EEG, 'trial', 1:min(20, EEG.trials));
                 end
-                neuroqc.utils.log('Dialog runs on a shortened copy (only its parameters are kept).');
+                pipecompare.utils.log('Dialog runs on a shortened copy (only its parameters are kept).');
             end
-            com = neuroqc.run.Native.captureCall(EEG, neuroqc.run.Native.menuCall(type));
+            com = pipecompare.run.Native.captureCall(EEG, pipecompare.run.Native.menuCall(type));
             if isempty(com) && strcmp(type, 'badchannels')
                 % EEGLAB's pop_rejchan returns no command when it flags no
                 % channel, so its settings cannot be told from a cancel
-                neuroqc.utils.log(['pop_rejchan returned no command: either the dialog was cancelled or it flagged ', ...
+                pipecompare.utils.log(['pop_rejchan returned no command: either the dialog was cancelled or it flagged ', ...
                     'no channel on this copy (EEGLAB then returns nothing). Set measure/threshold in the settings ', ...
                     'column, or retry on data with a bad channel.']);
             end
@@ -393,9 +393,9 @@ classdef Native
             [LASTCOM, EEGout] = runCall(EEG, call);
             com = strtrim(char(LASTCOM));
             if isempty(com)
-                neuroqc.utils.log('Dialog cancelled; nothing captured.');
+                pipecompare.utils.log('Dialog cancelled; nothing captured.');
             else
-                neuroqc.utils.log('Captured: %s', com);
+                pipecompare.utils.log('Captured: %s', com);
             end
         end
 
@@ -407,7 +407,7 @@ classdef Native
             cmd = strtrim(char(command));
             pat = ['^\s*(\[[^\]]*\]|\w+)\s*=\s*' fn '\s*\(\s*EEG\s*(,|\))'];
             tok = regexp(cmd, pat, 'tokens', 'once');
-            assert(~isempty(tok), 'NeuroQC:Native', 'Not a %s(EEG, ...) command: %s', fn, cmd);
+            assert(~isempty(tok), 'PipeCompare:Native', 'Not a %s(EEG, ...) command: %s', fn, cmd);
             if strcmp(tok{2}, ')'), args = {}; return; end
             body = regexprep(cmd, pat, 'NQC_ARGS__ = argList(');
             args = evalArgs(body);
@@ -416,7 +416,7 @@ classdef Native
         function [tryStr, catchStr] = eeglabStrings(type)
             % The exact strings EEGLAB passed to plugins at startup, when
             % available; otherwise the same behaviour spelled out.
-            s = getappdata(0, 'neuroqc_eeglab_strings');
+            s = getappdata(0, 'pipecompare_eeglab_strings');
             store = any(strcmp(type, {'ica','iclabel','icflag','reject_jointprob','reject_kurtosis'}));
             if ~isempty(s)
                 tryStr = s.try_strings.check_data;
@@ -471,7 +471,7 @@ elseif iscell(v)
     t = ['{' strjoin(inner, ',') '}'];
     if ~isrow(v) && ~isempty(v), t = ['{' strjoin(inner, ';') '}']; end
 else
-    error('NeuroQC:Native', 'Cannot write a %s argument back into an EEGLAB command.', class(v));
+    error('PipeCompare:Native', 'Cannot write a %s argument back into an EEGLAB command.', class(v));
 end
 end
 

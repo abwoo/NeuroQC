@@ -22,9 +22,9 @@ classdef PanelText
             for part = strsplit(strtrim(char(txt)), ';')
                 p = strtrim(part{1}); if isempty(p), continue; end
                 k = strfind(p, ':');
-                assert(~isempty(k), 'NeuroQC:Contract', 'Conditions: name: ev1 ev2; name2: ev3');
-                ev = neuroqc.gui.PanelText.tokens(p(k(1)+1:end));
-                assert(~isempty(ev), 'NeuroQC:Contract', 'Condition %s has no event code.', strtrim(p(1:k(1)-1)));
+                assert(~isempty(k), 'PipeCompare:Contract', 'Conditions: name: ev1 ev2; name2: ev3');
+                ev = pipecompare.gui.PanelText.tokens(p(k(1)+1:end));
+                assert(~isempty(ev), 'PipeCompare:Contract', 'Condition %s has no event code.', strtrim(p(1:k(1)-1)));
                 conds(end+1, :) = {strtrim(p(1:k(1)-1)), ev}; %#ok<AGROW>
             end
         end
@@ -32,7 +32,7 @@ classdef PanelText
         function t = conditionsText(conds)
             parts = cell(1, size(conds, 1));
             for k = 1:size(conds, 1)
-                parts{k} = sprintf('%s: %s', conds{k, 1}, strjoin(cellfun(@neuroqc.gui.PanelText.quoteItem, conds{k, 2}, 'UniformOutput', false), ' '));
+                parts{k} = sprintf('%s: %s', conds{k, 1}, strjoin(cellfun(@pipecompare.gui.PanelText.quoteItem, conds{k, 2}, 'UniformOutput', false), ' '));
             end
             t = strjoin(parts, '; ');
         end
@@ -43,10 +43,10 @@ classdef PanelText
             for part = strsplit(strtrim(char(txt)), ';')
                 p = strtrim(part{1}); if isempty(p), continue; end
                 tok = regexp(p, '^([^:]+):\s*([-\d\.eE]+)\s+([-\d\.eE]+)\s*@\s*([^#]+)(.*)$', 'tokens', 'once');
-                assert(~isempty(tok), 'NeuroQC:Contract', 'Components: name: start end @ ch1 ch2 [# measure polarity]; ...');
+                assert(~isempty(tok), 'PipeCompare:Contract', 'Components: name: start end @ ch1 ch2 [# measure polarity]; ...');
                 meas = strsplit(strtrim(strrep(tok{5}, '#', '')));
                 meas = meas(~cellfun(@isempty, meas)); if isempty(meas), meas = {'mean'}; end
-                comps(end+1, :) = {strtrim(tok{1}), [str2double(tok{2}) str2double(tok{3})], neuroqc.gui.PanelText.tokens(tok{4}), meas}; %#ok<AGROW>
+                comps(end+1, :) = {strtrim(tok{1}), [str2double(tok{2}) str2double(tok{3})], pipecompare.gui.PanelText.tokens(tok{4}), meas}; %#ok<AGROW>
             end
         end
 
@@ -59,7 +59,7 @@ classdef PanelText
                     tail = [' # ' strjoin(m, ' ')];
                 end
                 parts{k} = sprintf('%s: %g %g @ %s%s', comps{k, 1}, comps{k, 2}, ...
-                    strjoin(cellfun(@neuroqc.gui.PanelText.quoteItem, comps{k, 3}, 'UniformOutput', false), ' '), tail);
+                    strjoin(cellfun(@pipecompare.gui.PanelText.quoteItem, comps{k, 3}, 'UniformOutput', false), ' '), tail);
             end
             t = strjoin(parts, '; ');
         end

@@ -1,13 +1,13 @@
 classdef Panel < handle
-    %PANEL NeuroQC panel: live dataset + history, plan, contract, results.
+    %PANEL PipeCompare panel: live dataset + history, plan, contract, results.
     %
-    %   neuroqc.gui.Panel()   (or EEGLAB > Tools > NeuroQC)
+    %   pipecompare.gui.Panel()   (or EEGLAB > Tools > PipeCompare)
     %
     %   There is no load button: the panel follows the dataset that is
     %   current in EEGLAB and re-reads it (and its EEG.history) whenever it
     %   changes, including changes made through EEGLAB menus or the command
     %   line. Everything the panel does is also printed in the Command
-    %   Window; results are assigned to the base variable neuroqc_result.
+    %   Window; results are assigned to the base variable pipecompare_result.
 
     properties
         Plan
@@ -34,13 +34,13 @@ classdef Panel < handle
 
     methods
         function obj = Panel()
-            obj.Plan = neuroqc.plan.Plan();
+            obj.Plan = pipecompare.plan.Plan();
             obj.build();
             obj.refreshLive(true);
             obj.Timer = timer('ExecutionMode', 'fixedSpacing', 'Period', 1, 'BusyMode', 'drop', ...
-                'TimerFcn', @(~, ~) obj.refreshLive(false), 'Name', 'neuroqc_panel');
+                'TimerFcn', @(~, ~) obj.refreshLive(false), 'Name', 'pipecompare_panel');
             start(obj.Timer);
-            neuroqc.utils.log('Panel open. It follows the current EEGLAB dataset.');
+            pipecompare.utils.log('Panel open. It follows the current EEGLAB dataset.');
         end
 
         function delete(obj)
@@ -50,7 +50,7 @@ classdef Panel < handle
 
         % ------------------------------------------------------------ layout
         function build(obj)
-            obj.Fig = uifigure('Name', sprintf('NeuroQC %s', neuroqc.NeuroQC.version()), ...
+            obj.Fig = uifigure('Name', sprintf('PipeCompare %s', pipecompare.PipeCompare.version()), ...
                 'Position', [60 60 1380 860], 'CloseRequestFcn', @(~, ~) obj.delete());
             g = uigridlayout(obj.Fig, [3 2]);
             g.RowHeight = {80, 300, '1x'}; g.ColumnWidth = {'1x', '1.25x'};   % contract and results get the remaining height
@@ -79,7 +79,7 @@ classdef Panel < handle
                 'CellEditCallback', @(~, e) obj.planEdited(e), 'SelectionChangedFcn', @(t, ~) obj.showDetails('plan', t));
             b1 = uigridlayout(pg, [1 8]); b1.Padding = [0 0 0 0];
             b1.ColumnWidth = {'1.3x', '0.6x', '1.7x', '0.9x', '0.6x', '0.7x', '0.7x', '0.9x'};
-            obj.TypeDrop = uidropdown(b1, 'Items', setdiff(neuroqc.plan.Catalog.types(), {'native'}, 'stable'));
+            obj.TypeDrop = uidropdown(b1, 'Items', setdiff(pipecompare.plan.Catalog.types(), {'native'}, 'stable'));
             uibutton(b1, 'Text', 'Add', 'ButtonPushedFcn', @(~, ~) obj.addStep());
             uibutton(b1, 'Text', 'Add EEGLAB menu step...', 'Tooltip', ...
                 ['Any operation of EEGLAB''s menus (plugins included): its own dialog opens on the data as the plan ', ...
@@ -159,7 +159,7 @@ classdef Panel < handle
                 'ButtonPushedFcn', @(~, ~) obj.editChanlocs());
             lg = uigridlayout(rg, [2 10]); lg.Padding = [0 0 0 0]; lg.RowSpacing = 4;
             lg.ColumnWidth = {'fit', '1x', 'fit', '1x', 'fit', '1x', 'fit', '1x', 'fit', '1x'};
-            d = neuroqc.eval.Rank.defaults();
+            d = pipecompare.eval.Rank.defaults();
             names = {'minTrials','minRetention','maxInterpolated','maxAmplitudeError','maxLatencyShiftMs', ...
                 'maxArtifactPct','minWaveformCorr','minTopoCorr'};
             short = {'min trials','min retention','max interp','max amp err','max lat ms','max artifact','min wave r','min topo r'};
@@ -213,14 +213,14 @@ classdef Panel < handle
             % changed, and otherwise every 5 s, so an edit that keeps every
             % count is still seen within 5 s.
             if ~force
-                try, [~, q] = neuroqc.live.Session.peek(); catch, q = ''; end
+                try, [~, q] = pipecompare.live.Session.peek(); catch, q = ''; end
                 obj.Ticks = obj.Ticks + 1;
                 if strcmp(q, obj.LastQuick) && obj.Ticks < 5, return; end
                 obj.LastQuick = q;
             end
             obj.Ticks = 0;
             try
-                [EEG, live] = neuroqc.live.Session.current();
+                [EEG, live] = pipecompare.live.Session.current();
             catch ME
                 obj.DatasetLabel.Text = ME.message; return;
             end
@@ -232,7 +232,7 @@ classdef Panel < handle
                 obj.HistTable.Data = {}; obj.WarnArea.Value = {''};
                 return;
             end
-            s = neuroqc.live.DataState.fromEEG(EEG);
+            s = pipecompare.live.DataState.fromEEG(EEG);
             if s.isEpoched, shape = sprintf('%d epochs [%g %g] s', s.trials, s.xmin, s.xmax);
             else, shape = sprintf('continuous %.1f s', s.pnts / s.srate); end
             stored = ''; if ~live.stored, stored = '  (base EEG not stored in ALLEEG)'; end
@@ -241,7 +241,7 @@ classdef Panel < handle
             else, locs = sprintf('channel locations: %d of %d (none for %s)', s.nLocated, s.nbchan, strjoin(s.unlocated, ', ')); end
             obj.DatasetLabel.Text = sprintf(['Set %s: %s%s\n%d ch | %g Hz | %s | %d events\n', ...
                 'Reference: %s | ICA: %s | %s\nFilters: %s'], mat2str(live.currentSet), s.setname, stored, ...
-                s.nbchan, s.srate, shape, s.nEvents, s.reference, s.ica.summary, locs, neuroqc.gui.PanelText.orDash(s.filters.text));
+                s.nbchan, s.srate, shape, s.nEvents, s.reference, s.ica.summary, locs, pipecompare.gui.PanelText.orDash(s.filters.text));
             obj.autoFill(s);
             obj.checkTrialRule(EEG, s);
             if isempty(s.warnings), obj.WarnArea.Value = {'No inconsistencies between data and history.'};
@@ -257,7 +257,7 @@ classdef Panel < handle
             obj.EventsLabel.Text = ['Event types: ' strjoin(ev, ', ')];
             obj.EventsLabel.Tooltip = obj.EventsLabel.Text;   % the full list, however long
             obj.updateSummary();
-            if ~force, neuroqc.utils.log('Current EEGLAB dataset changed: %s (%d history entries).', s.setname, numel(h)); end
+            if ~force, pipecompare.utils.log('Current EEGLAB dataset changed: %s (%d history entries).', s.setname, numel(h)); end
             if ~isempty(obj.Result) && ~strcmp(fp, obj.Result.rootFingerprint)
                 obj.StatusLabel.Text = sprintf(['Shown results were computed on "%s", not on the current dataset; ', ...
                     'Adopt rebuilds from that starting copy. Run again for the current one.'], obj.Result.state.setname);
@@ -274,7 +274,7 @@ classdef Panel < handle
             if s.isEpoched
                 v.EpochField = sprintf('%g %g', round(1000 * s.xmin) / 1000, round(1000 * s.xmax) / 1000);
                 if ~isempty(s.lockingTypes)
-                    v.CondField = neuroqc.gui.PanelText.conditionsText([s.lockingTypes(:) cellfun(@(t) {t}, s.lockingTypes(:), 'UniformOutput', false)]);
+                    v.CondField = pipecompare.gui.PanelText.conditionsText([s.lockingTypes(:) cellfun(@(t) {t}, s.lockingTypes(:), 'UniformOutput', false)]);
                 end
             end
             if ~isempty(s.baselineMs), v.BaseField = sprintf('%g %g', s.baselineMs / 1000); end
@@ -288,7 +288,7 @@ classdef Panel < handle
             end
             if ~isempty(filled)
                 names = strrep(strrep(strrep(filled, 'CondField', 'conditions (time-locking events)'), 'EpochField', 'epoch'), 'BaseField', 'baseline');
-                neuroqc.utils.log('From the dataset: %s filled in (edit them if needed).', strjoin(names, ', '));
+                pipecompare.utils.log('From the dataset: %s filled in (edit them if needed).', strjoin(names, ', '));
                 obj.invalidate('Settings changed'); obj.updateObjectives();
             end
         end
@@ -300,7 +300,7 @@ classdef Panel < handle
             ctxt = struct('epoch', obj.EpochField.Value, 'baseline', obj.BaseField.Value);
             for k = 1:numel(S)
                 data{k, 1} = k; data{k, 2} = S(k).id;
-                data{k, 3} = neuroqc.gui.PanelValues.settingsText(S(k), ctxt); data{k, 4} = S(k).pinned;
+                data{k, 3} = pipecompare.gui.PanelValues.settingsText(S(k), ctxt); data{k, 4} = S(k).pinned;
             end
             obj.PlanTable.Data = data;
             obj.OrderDrop.Value = obj.Plan.OrderMode;
@@ -318,14 +318,14 @@ classdef Panel < handle
             obj.Result = [];
             obj.ResultTable.Data = {};
             obj.StatusLabel.Text = sprintf('%s: previous results cleared - run the search again.', why);
-            neuroqc.utils.log('%s: previous results cleared (neuroqc_result in the base workspace is the old run).', why);
+            pipecompare.utils.log('%s: previous results cleared (pipecompare_result in the base workspace is the old run).', why);
         end
 
         function addStep(obj)
             obj.Plan = obj.Plan.add(obj.TypeDrop.Value);
             obj.invalidate('Plan changed');
             obj.showPlan();
-            neuroqc.utils.log('Added %s: %s', obj.Plan.Slots(end).id, neuroqc.gui.PanelValues.settingsText(obj.Plan.Slots(end)));
+            pipecompare.utils.log('Added %s: %s', obj.Plan.Slots(end).id, pipecompare.gui.PanelValues.settingsText(obj.Plan.Slots(end)));
         end
 
         function addEeglabStep(obj, label, com)
@@ -337,28 +337,28 @@ classdef Panel < handle
             % (com) given by a script skips the dialog.
             try
                 if nargin < 3
-                    items = neuroqc.run.Native.menuSteps();
-                    assert(~isempty(items), 'NeuroQC:Native', 'EEGLAB''s main window (with its menus) is not open.');
+                    items = pipecompare.run.Native.menuSteps();
+                    assert(~isempty(items), 'PipeCompare:Native', 'EEGLAB''s main window (with its menus) is not open.');
                     if nargin < 2
                         [i, ok] = listdlg2('PromptString', 'EEGLAB operation to add as a plan step', ...
                             'ListString', {items.label}, 'SelectionMode', 'single');
                         if ~ok || isempty(i), return; end
                     else
                         i = find(strcmp({items.label}, label), 1);
-                        assert(~isempty(i), 'NeuroQC:Native', 'EEGLAB has no menu item "%s".', label);
+                        assert(~isempty(i), 'PipeCompare:Native', 'EEGLAB has no menu item "%s".', label);
                     end
                     EEG = obj.previewAt(numel(obj.Plan.Slots) + 1);
-                    com = neuroqc.run.Native.captureCall(EEG, items(i).call);
+                    com = pipecompare.run.Native.captureCall(EEG, items(i).call);
                     if isempty(com), return; end
                 end
-                st = neuroqc.run.Native.statements(com);
-                e = neuroqc.live.History.classify(st{1});
+                st = pipecompare.run.Native.statements(com);
+                e = pipecompare.live.History.classify(st{1});
                 obj.Plan = obj.Plan.addNative(com, regexprep(e.fn, '^pop_', ''));
                 obj.invalidate('Plan changed');
                 obj.showPlan();
-                neuroqc.utils.log('Added %s: %s', obj.Plan.Slots(end).id, neuroqc.gui.PanelValues.settingsText(obj.Plan.Slots(end)));
+                pipecompare.utils.log('Added %s: %s', obj.Plan.Slots(end).id, pipecompare.gui.PanelValues.settingsText(obj.Plan.Slots(end)));
             catch ME
-                uialert(obj.Fig, ME.message, 'NeuroQC');
+                uialert(obj.Fig, ME.message, 'PipeCompare');
             end
         end
 
@@ -366,7 +366,7 @@ classdef Panel < handle
             k = [];
             sel = obj.PlanTable.Selection;
             if ~isempty(sel), k = sel(1, 1); end
-            if isempty(k), uialert(obj.Fig, 'Select a plan row first.', 'NeuroQC'); end
+            if isempty(k), uialert(obj.Fig, 'Select a plan row first.', 'PipeCompare'); end
         end
 
         function removeStep(obj)
@@ -410,50 +410,50 @@ classdef Panel < handle
                     [com, EEG] = obj.captureFor(type, k);   % on the data as the plan has them at this step
                     if isempty(com), return; end
                 end
-                if nargin < 3 || isempty(EEG), EEG = neuroqc.live.Session.current(); end
+                if nargin < 3 || isempty(EEG), EEG = pipecompare.live.Session.current(); end
                 alts = slot.alternatives;
-                if any(strcmp(alt.type, neuroqc.plan.Catalog.types())) && ~strcmp(alt.type, 'native')
-                    [vals, notes] = neuroqc.run.Native.catalogValues(alt.type, com, EEG);
+                if any(strcmp(alt.type, pipecompare.plan.Catalog.types())) && ~strcmp(alt.type, 'native')
+                    [vals, notes] = pipecompare.run.Native.catalogValues(alt.type, com, EEG);
                     if ~isempty(notes)
                         msg = sprintf('The dialog also set: %s.', strjoin(notes, '; '));
                         if nargin < 4
                             c = uiconfirm(obj.Fig, [msg ' Keep the whole EEGLAB command for this step, or only the values the step uses?'], ...
-                                'NeuroQC', 'Options', {'Keep whole command', 'Only the step''s values', 'Cancel'}, 'DefaultOption', 1, 'CancelOption', 3);
+                                'PipeCompare', 'Options', {'Keep whole command', 'Only the step''s values', 'Cancel'}, 'DefaultOption', 1, 'CancelOption', 3);
                             if strcmp(c, 'Cancel'), return; end
                             keepWhole = strcmp(c, 'Keep whole command');
                         end
                         if keepWhole
                             alts{j} = stepAlt(com);
                             obj.Plan.Slots(k).alternatives = alts;
-                            neuroqc.utils.log('%s: %s Kept the whole EEGLAB command.', slot.id, msg);
+                            pipecompare.utils.log('%s: %s Kept the whole EEGLAB command.', slot.id, msg);
                             obj.invalidate('Plan changed'); obj.showPlan();
                             return;
                         end
-                        neuroqc.utils.log('%s: %s Only the step''s values were used.', slot.id, msg);
+                        pipecompare.utils.log('%s: %s Only the step''s values were used.', slot.id, msg);
                     end
-                    alts{j} = neuroqc.gui.PanelValues.addValues(alt, vals);
+                    alts{j} = pipecompare.gui.PanelValues.addValues(alt, vals);
                 else
                     new = stepAlt(com);
                     if strcmp(alt.type, 'eeglab') && strcmp(new.type, 'eeglab')
-                        [m, changed] = neuroqc.run.Native.mergeEeglab(alt, new);
+                        [m, changed] = pipecompare.run.Native.mergeEeglab(alt, new);
                         if isequal({m.params.args.name}, {new.params.args.name}) && strcmp(m.params.fn, new.params.fn)
-                            if isempty(changed), neuroqc.utils.log('%s: this configuration is already there.', slot.id); return; end
+                            if isempty(changed), pipecompare.utils.log('%s: this configuration is already there.', slot.id); return; end
                             alts{j} = m;
-                            neuroqc.utils.log('%s: searched argument(s) %s.', slot.id, strjoin(changed, ', '));
+                            pipecompare.utils.log('%s: searched argument(s) %s.', slot.id, strjoin(changed, ', '));
                         else
                             alts{end+1} = new;
                         end
                     elseif ~any(cellfun(@(a) isequal(a, new), alts))
                         alts{end+1} = new;           % another configuration of a workflow
                     else
-                        neuroqc.utils.log('%s: this configuration is already there.', slot.id); return;
+                        pipecompare.utils.log('%s: this configuration is already there.', slot.id); return;
                     end
                 end
                 obj.Plan.Slots(k).alternatives = alts;
-                neuroqc.utils.log('%s: %s', slot.id, neuroqc.gui.PanelValues.settingsText(obj.Plan.Slots(k)));
+                pipecompare.utils.log('%s: %s', slot.id, pipecompare.gui.PanelValues.settingsText(obj.Plan.Slots(k)));
                 obj.invalidate('Plan changed'); obj.showPlan();
             catch ME
-                uialert(obj.Fig, ME.message, 'NeuroQC');
+                uialert(obj.Fig, ME.message, 'PipeCompare');
             end
         end
 
@@ -464,7 +464,7 @@ classdef Panel < handle
             k = obj.selected(); if isempty(k), return; end
             alts = obj.Plan.Slots(k).alternatives;
             j = find(~cellfun(@(a) strcmp(a.type, 'none'), alts), 1);
-            alts{j} = neuroqc.gui.PanelValues.setParam(alts{j}, name, values);
+            alts{j} = pipecompare.gui.PanelValues.setParam(alts{j}, name, values);
             obj.Plan.Slots(k).alternatives = alts;
             obj.invalidate('Plan changed'); obj.showPlan();
         end
@@ -476,9 +476,9 @@ classdef Panel < handle
             slot = obj.Plan.Slots(k);
             j = find(~cellfun(@(a) strcmp(a.type, 'none'), slot.alternatives), 1);
             alt = slot.alternatives{j};
-            rows = neuroqc.gui.PanelValues.paramRows(alt);
+            rows = pipecompare.gui.PanelValues.paramRows(alt);
             if isempty(rows)
-                uialert(obj.Fig, sprintf('%s has no parameters of its own (settings come from the analysis contract or the workflow command).', slot.id), 'NeuroQC');
+                uialert(obj.Fig, sprintf('%s has no parameters of its own (settings come from the analysis contract or the workflow command).', slot.id), 'PipeCompare');
                 return;
             end
             d = uifigure('Name', sprintf('%s: values', slot.id), 'Position', [200 200 680 380], 'WindowStyle', 'modal');
@@ -494,21 +494,21 @@ classdef Panel < handle
             uibutton(bg, 'Text', 'OK', 'ButtonPushedFcn', @(~, ~) apply());
             function pick()
                 sel = T.Selection; if isempty(sel), return; end
-                L = obj.pickChannels(neuroqc.gui.PanelText.tokens(T.Data{sel(1, 1), 2}));
-                if ~isempty(L), T.Data{sel(1, 1), 2} = strjoin(cellfun(@neuroqc.gui.PanelText.quoteItem, L, 'UniformOutput', false), ' '); end
+                L = obj.pickChannels(pipecompare.gui.PanelText.tokens(T.Data{sel(1, 1), 2}));
+                if ~isempty(L), T.Data{sel(1, 1), 2} = strjoin(cellfun(@pipecompare.gui.PanelText.quoteItem, L, 'UniformOutput', false), ' '); end
             end
             function apply()
                 try
                     a = alt;
                     for r = 1:size(rows, 1)
                         if strcmp(T.Data{r, 2}, rows{r, 2}), continue; end
-                        a = neuroqc.gui.PanelValues.setParam(a, rows{r, 1}, neuroqc.gui.PanelValues.parseValues(T.Data{r, 2}, rows{r, 4}));
+                        a = pipecompare.gui.PanelValues.setParam(a, rows{r, 1}, pipecompare.gui.PanelValues.parseValues(T.Data{r, 2}, rows{r, 4}));
                     end
                     obj.Plan.Slots(k).alternatives{j} = a;
                     obj.invalidate('Plan changed'); obj.showPlan();
                     delete(d);
                 catch ME
-                    uialert(d, ME.message, 'NeuroQC');
+                    uialert(d, ME.message, 'PipeCompare');
                 end
             end
         end
@@ -519,10 +519,10 @@ classdef Panel < handle
             has = any(cellfun(@(a) strcmp(a.type, 'none'), slot.alternatives));
             try
                 obj.Plan = obj.Plan.setSkippable(slot.id, ~has);
-                neuroqc.utils.log('%s: skipping %s.', slot.id, neuroqc.utils.ternary(~has, 'is now searched as an option', 'is no longer an option'));
+                pipecompare.utils.log('%s: skipping %s.', slot.id, pipecompare.utils.ternary(~has, 'is now searched as an option', 'is no longer an option'));
                 obj.invalidate('Plan changed'); obj.showPlan();
             catch ME
-                uialert(obj.Fig, ME.message, 'NeuroQC');
+                uialert(obj.Fig, ME.message, 'PipeCompare');
             end
         end
 
@@ -538,7 +538,7 @@ classdef Panel < handle
             end
             obj.Plan = obj.Plan.before(me, other);
             if strcmp(obj.Plan.OrderMode, 'fixed')
-                neuroqc.utils.log('Order rule %s before %s is used when Order = search.', me, other);
+                pipecompare.utils.log('Order rule %s before %s is used when Order = search.', me, other);
             end
             obj.invalidate('Plan changed'); obj.showPlan();
         end
@@ -551,41 +551,41 @@ classdef Panel < handle
         function type = dialogType(~, slot)
             % Which EEGLAB dialog(s) configure this slot.
             alts = slot.alternatives(~cellfun(@(a) strcmp(a.type, 'none'), slot.alternatives));
-            assert(~isempty(alts), 'NeuroQC:Plan', 'The step has no configuration to edit.');
+            assert(~isempty(alts), 'PipeCompare:Plan', 'The step has no configuration to edit.');
             type = alts{1}.type;
             if strcmp(type, 'eeglab')
                 A = alts{1}.params.args;
-                com = neuroqc.run.Native.eeglabCommand(alts{1}.params.fn, A, arrayfun(@(x) x.values{1}, A, 'UniformOutput', false));
-                type = neuroqc.run.Native.typeOfCommand(com);
+                com = pipecompare.run.Native.eeglabCommand(alts{1}.params.fn, A, arrayfun(@(x) x.values{1}, A, 'UniformOutput', false));
+                type = pipecompare.run.Native.typeOfCommand(com);
                 if isempty(type), type = menuDialog(com); end
             elseif strcmp(type, 'native')
-                type = neuroqc.run.Native.typeOfCommand(alts{1}.params.command);
+                type = pipecompare.run.Native.typeOfCommand(alts{1}.params.command);
                 if isempty(type), type = menuDialog(alts{1}.params.command); end
             end
             if startsWith(type, 'call:'), return; end   % a step added from EEGLAB's menus
             ok = {'resample','highpass','lowpass','linenoise','filter','asr','badchannels','restore','reref','ica', ...
                 'icremove','reject_threshold','reject_jointprob','reject_kurtosis'};
-            assert(any(strcmp(type, ok)), 'NeuroQC:Native', ['%s has no EEGLAB dialog here (epoch and baseline come ', ...
+            assert(any(strcmp(type, ok)), 'PipeCompare:Native', ['%s has no EEGLAB dialog here (epoch and baseline come ', ...
                 'from the analysis contract above; named channels from Edit values...).'], type);
         end
 
         function [com, EEG] = captureFor(obj, type, k)
             % The step's EEGLAB dialog, on the data as the plan has them when
             % step k runs (previewAt); epoch-level dialogs on epoched data.
-            if nargin < 3, EEG = neuroqc.live.Session.current(); else, EEG = obj.previewAt(k); end
+            if nargin < 3, EEG = pipecompare.live.Session.current(); else, EEG = obj.previewAt(k); end
             switch type
                 case {'reject_threshold','reject_jointprob','reject_kurtosis'}
                     if EEG.trials == 1, EEG = obj.previewEpoched(EEG); end
-                    com = neuroqc.run.Native.captureWorkflow(type, EEG);
+                    com = pipecompare.run.Native.captureWorkflow(type, EEG);
                 case 'icremove'
-                    assert(~isempty(EEG.icaweights), 'NeuroQC:Plan', ['There is no ICA decomposition at this step: ', ...
+                    assert(~isempty(EEG.icaweights), 'PipeCompare:Plan', ['There is no ICA decomposition at this step: ', ...
                         'add an ica step before it in the plan (or run ICA on the dataset).']);
-                    com = neuroqc.run.Native.captureWorkflow(type, EEG);
+                    com = pipecompare.run.Native.captureWorkflow(type, EEG);
                 otherwise
                     if startsWith(type, 'call:')
-                        com = neuroqc.run.Native.captureCall(EEG, type(6:end));   % the EEGLAB menu item's own call
+                        com = pipecompare.run.Native.captureCall(EEG, type(6:end));   % the EEGLAB menu item's own call
                     else
-                        com = neuroqc.run.Native.capture(type, EEG);
+                        com = pipecompare.run.Native.capture(type, EEG);
                     end
             end
         end
@@ -594,23 +594,23 @@ classdef Panel < handle
             % A copy of the current dataset (continuous: its first 120 s) after
             % the plan's steps before step k, each with its first legal
             % configuration: what the dialog of step k would see.
-            EEG = neuroqc.live.Session.current();
-            assert(~isempty(EEG), 'NeuroQC:NoDataset', 'No dataset in EEGLAB.');
+            EEG = pipecompare.live.Session.current();
+            assert(~isempty(EEG), 'PipeCompare:NoDataset', 'No dataset in EEGLAB.');
             if EEG.trials == 1 && EEG.pnts / EEG.srate > 120
                 [~, EEG] = evalc('pop_select(EEG, ''time'', [0 120])');
             end
             if k <= 1, return; end
             c = obj.contract();
-            [~, EEG] = evalc('neuroqc.run.Executor.prepareRoot(EEG, c, struct(''dataUnit'', ''uV''))');
+            [~, EEG] = evalc('pipecompare.run.Executor.prepareRoot(EEG, c, struct(''dataUnit'', ''uV''))');
             sub = obj.Plan; sub.Slots = sub.Slots(1:k-1); sub.OrderMode = 'fixed'; sub.Precedence = cell(0, 2);
-            leaves = sub.enumerate(neuroqc.live.DataState.fromEEG(EEG), c, struct('maxLeaves', Inf));
+            leaves = sub.enumerate(pipecompare.live.DataState.fromEEG(EEG), c, struct('maxLeaves', Inf));
             path = leaves(1).path;
             ctx = struct('contract', c, 'highpass', 0);
             for q = 1:numel(path)
-                [~, EEG] = evalc('neuroqc.run.Steps.run(path{q}, EEG, ctx)');
+                [~, EEG] = evalc('pipecompare.run.Steps.run(path{q}, EEG, ctx)');
             end
             if ~isempty(path)
-                neuroqc.utils.log('Dialog on a preview copy%s after: %s', neuroqc.utils.ternary(EEG.trials == 1, ' (first 120 s)', ''), ...
+                pipecompare.utils.log('Dialog on a preview copy%s after: %s', pipecompare.utils.ternary(EEG.trials == 1, ' (first 120 s)', ''), ...
                     strjoin(cellfun(@(i) i.label, path, 'UniformOutput', false), ' > '));
             end
         end
@@ -618,56 +618,56 @@ classdef Panel < handle
         function EEG = previewEpoched(obj, EEG)
             % The current dataset (or EEG), epoched on a copy with the
             % contract window when it is still continuous (epoch-level dialogs).
-            if nargin < 2, EEG = neuroqc.live.Session.current(); end
-            assert(~isempty(EEG), 'NeuroQC:NoDataset', 'No dataset in EEGLAB.');
+            if nargin < 2, EEG = pipecompare.live.Session.current(); end
+            assert(~isempty(EEG), 'PipeCompare:NoDataset', 'No dataset in EEGLAB.');
             if EEG.trials > 1, return; end
             c = obj.contract();
             codes = c.allEvents();
-            assert(~isempty(codes), 'NeuroQC:Contract', 'Define the conditions first (the preview is epoched on their events).');
-            assert(numel(c.epoch) == 2, 'NeuroQC:Contract', 'Set the epoch first (EEGLAB pop_epoch...).');
+            assert(~isempty(codes), 'PipeCompare:Contract', 'Define the conditions first (the preview is epoched on their events).');
+            assert(numel(c.epoch) == 2, 'PipeCompare:Contract', 'Set the epoch first (EEGLAB pop_epoch...).');
             [~, EEG] = evalc('pop_epoch(EEG, codes, c.epoch, ''epochinfo'', ''yes'')');
             if ~isempty(c.baseline)
                 [~, EEG] = evalc('pop_rmbase(EEG, 1000 * c.baseline, [])');
             end
-            neuroqc.utils.log('Dialog on a preview copy epoched [%g %g] s on %s.', c.epoch, strjoin(codes, ', '));
+            pipecompare.utils.log('Dialog on a preview copy epoched [%g %g] s on %s.', c.epoch, strjoin(codes, ', '));
         end
 
         function applyNow(obj)
             k = obj.selected(); if isempty(k), return; end
             alt = obj.Plan.Slots(k).alternatives{1};
             try
-                before = neuroqc.live.Session.fingerprint(neuroqc.live.Session.current());
+                before = pipecompare.live.Session.fingerprint(pipecompare.live.Session.current());
                 if strcmp(alt.type, 'native')
-                    neuroqc.run.Native.applyCommand(alt.params.command);   % the fixed command, no dialog
+                    pipecompare.run.Native.applyCommand(alt.params.command);   % the fixed command, no dialog
                 elseif strcmp(alt.type, 'eeglab')
                     A = alt.params.args;
                     if numel(obj.Plan.Slots(k).alternatives) == 1 && all(cellfun(@numel, {A.values}) == 1)
-                        neuroqc.run.Native.applyCommand(neuroqc.run.Native.eeglabCommand(alt.params.fn, A, ...
+                        pipecompare.run.Native.applyCommand(pipecompare.run.Native.eeglabCommand(alt.params.fn, A, ...
                             arrayfun(@(x) x.values{1}, A, 'UniformOutput', false)));
                     else   % several configurations: choose one in the dialog itself
-                        neuroqc.run.Native.applyNow(obj.dialogType(obj.Plan.Slots(k)));
+                        pipecompare.run.Native.applyNow(obj.dialogType(obj.Plan.Slots(k)));
                     end
                 else
-                    neuroqc.run.Native.applyNow(alt.type);
+                    pipecompare.run.Native.applyNow(alt.type);
                 end
                 obj.refreshLive(false);
-                if strcmp(before, neuroqc.live.Session.fingerprint(neuroqc.live.Session.current()))
-                    neuroqc.utils.log('Dialog cancelled or no change; the dataset is unchanged.');
+                if strcmp(before, pipecompare.live.Session.fingerprint(pipecompare.live.Session.current()))
+                    pipecompare.utils.log('Dialog cancelled or no change; the dataset is unchanged.');
                     return;
                 end
-                choice = uiconfirm(obj.Fig, 'Remove this step from the plan now that it is applied?', 'NeuroQC', ...
+                choice = uiconfirm(obj.Fig, 'Remove this step from the plan now that it is applied?', 'PipeCompare', ...
                     'Options', {'Remove from plan', 'Keep'});
                 if strcmp(choice, 'Remove from plan'), obj.removeStep(); end
             catch ME
-                uialert(obj.Fig, ME.message, 'NeuroQC');
+                uialert(obj.Fig, ME.message, 'PipeCompare');
             end
         end
 
         % -------------------------------------------------------------- run
         function c = contract(obj)
             [ep, bl] = obj.windows();
-            c = neuroqc.eval.Contract('conditions', neuroqc.gui.PanelText.parseConditions(obj.CondField.Value), ...
-                'components', neuroqc.gui.PanelText.parseComponents(obj.CompField.Value), 'epoch', ep, 'baseline', bl, 'trials', obj.TrialRule);
+            c = pipecompare.eval.Contract('conditions', pipecompare.gui.PanelText.parseConditions(obj.CondField.Value), ...
+                'components', pipecompare.gui.PanelText.parseComponents(obj.CompField.Value), 'epoch', ep, 'baseline', bl, 'trials', obj.TrialRule);
         end
 
         function [ep, bl] = windows(obj)
@@ -676,7 +676,7 @@ classdef Panel < handle
             ep = str2num(obj.EpochField.Value); %#ok<ST2NM>
             bl = str2num(obj.BaseField.Value); %#ok<ST2NM>
             if isempty(ep)
-                EEG = neuroqc.live.Session.current();
+                EEG = pipecompare.live.Session.current();
                 if ~isempty(EEG) && EEG.trials > 1, ep = [EEG.xmin EEG.xmax]; end
             end
             if isempty(bl) && numel(ep) == 2 && ep(1) < 0, bl = [ep(1) 0]; end
@@ -705,14 +705,14 @@ classdef Panel < handle
 
         function optionsDialog(obj)
             o = obj.Options;
-            d = uifigure('Name', 'NeuroQC search options', 'Position', [240 240 520 300], 'WindowStyle', 'modal');
+            d = uifigure('Name', 'PipeCompare search options', 'Position', [240 240 520 300], 'WindowStyle', 'modal');
             gl = uigridlayout(d, [4 3]); gl.ColumnWidth = {170, '1x', 110}; gl.RowHeight = repmat({26}, 1, 4);
             uilabel(gl, 'Text', 'Data unit of the dataset');
             du = uidropdown(gl, 'Items', {'auto', 'uV', 'V'}, 'Value', o.dataUnit, 'Tooltip', ...
-                'auto: from the amplitude scale of the dataset; V: scaled to uV on NeuroQC''s copy (ICA weights too)');
+                'auto: from the amplitude scale of the dataset; V: scaled to uV on PipeCompare''s copy (ICA weights too)');
             uilabel(gl, 'Text', '');
             uilabel(gl, 'Text', 'Checkpoint folder');
-            ck = uilabel(gl, 'Text', neuroqc.gui.PanelText.orDash(o.checkpoint));
+            ck = uilabel(gl, 'Text', pipecompare.gui.PanelText.orDash(o.checkpoint));
             uibutton(gl, 'Text', 'Choose...', 'ButtonPushedFcn', @(~, ~) pickDir());
             uilabel(gl, 'Text', 'Parallel (Parallel Computing Toolbox)');
             pa = uicheckbox(gl, 'Text', '', 'Value', o.parallel);
@@ -732,7 +732,7 @@ classdef Panel < handle
 
         function setOptions(obj, o)
             obj.Options = o;
-            neuroqc.utils.log('Search options: unit %s, checkpoint %s, parallel %d', o.dataUnit, neuroqc.gui.PanelText.orDash(o.checkpoint), o.parallel);
+            pipecompare.utils.log('Search options: unit %s, checkpoint %s, parallel %d', o.dataUnit, pipecompare.gui.PanelText.orDash(o.checkpoint), o.parallel);
             obj.invalidate('Options changed');
         end
 
@@ -744,21 +744,21 @@ classdef Panel < handle
             try
                 stop(obj.Timer); cleanup = onCleanup(@() restartTimer(obj.Timer)); %#ok<NASGU>
                 obj.StatusLabel.Text = 'Resuming... progress in the Command Window'; drawnow;
-                r = neuroqc.NeuroQC.resume(folder);
-                obj.Result = r; assignin('base', 'neuroqc_result', r);
+                r = pipecompare.PipeCompare.resume(folder);
+                obj.Result = r; assignin('base', 'pipecompare_result', r);
                 obj.showResults();
-                obj.StatusLabel.Text = 'Resumed search done. Result in variable neuroqc_result.';
+                obj.StatusLabel.Text = 'Resumed search done. Result in variable pipecompare_result.';
             catch ME
-                uialert(obj.Fig, ME.message, 'NeuroQC');
+                uialert(obj.Fig, ME.message, 'PipeCompare');
             end
         end
 
         function editChanlocs(obj)
             try
-                neuroqc.run.Native.applyNow('chanlocs');
+                pipecompare.run.Native.applyNow('chanlocs');
                 obj.refreshLive(false);
             catch ME
-                uialert(obj.Fig, ME.message, 'NeuroQC');
+                uialert(obj.Fig, ME.message, 'PipeCompare');
             end
         end
 
@@ -766,10 +766,10 @@ classdef Panel < handle
             % EEGLAB's ERP + scalp map viewer on epoched preview data
             try
                 EEG = obj.previewEpoched();
-                EEG.setname = sprintf('%s (NeuroQC preview, all conditions)', EEG.setname);
+                EEG.setname = sprintf('%s (PipeCompare preview, all conditions)', EEG.setname);
                 pop_timtopo(EEG);
             catch ME
-                uialert(obj.Fig, ME.message, 'NeuroQC');
+                uialert(obj.Fig, ME.message, 'PipeCompare');
             end
         end
 
@@ -790,10 +790,10 @@ classdef Panel < handle
             r = obj.Result;
             try
                 if which == 0
-                    E = neuroqc.run.Executor.rootOf(r); E.setname = sprintf('%s (NeuroQC source, start of the search)', r.state.setname);
+                    E = pipecompare.run.Executor.rootOf(r); E.setname = sprintf('%s (PipeCompare source, start of the search)', r.state.setname);
                 else
-                    [~, E] = evalc('neuroqc.run.Executor.replay(r, which)');
-                    E.setname = sprintf('NeuroQC candidate %d (not adopted): %s', which, r.labels{which});
+                    [~, E] = evalc('pipecompare.run.Executor.replay(r, which)');
+                    E.setname = sprintf('PipeCompare candidate %d (not adopted): %s', which, r.labels{which});
                 end
                 if E.trials == 1 && view > 1
                     codes = r.contract.allEvents();
@@ -804,11 +804,11 @@ classdef Panel < handle
                     case 2, pop_timtopo(E);
                     case 3, pop_plottopo(E);
                     case 4
-                        assert(~isempty(E.icaweights), 'NeuroQC:Inspect', 'This dataset has no ICA decomposition.');
+                        assert(~isempty(E.icaweights), 'PipeCompare:Inspect', 'This dataset has no ICA decomposition.');
                         pop_selectcomps(E, 1:min(35, size(E.icaweights, 1)));
                 end
             catch ME
-                uialert(obj.Fig, ME.message, 'NeuroQC');
+                uialert(obj.Fig, ME.message, 'PipeCompare');
             end
         end
 
@@ -816,29 +816,29 @@ classdef Panel < handle
             % Name a condition and pick its codes from the current events
             % (EEGLAB's pop_chansel list, as in pop_epoch's event button).
             if nargin < 3
-                EEG = neuroqc.live.Session.current();
-                if isempty(EEG), uialert(obj.Fig, 'No dataset in EEGLAB.', 'NeuroQC'); return; end
-                s = neuroqc.live.DataState.fromEEG(EEG);
-                if isempty(s.eventTypes), uialert(obj.Fig, 'The dataset has no events.', 'NeuroQC'); return; end
+                EEG = pipecompare.live.Session.current();
+                if isempty(EEG), uialert(obj.Fig, 'No dataset in EEGLAB.', 'PipeCompare'); return; end
+                s = pipecompare.live.DataState.fromEEG(EEG);
+                if isempty(s.eventTypes), uialert(obj.Fig, 'The dataset has no events.', 'PipeCompare'); return; end
                 items = arrayfun(@(k) sprintf('%s  (%d)', s.eventTypes{k}, s.eventCounts(k)), 1:numel(s.eventTypes), 'UniformOutput', false);
                 idx = pop_chansel(items, 'withindex', 'off');
                 if isempty(idx), return; end
                 codes = s.eventTypes(idx);
                 a = inputdlg(sprintf('Name of the condition with events %s:', strjoin(codes, ', ')), ...
-                    'NeuroQC condition', 1, {sprintf('cond%d', size(neuroqc.gui.PanelText.parseConditions(obj.CondField.Value), 1) + 1)});
+                    'PipeCompare condition', 1, {sprintf('cond%d', size(pipecompare.gui.PanelText.parseConditions(obj.CondField.Value), 1) + 1)});
                 if isempty(a) || isempty(strtrim(a{1})), return; end
                 name = strtrim(a{1});
             end
-            conds = neuroqc.gui.PanelText.parseConditions(obj.CondField.Value);
-            assert(~any(strcmpi(conds(:, 1), name)), 'NeuroQC:Contract', 'A condition named %s exists already.', name);
+            conds = pipecompare.gui.PanelText.parseConditions(obj.CondField.Value);
+            assert(~any(strcmpi(conds(:, 1), name)), 'PipeCompare:Contract', 'A condition named %s exists already.', name);
             used = intersect(cellstr(codes), [conds{:, 2}]);
             if ~isempty(used)
-                uialert(obj.Fig, sprintf('Event code(s) %s already belong to another condition.', strjoin(used, ', ')), 'NeuroQC');
+                uialert(obj.Fig, sprintf('Event code(s) %s already belong to another condition.', strjoin(used, ', ')), 'PipeCompare');
                 return;
             end
             conds(end+1, :) = {name, cellstr(codes)};
-            obj.setField(obj.CondField, neuroqc.gui.PanelText.conditionsText(conds));
-            neuroqc.utils.log('Condition %s = events %s', name, strjoin(cellstr(codes), ', '));
+            obj.setField(obj.CondField, pipecompare.gui.PanelText.conditionsText(conds));
+            pipecompare.utils.log('Condition %s = events %s', name, strjoin(cellstr(codes), ', '));
         end
 
         function epochFromEEGLAB(obj, com, choice)
@@ -847,19 +847,19 @@ classdef Panel < handle
             % the epoch step does not use, you decide in a dialog (choice:
             % 'replace' | 'keep' for scripts and tests).
             if nargin < 2
-                EEG = neuroqc.live.Session.current();
-                if isempty(EEG), uialert(obj.Fig, 'No dataset in EEGLAB.', 'NeuroQC'); return; end
+                EEG = pipecompare.live.Session.current();
+                if isempty(EEG), uialert(obj.Fig, 'No dataset in EEGLAB.', 'PipeCompare'); return; end
                 if EEG.trials > 1
-                    uialert(obj.Fig, 'The dataset is already epoched; the epoch is fixed by the data.', 'NeuroQC'); return;
+                    uialert(obj.Fig, 'The dataset is already epoched; the epoch is fixed by the data.', 'PipeCompare'); return;
                 end
-                com = neuroqc.run.Native.captureCall(EEG, '[EEG, ~, LASTCOM] = pop_epoch(EEG);');
+                com = pipecompare.run.Native.captureCall(EEG, '[EEG, ~, LASTCOM] = pop_epoch(EEG);');
                 if isempty(com), return; end
             end
-            a = neuroqc.run.Native.argsOf(com, 'pop_epoch');
-            assert(numel(a) >= 2 && isnumeric(a{2}) && numel(a{2}) == 2, 'NeuroQC:Native', 'No epoch limits in %s', com);
+            a = pipecompare.run.Native.argsOf(com, 'pop_epoch');
+            assert(numel(a) >= 2 && isnumeric(a{2}) && numel(a{2}) == 2, 'PipeCompare:Native', 'No epoch limits in %s', com);
             types = a{1}; if ~iscell(types), types = {types}; end
             types = cellfun(@(x) strtrim(char(string(x))), types, 'UniformOutput', false);
-            conds = neuroqc.gui.PanelText.parseConditions(obj.CondField.Value);
+            conds = pipecompare.gui.PanelText.parseConditions(obj.CondField.Value);
             extra = a(3:end);
             keys = extra(1:2:end); keys = keys(cellfun(@ischar, keys));
             ignored = setdiff(keys, {'epochinfo','newname'});
@@ -867,7 +867,7 @@ classdef Panel < handle
             if differ || ~isempty(ignored)
                 msg = {};
                 if differ
-                    msg{end+1} = sprintf(['The dialog epochs on %s; your conditions use %s. NeuroQC epochs on the ', ...
+                    msg{end+1} = sprintf(['The dialog epochs on %s; your conditions use %s. PipeCompare epochs on the ', ...
                         'condition events.'], strjoin(types, ', '), strjoin([conds{:, 2}], ', '));
                 end
                 if ~isempty(ignored)
@@ -876,22 +876,22 @@ classdef Panel < handle
                 if nargin < 3
                     opts = {'Keep my conditions', 'Cancel'};
                     if differ, opts = [{'Use the dialog''s events as conditions'} opts]; end
-                    c = uiconfirm(obj.Fig, strjoin(msg, ' '), 'NeuroQC: epoch', 'Options', opts, ...
+                    c = uiconfirm(obj.Fig, strjoin(msg, ' '), 'PipeCompare: epoch', 'Options', opts, ...
                         'DefaultOption', 1, 'CancelOption', numel(opts));
                     if strcmp(c, 'Cancel'), return; end
                     choice = 'keep'; if startsWith(c, 'Use'), choice = 'replace'; end
                 end
                 if differ && strcmp(choice, 'replace'), conds = cell(0, 2); end
-                neuroqc.utils.log('%s', strjoin(msg, ' '));
+                pipecompare.utils.log('%s', strjoin(msg, ' '));
             end
             obj.EpochField.Value = num2str(a{2});
             if isempty(conds) && ~isempty(types)
                 conds = [types(:) cellfun(@(t) {t}, types(:), 'UniformOutput', false)];
-                obj.CondField.Value = neuroqc.gui.PanelText.conditionsText(conds);
-                neuroqc.utils.log('Conditions set from the epoching events (one per code): %s', strjoin(types, ', '));
+                obj.CondField.Value = pipecompare.gui.PanelText.conditionsText(conds);
+                pipecompare.utils.log('Conditions set from the epoching events (one per code): %s', strjoin(types, ', '));
             end
             obj.settingsChanged();
-            neuroqc.utils.log('Epoch from EEGLAB: [%s] s', obj.EpochField.Value);
+            pipecompare.utils.log('Epoch from EEGLAB: [%s] s', obj.EpochField.Value);
         end
 
         function baselineFromEEGLAB(obj, com, choice)
@@ -900,51 +900,51 @@ classdef Panel < handle
             % subset is not silently widened: you confirm (choice 'all' |
             % 'cancel' for scripts and tests).
             if nargin < 2
-                EEG = neuroqc.live.Session.current();
-                if isempty(EEG), uialert(obj.Fig, 'No dataset in EEGLAB.', 'NeuroQC'); return; end
+                EEG = pipecompare.live.Session.current();
+                if isempty(EEG), uialert(obj.Fig, 'No dataset in EEGLAB.', 'PipeCompare'); return; end
                 if EEG.trials == 1
                     c = obj.contract();
                     codes = c.allEvents();
-                    assert(~isempty(codes), 'NeuroQC:Contract', 'Define the conditions first (the preview is epoched on their events).');
-                    assert(numel(c.epoch) == 2, 'NeuroQC:Contract', 'Set the epoch first (EEGLAB pop_epoch...).');
+                    assert(~isempty(codes), 'PipeCompare:Contract', 'Define the conditions first (the preview is epoched on their events).');
+                    assert(numel(c.epoch) == 2, 'PipeCompare:Contract', 'Set the epoch first (EEGLAB pop_epoch...).');
                     [~, EEG] = evalc('pop_epoch(EEG, codes, c.epoch, ''epochinfo'', ''yes'')');   % no baseline removed yet
-                    neuroqc.utils.log('Baseline dialog on a preview copy epoched [%g %g] s on %s.', c.epoch, strjoin(codes, ', '));
+                    pipecompare.utils.log('Baseline dialog on a preview copy epoched [%g %g] s on %s.', c.epoch, strjoin(codes, ', '));
                 end
-                com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_rmbase(EEG);');
+                com = pipecompare.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_rmbase(EEG);');
                 if isempty(com), return; end
             else
                 EEG = [];
             end
-            a = neuroqc.run.Native.argsOf(com, 'pop_rmbase');
+            a = pipecompare.run.Native.argsOf(com, 'pop_rmbase');
             ms = []; if ~isempty(a), ms = a{1}; end
             if isempty(ms) && numel(a) >= 2 && ~isempty(a{2}) && ~isempty(EEG)
                 ms = EEG.times(a{2}([1 end]));                   % given as points
             end
-            assert(numel(ms) == 2, 'NeuroQC:Native', 'No baseline range in %s', com);
+            assert(numel(ms) == 2, 'PipeCompare:Native', 'No baseline range in %s', com);
             nAll = []; if ~isempty(EEG), nAll = EEG.nbchan; end
             if numel(a) >= 3 && ~isempty(a{3}) && ~(~isempty(nAll) && numel(a{3}) >= nAll)
-                msg = sprintf(['The dialog removes the baseline on %d channel(s) only; NeuroQC removes it on all ', ...
+                msg = sprintf(['The dialog removes the baseline on %d channel(s) only; PipeCompare removes it on all ', ...
                     'channels (the measure compares channels on the same footing).'], numel(a{3}));
                 if nargin < 3
-                    c = uiconfirm(obj.Fig, msg, 'NeuroQC: baseline', 'Options', {'Use the window for all channels', 'Cancel'}, ...
+                    c = uiconfirm(obj.Fig, msg, 'PipeCompare: baseline', 'Options', {'Use the window for all channels', 'Cancel'}, ...
                         'DefaultOption', 1, 'CancelOption', 2);
                     choice = 'all'; if strcmp(c, 'Cancel'), choice = 'cancel'; end
                 end
                 if strcmp(choice, 'cancel'), return; end
-                neuroqc.utils.log('%s', msg);
+                pipecompare.utils.log('%s', msg);
             end
             obj.BaseField.Value = num2str(ms / 1000);
             obj.settingsChanged();
-            neuroqc.utils.log('Baseline from EEGLAB: [%g %g] ms -> [%s] s', ms, obj.BaseField.Value);
+            pipecompare.utils.log('Baseline from EEGLAB: [%g %g] ms -> [%s] s', ms, obj.BaseField.Value);
         end
 
         function addComponent(obj, name, win, roi, measure, polarity)
             if nargin < 2
-                a = inputdlg({'Component name', 'Window start (s)', 'Window end (s)'}, 'NeuroQC component', 1, ...
+                a = inputdlg({'Component name', 'Window start (s)', 'Window end (s)'}, 'PipeCompare component', 1, ...
                     {'', '', ''});
                 if isempty(a), return; end
                 name = strtrim(a{1}); win = [str2double(a{2}) str2double(a{3})];
-                assert(~isempty(name) && all(isfinite(win)) && win(2) > win(1), 'NeuroQC:Contract', ...
+                assert(~isempty(name) && all(isfinite(win)) && win(2) > win(1), 'PipeCompare:Contract', ...
                     'Give a name and a window with start < end (s).');
                 ms = {'mean amplitude', 'peak amplitude (positive)', 'peak amplitude (negative)', ...
                     'peak latency (positive)', 'peak latency (negative)'};
@@ -955,14 +955,14 @@ classdef Panel < handle
                 roi = obj.pickChannels();
                 if isempty(roi), return; end
             end
-            comps = neuroqc.gui.PanelText.parseComponents(obj.CompField.Value);
+            comps = pipecompare.gui.PanelText.parseComponents(obj.CompField.Value);
             comps(end+1, :) = {name, win, cellstr(roi), {measure, polarity}};
-            obj.setField(obj.CompField, neuroqc.gui.PanelText.componentsText(comps));
+            obj.setField(obj.CompField, pipecompare.gui.PanelText.componentsText(comps));
         end
 
         function setRoi(obj, k, roi)
-            comps = neuroqc.gui.PanelText.parseComponents(obj.CompField.Value);
-            if isempty(comps), uialert(obj.Fig, 'Add a component first.', 'NeuroQC'); return; end
+            comps = pipecompare.gui.PanelText.parseComponents(obj.CompField.Value);
+            if isempty(comps), uialert(obj.Fig, 'Add a component first.', 'PipeCompare'); return; end
             if nargin < 2
                 k = 1;
                 if size(comps, 1) > 1
@@ -973,14 +973,14 @@ classdef Panel < handle
                 if isempty(roi), return; end
             end
             comps{k, 3} = cellstr(roi);
-            obj.setField(obj.CompField, neuroqc.gui.PanelText.componentsText(comps));
+            obj.setField(obj.CompField, pipecompare.gui.PanelText.componentsText(comps));
         end
 
         function labels = pickChannels(obj, current)
             % EEGLAB's channel selection over the current dataset's channels.
             labels = {};
-            EEG = neuroqc.live.Session.current();
-            if isempty(EEG), uialert(obj.Fig, 'No dataset in EEGLAB.', 'NeuroQC'); return; end
+            EEG = pipecompare.live.Session.current();
+            if isempty(EEG), uialert(obj.Fig, 'No dataset in EEGLAB.', 'PipeCompare'); return; end
             args = {'withindex', 'on'};
             if nargin > 1 && ~isempty(current)
                 [~, sel] = ismember(lower(current), lower({EEG.chanlocs.labels}));
@@ -988,7 +988,7 @@ classdef Panel < handle
             end
             [idx, ~, names] = pop_chansel({EEG.chanlocs.labels}, args{:});
             if ~isempty(idx), labels = {EEG.chanlocs(idx).labels}; elseif iscell(names), labels = names; end
-            if ~isempty(labels), neuroqc.utils.log('ROI: %s (%d channels)', strjoin(labels, ' '), numel(labels)); end
+            if ~isempty(labels), pipecompare.utils.log('ROI: %s (%d channels)', strjoin(labels, ' '), numel(labels)); end
         end
 
         function chooseTrials(obj)
@@ -996,26 +996,26 @@ classdef Panel < handle
                 'EEGLAB event selection (pop_selectevent)'};
             [k, ok] = listdlg('ListString', opts, 'SelectionMode', 'single', 'Name', 'Trials', 'ListSize', [300 90]);
             if ~ok, return; end
-            EEG = neuroqc.live.Session.current();
-            if isempty(EEG) && k > 1, uialert(obj.Fig, 'No dataset in EEGLAB.', 'NeuroQC'); return; end
+            EEG = pipecompare.live.Session.current();
+            if isempty(EEG) && k > 1, uialert(obj.Fig, 'No dataset in EEGLAB.', 'PipeCompare'); return; end
             switch k
                 case 1
                     obj.setTrialRule(struct('mode', 'all'));
                 case 2
-                    s = neuroqc.live.DataState.fromEEG(EEG);
+                    s = pipecompare.live.DataState.fromEEG(EEG);
                     a = pop_chansel(s.eventTypes, 'selectionmode', 'single', 'withindex', 'off');
                     if isempty(a), return; end
                     b = pop_chansel(s.eventTypes, 'selectionmode', 'single', 'withindex', 'off');
                     if isempty(b), return; end
                     obj.setTrialRule(struct('mode', 'marker_ranges', 'startCode', s.eventTypes{a}, 'endCode', s.eventTypes{b}));
                 case 3
-                    assert(EEG.trials == 1, 'NeuroQC:Contract', 'Time ranges apply to continuous data.');
-                    com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_select(EEG);');
+                    assert(EEG.trials == 1, 'PipeCompare:Contract', 'Time ranges apply to continuous data.');
+                    com = pipecompare.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_select(EEG);');
                     if isempty(com), return; end
                     obj.trialRuleFromTimeSelection(com, (EEG.pnts - 1) / EEG.srate);
                 case 4
                     if ~isfield(EEG, 'urevent') || isempty(EEG.urevent), [~, EEG] = evalc('eeg_checkset(EEG, ''makeur'')'); end
-                    [com, sel] = neuroqc.run.Native.captureCall(EEG, '[EEG, ~, LASTCOM] = pop_selectevent(EEG);');
+                    [com, sel] = pipecompare.run.Native.captureCall(EEG, '[EEG, ~, LASTCOM] = pop_selectevent(EEG);');
                     if isempty(com), return; end
                     obj.trialRuleFromSelection(sel, com);
             end
@@ -1024,9 +1024,9 @@ classdef Panel < handle
         function trialRuleFromTimeSelection(obj, com, duration)
             % Time ranges kept ('time') or removed ('notime') in EEGLAB's
             % data selection dialog -> trials whose events fall inside.
-            a = neuroqc.run.Native.argsOf(com, 'pop_select');
+            a = pipecompare.run.Native.argsOf(com, 'pop_select');
             k = find(cellfun(@(x) ischar(x) && any(strcmpi(x, {'time', 'notime', 'rmtime'})), a), 1);
-            assert(~isempty(k) && numel(a) > k, 'NeuroQC:Contract', 'The selection keeps or removes no time range: %s', com);
+            assert(~isempty(k) && numel(a) > k, 'PipeCompare:Contract', 'The selection keeps or removes no time range: %s', com);
             r = a{k + 1};
             if ~strcmpi(a{k}, 'time')   % removed ranges -> the complement is kept
                 r = sortrows(r); edges = [0; reshape(r', [], 1); duration];
@@ -1040,22 +1040,22 @@ classdef Panel < handle
             % selection kept (identified by urevent).
             c = obj.contract();
             codes = c.allEvents();
-            assert(~isempty(codes), 'NeuroQC:Contract', 'Define the conditions first.');
+            assert(~isempty(codes), 'PipeCompare:Contract', 'Define the conditions first.');
             ty = arrayfun(@(e) strtrim(char(string(e.type))), sel.event, 'UniformOutput', false);
             keep = ismember(ty, codes) & arrayfun(@(e) isfield(e, 'urevent') && ~isempty(e.urevent), sel.event);
             ids = unique(arrayfun(@(e) double(e.urevent), sel.event(keep)));
-            assert(~isempty(ids), 'NeuroQC:TrialRule', 'The event selection keeps no condition event.');
+            assert(~isempty(ids), 'PipeCompare:TrialRule', 'The event selection keeps no condition event.');
             obj.setTrialRule(struct('mode', 'urevents', 'ids', ids(:)', 'source', com));
         end
 
         function setTrialRule(obj, rule)
-            c = neuroqc.eval.Contract('trials', rule); c.validateTrialRule();
+            c = pipecompare.eval.Contract('trials', rule); c.validateTrialRule();
             obj.TrialRule = rule;
             obj.TrialRuleSource = '';
-            EEG = neuroqc.live.Session.current();
+            EEG = pipecompare.live.Session.current();
             if ~isempty(EEG), obj.TrialRuleSource = recordingId(EEG); end
-            obj.TrialLabel.Text = neuroqc.gui.PanelText.trialText(rule);
-            neuroqc.utils.log('Trial rule: %s', obj.TrialLabel.Text);
+            obj.TrialLabel.Text = pipecompare.gui.PanelText.trialText(rule);
+            pipecompare.utils.log('Trial rule: %s', obj.TrialLabel.Text);
             obj.settingsChanged();
         end
 
@@ -1080,10 +1080,10 @@ classdef Panel < handle
                 obj.TrialRule = struct('mode', 'all'); obj.TrialRuleSource = '';
                 obj.TrialLabel.Text = 'all trials';
             else
-                msg = sprintf('Trial rule kept from the previous recording (%s): check that it fits this one.', neuroqc.gui.PanelText.trialText(r));
-                obj.TrialLabel.Text = [neuroqc.gui.PanelText.trialText(r) '  (set on another recording)'];
+                msg = sprintf('Trial rule kept from the previous recording (%s): check that it fits this one.', pipecompare.gui.PanelText.trialText(r));
+                obj.TrialLabel.Text = [pipecompare.gui.PanelText.trialText(r) '  (set on another recording)'];
             end
-            neuroqc.utils.log('%s', msg);
+            pipecompare.utils.log('%s', msg);
             obj.StatusLabel.Text = msg;
             obj.invalidate('Settings changed');
         end
@@ -1092,10 +1092,10 @@ classdef Panel < handle
             % Trials per condition in the current dataset, under the rule.
             if isempty(obj.SummaryLabel) || ~isvalid(obj.SummaryLabel), return; end
             try
-                EEG = neuroqc.live.Session.current();
+                EEG = pipecompare.live.Session.current();
                 c = obj.contract();
                 if isempty(EEG) || isempty(c.conditions), obj.SummaryLabel.Text = ''; return; end
-                [elig, E] = neuroqc.run.Executor.eligibleUrevents(EEG, c);
+                [elig, E] = pipecompare.run.Executor.eligibleUrevents(EEG, c);
                 parts = cell(1, numel(c.conditions));
                 for k = 1:numel(c.conditions)
                     if E.trials == 1
@@ -1104,8 +1104,8 @@ classdef Panel < handle
                         n = sum(isC);
                         ne = n; if ~isempty(elig), ne = sum(ismember(arrayfun(@(e) double(e.urevent), E.event(isC)), elig)); end
                     else
-                        if ~isempty(elig), E.etc.neuroqc.eligibleUrevents = elig; end
-                        T = neuroqc.eval.Measure.trials(E, c);
+                        if ~isempty(elig), E.etc.pipecompare.eligibleUrevents = elig; end
+                        T = pipecompare.eval.Measure.trials(E, c);
                         n = NaN; ne = sum(T.cond == k);
                     end
                     if isempty(elig) || isnan(n), parts{k} = sprintf('%s %d', c.conditions(k).name, ne);
@@ -1133,17 +1133,17 @@ classdef Panel < handle
                     if ~isempty(obj.Options.(f{1})) || islogical(obj.Options.(f{1})), opts.(f{1}) = obj.Options.(f{1}); end
                 end
                 if strcmp(opts.dataUnit, 'auto')
-                    s = neuroqc.live.DataState.fromEEG(neuroqc.live.Session.current());
+                    s = pipecompare.live.DataState.fromEEG(pipecompare.live.Session.current());
                     opts.dataUnit = s.unitGuess;
-                    neuroqc.utils.log('Data unit: %s (judged from the amplitude scale; set it in Options... to override).', s.unitGuess);
+                    pipecompare.utils.log('Data unit: %s (judged from the amplitude scale; set it in Options... to override).', s.unitGuess);
                 end
                 obj.StatusLabel.Text = 'Running... progress in the Command Window'; drawnow;
                 stop(obj.Timer);
                 cleanup = onCleanup(@() restartTimer(obj.Timer));
-                r = neuroqc.NeuroQC.optimize(obj.Plan, c, opts);
+                r = pipecompare.PipeCompare.optimize(obj.Plan, c, opts);
                 if ~isvalid(obj) || ~isvalid(obj.Fig)      % the window was closed during the search
-                    if ~dry, assignin('base', 'neuroqc_result', r); end
-                    neuroqc.utils.log('Panel closed during the search; the result is in neuroqc_result.');
+                    if ~dry, assignin('base', 'pipecompare_result', r); end
+                    pipecompare.utils.log('Panel closed during the search; the result is in pipecompare_result.');
                     return;
                 end
                 if dry
@@ -1151,15 +1151,15 @@ classdef Panel < handle
                     return;
                 end
                 obj.Result = r;
-                assignin('base', 'neuroqc_result', r);
+                assignin('base', 'pipecompare_result', r);
                 obj.showResults();
-                obj.StatusLabel.Text = 'Done. Result in variable neuroqc_result.';
-                neuroqc.utils.log('Result stored in the base variable neuroqc_result.');
+                obj.StatusLabel.Text = 'Done. Result in variable pipecompare_result.';
+                pipecompare.utils.log('Result stored in the base variable pipecompare_result.');
             catch ME
-                neuroqc.utils.log('ERROR: %s', ME.message);
+                pipecompare.utils.log('ERROR: %s', ME.message);
                 if ~isvalid(obj) || ~isvalid(obj.Fig), return; end
                 obj.StatusLabel.Text = 'Error (see dialog)';
-                uialert(obj.Fig, ME.message, 'NeuroQC');
+                uialert(obj.Fig, ME.message, 'PipeCompare');
             end
         end
 
@@ -1172,8 +1172,8 @@ classdef Panel < handle
                 txt = r.labels{k}; if ~isempty(T.reason{k}), txt = [T.reason{k} ' | ' txt]; end
                 if ismember('note', T.Properties.VariableNames) && ~isempty(T.note{k}), txt = ['(note, see below) ' txt]; end
                 if ~isempty(T.stratum{k}), txt = ['[' T.stratum{k} '] ' txt]; end
-                data(end+1, :) = {id, T.status{k}, neuroqc.gui.PanelText.num(T.objective(k), '%.4g'), ci, T.notDistinguished(k), ...
-                    neuroqc.gui.PanelText.pctText(T.minRetention(k)), neuroqc.gui.PanelText.pctText(T.interpolated(k)), neuroqc.gui.PanelText.pctText(T.ampError(k)), neuroqc.gui.PanelText.pctText(T.artifactPct(k)), txt}; %#ok<AGROW>
+                data(end+1, :) = {id, T.status{k}, pipecompare.gui.PanelText.num(T.objective(k), '%.4g'), ci, T.notDistinguished(k), ...
+                    pipecompare.gui.PanelText.pctText(T.minRetention(k)), pipecompare.gui.PanelText.pctText(T.interpolated(k)), pipecompare.gui.PanelText.pctText(T.ampError(k)), pipecompare.gui.PanelText.pctText(T.artifactPct(k)), txt}; %#ok<AGROW>
             end
             obj.ResultTable.Data = data;
         end
@@ -1188,19 +1188,19 @@ classdef Panel < handle
                 switch kind
                     case 'history'
                         h = t.Data(r, :);
-                        v = {sprintf('EEG.history line %d (%s, %s):', h{1}, h{2}, neuroqc.gui.PanelText.orDash(h{3})), h{4}};
+                        v = {sprintf('EEG.history line %d (%s, %s):', h{1}, h{2}, pipecompare.gui.PanelText.orDash(h{3})), h{4}};
                     case 'plan'
                         slot = obj.Plan.Slots(r);
                         v = {sprintf('Step %d: %s', r, slot.id), ...
-                            ['Values: ' neuroqc.gui.PanelValues.settingsText(slot, struct('epoch', obj.EpochField.Value, 'baseline', obj.BaseField.Value))]};
+                            ['Values: ' pipecompare.gui.PanelValues.settingsText(slot, struct('epoch', obj.EpochField.Value, 'baseline', obj.BaseField.Value))]};
                         for a = 1:numel(slot.alternatives)
                             alt = slot.alternatives{a};
-                            if strcmp(alt.type, 'native'), v = [v {'EEGLAB command(s):'} neuroqc.run.Native.statements(alt.params.command)]; end %#ok<AGROW>
+                            if strcmp(alt.type, 'native'), v = [v {'EEGLAB command(s):'} pipecompare.run.Native.statements(alt.params.command)]; end %#ok<AGROW>
                         end
                     case 'result'
                         k = str2double(strrep(t.Data{r, 1}, '*', ''));
                         T = obj.Result.ranking.table;
-                        v = {sprintf('Candidate %d (%s)%s', k, T.status{k}, neuroqc.utils.ternary(endsWith(t.Data{r, 1}, '*'), ', recommended', '')), ...
+                        v = {sprintf('Candidate %d (%s)%s', k, T.status{k}, pipecompare.utils.ternary(endsWith(t.Data{r, 1}, '*'), ', recommended', '')), ...
                             ['Pipeline: ' obj.Result.labels{k}]};
                         if ~isempty(T.reason{k}), v{end+1} = ['Reason: ' T.reason{k}]; end
                         if ismember('note', T.Properties.VariableNames) && ~isempty(T.note{k}), v{end+1} = ['Note: ' T.note{k}]; end
@@ -1208,8 +1208,8 @@ classdef Panel < handle
                         v{end+1} = sprintf(['Objective (gain-corrected SME) %.4g; difference from the best [%.3g %.3g]; not distinguished %d; ', ...
                             'min retention %s; min trials %g; interpolated %s; amplitude error %s; latency shift %.3g ms; ', ...
                             'artifactual deflection %s; waveform r %.3f; topography r %.3f'], T.objective(k), T.diffLo(k), T.diffHi(k), ...
-                            T.notDistinguished(k), neuroqc.gui.PanelText.pctText(T.minRetention(k)), T.minTrials(k), neuroqc.gui.PanelText.pctText(T.interpolated(k)), ...
-                            neuroqc.gui.PanelText.pctText(T.ampError(k)), T.latencyShiftMs(k), neuroqc.gui.PanelText.pctText(T.artifactPct(k)), T.waveformCorr(k), T.topoCorr(k));
+                            T.notDistinguished(k), pipecompare.gui.PanelText.pctText(T.minRetention(k)), T.minTrials(k), pipecompare.gui.PanelText.pctText(T.interpolated(k)), ...
+                            pipecompare.gui.PanelText.pctText(T.ampError(k)), T.latencyShiftMs(k), pipecompare.gui.PanelText.pctText(T.artifactPct(k)), T.waveformCorr(k), T.topoCorr(k));
                         c = obj.Result.cands(k);
                         if ~isempty(c.unmatched), v{end+1} = ['Signal check not decision-matched for: ' strjoin(c.unmatched, ', ')]; end
                         v = [v {'EEGLAB commands:'} c.coms(:)'];
@@ -1222,7 +1222,7 @@ classdef Panel < handle
 
         function k = selectedResult(obj)
             k = [];
-            if isempty(obj.Result), uialert(obj.Fig, 'Run a search first.', 'NeuroQC'); return; end
+            if isempty(obj.Result), uialert(obj.Fig, 'Run a search first.', 'PipeCompare'); return; end
             sel = obj.ResultTable.Selection;
             if isempty(sel)
                 R = obj.Result.ranking;
@@ -1231,9 +1231,9 @@ classdef Panel < handle
                     uialert(obj.Fig, sprintf(['The candidates fall into %d strata (different references): they measure ', ...
                         'different quantities and are not compared with each other, so there is no single ', ...
                         'recommendation. Each stratum''s recommendation is marked *; select the row you want, ', ...
-                        'according to your analysis.'], numel(R.byStratum)), 'NeuroQC');
+                        'according to your analysis.'], numel(R.byStratum)), 'PipeCompare');
                 elseif isempty(k)
-                    uialert(obj.Fig, 'No candidate satisfies the constraints; the reasons are in the table.', 'NeuroQC');
+                    uialert(obj.Fig, 'No candidate satisfies the constraints; the reasons are in the table.', 'PipeCompare');
                 end
                 return;
             end
@@ -1244,21 +1244,21 @@ classdef Panel < handle
             k = obj.selectedResult(); if isempty(k), return; end
             stop(obj.Timer); cleanup = onCleanup(@() restartTimer(obj.Timer)); %#ok<NASGU>
             try
-                neuroqc.NeuroQC.adopt(obj.Result, k);
+                pipecompare.PipeCompare.adopt(obj.Result, k);
             catch ME
-                if ~any(strcmp(ME.identifier, {'NeuroQC:Adopt','NeuroQC:ReplayMismatch','NeuroQC:StaleState'}))
-                    uialert(obj.Fig, ME.message, 'NeuroQC'); return;
+                if ~any(strcmp(ME.identifier, {'PipeCompare:Adopt','PipeCompare:ReplayMismatch','PipeCompare:StaleState'}))
+                    uialert(obj.Fig, ME.message, 'PipeCompare'); return;
                 end
-                choice = uiconfirm(obj.Fig, ME.message, 'NeuroQC: adopt anyway?', ...
+                choice = uiconfirm(obj.Fig, ME.message, 'PipeCompare: adopt anyway?', ...
                     'Options', {'Adopt anyway', 'Cancel'}, 'DefaultOption', 2, 'CancelOption', 2, 'Icon', 'warning');
-                if strcmp(choice, 'Adopt anyway'), neuroqc.NeuroQC.adopt(obj.Result, k, true); end
+                if strcmp(choice, 'Adopt anyway'), pipecompare.PipeCompare.adopt(obj.Result, k, true); end
             end
         end
 
         function printScript(obj)
             k = obj.selectedResult(); if isempty(k), return; end
-            neuroqc.utils.log('EEGLAB commands of candidate %d:', k);
-            neuroqc.NeuroQC.script(obj.Result, k);
+            pipecompare.utils.log('EEGLAB commands of candidate %d:', k);
+            pipecompare.PipeCompare.script(obj.Result, k);
         end
     end
 end
@@ -1284,11 +1284,11 @@ end
 function type = menuDialog(command)
 % 'call:<the call>' of the EEGLAB menu item whose function made the
 % command (a step added from EEGLAB's menus), so its dialog can reopen.
-st = neuroqc.run.Native.statements(command);
-e = neuroqc.live.History.classify(st{1});
-items = neuroqc.run.Native.menuSteps();
+st = pipecompare.run.Native.statements(command);
+e = pipecompare.live.History.classify(st{1});
+items = pipecompare.run.Native.menuSteps();
 i = find(strcmp({items.fn}, e.fn), 1);
-assert(~isempty(i), 'NeuroQC:Native', ['No EEGLAB menu item calls %s (is EEGLAB''s main window open?); ', ...
+assert(~isempty(i), 'PipeCompare:Native', ['No EEGLAB menu item calls %s (is EEGLAB''s main window open?); ', ...
     'use Edit values... for this step.'], e.fn);
 type = ['call:' items(i).call];
 end
@@ -1297,8 +1297,8 @@ function alt = stepAlt(com)
 % A captured dialog command as a plan alternative: a single EEGLAB call
 % becomes parameterised (its arguments can be searched), a workflow stays
 % a fixed native step.
-alt = neuroqc.run.Native.eeglabAlt(com);
-if isempty(alt), alt = neuroqc.plan.Plan.nativeAlt(com); end
+alt = pipecompare.run.Native.eeglabAlt(com);
+if isempty(alt), alt = pipecompare.plan.Plan.nativeAlt(com); end
 end
 
 function restartTimer(t)

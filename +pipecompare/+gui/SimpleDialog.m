@@ -1,7 +1,7 @@
 classdef SimpleDialog < handle
     %SIMPLEDIALOG Simple mode: three choices, then Run.
     %
-    %   opts = neuroqc.gui.SimpleDialog.ask(EEG)   % [] if cancelled
+    %   opts = pipecompare.gui.SimpleDialog.ask(EEG)   % [] if cancelled
     %
     %   1. Data type, judged from the data (epoched or with events ->
     %      event-related; continuous without events -> band power), with the
@@ -33,7 +33,7 @@ classdef SimpleDialog < handle
 
     methods (Static)
         function opts = ask(EEG)
-            d = neuroqc.gui.SimpleDialog(EEG);
+            d = pipecompare.gui.SimpleDialog(EEG);
             c = onCleanup(@() delete(d));
             uiwait(d.Fig);
             opts = d.Answer;
@@ -43,7 +43,7 @@ classdef SimpleDialog < handle
     methods
         function obj = SimpleDialog(EEG)
             obj.EEG = EEG;
-            obj.State = neuroqc.live.DataState.fromEEG(EEG);
+            obj.State = pipecompare.live.DataState.fromEEG(EEG);
             s = obj.State;
             obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', [200 200 620 470], ...
                 'CloseRequestFcn', @(~, ~) obj.close());
@@ -53,7 +53,7 @@ classdef SimpleDialog < handle
             uilabel(g, 'Text', '1. Data', 'FontWeight', 'bold');
             erp = s.isEpoched || s.nEvents > 0;
             obj.TypeDrop = uidropdown(g, 'Items', {obj.ErpType, obj.BandType}, ...
-                'Value', neuroqc.utils.ternary(erp, obj.ErpType, obj.BandType), 'ValueChangedFcn', @(~, ~) obj.typeChanged());
+                'Value', pipecompare.utils.ternary(erp, obj.ErpType, obj.BandType), 'ValueChangedFcn', @(~, ~) obj.typeChanged());
             uilabel(g, 'Text', '');
             obj.TypeWhy = uilabel(g, 'Text', obj.typeReason(), 'FontColor', [0.3 0.3 0.3], 'WordWrap', 'on');
             uilabel(g, 'Text', '2. Measure', 'FontWeight', 'bold');
@@ -66,8 +66,8 @@ classdef SimpleDialog < handle
             uilabel(g, 'Text', 'Segment (s, band power)');
             obj.SegmentField = uieditfield(g, 'numeric', 'Value', 2, 'Limits', [0.1 600], 'ValueChangedFcn', @(~, ~) obj.update());
             uilabel(g, 'Text', '3. Compare', 'FontWeight', 'bold');
-            labels = cellfun(@neuroqc.simple.Presets.recipeLabel, neuroqc.simple.Presets.recipeNames(), 'UniformOutput', false);
-            obj.RecipeDrop = uidropdown(g, 'Items', [{obj.Choose} labels], 'ItemsData', [{''} neuroqc.simple.Presets.recipeNames()], ...
+            labels = cellfun(@pipecompare.simple.Presets.recipeLabel, pipecompare.simple.Presets.recipeNames(), 'UniformOutput', false);
+            obj.RecipeDrop = uidropdown(g, 'Items', [{obj.Choose} labels], 'ItemsData', [{''} pipecompare.simple.Presets.recipeNames()], ...
                 'Value', '', 'ValueChangedFcn', @(~, ~) obj.update());
             uilabel(g, 'Text', '');
             obj.CountLabel = uilabel(g, 'Text', '', 'FontWeight', 'bold');
@@ -93,7 +93,7 @@ classdef SimpleDialog < handle
                 ev = arrayfun(@(k) sprintf('%s (%d)', s.eventTypes{k}, s.eventCounts(k)), 1:min(6, numel(s.eventTypes)), ...
                     'UniformOutput', false);
                 t = sprintf('Continuous data with events: %s%s.', strjoin(ev, ', '), ...
-                    neuroqc.utils.ternary(numel(s.eventTypes) > 6, ', ...', ''));
+                    pipecompare.utils.ternary(numel(s.eventTypes) > 6, ', ...', ''));
             else
                 t = 'Continuous data without events.';
             end
@@ -101,11 +101,11 @@ classdef SimpleDialog < handle
 
         function typeChanged(obj)
             erp = strcmp(obj.TypeDrop.Value, obj.ErpType);
-            if erp, names = neuroqc.simple.Presets.componentNames(); else, names = neuroqc.simple.Presets.bandNames(); end
+            if erp, names = pipecompare.simple.Presets.componentNames(); else, names = pipecompare.simple.Presets.bandNames(); end
             obj.MeasureDrop.Items = [{obj.Choose} names];
             obj.MeasureDrop.Value = obj.Choose;
-            obj.EventList.Enable = neuroqc.utils.ternary(erp, 'on', 'off');
-            obj.SegmentField.Enable = neuroqc.utils.ternary(erp, 'off', 'on');
+            obj.EventList.Enable = pipecompare.utils.ternary(erp, 'on', 'off');
+            obj.SegmentField.Enable = pipecompare.utils.ternary(erp, 'off', 'on');
             obj.update();
         end
 
@@ -128,9 +128,9 @@ classdef SimpleDialog < handle
                 obj.CountLabel.Text = 'Choose what to measure and what to compare.'; msg = obj.CountLabel.Text; return;
             end
             try
-                c = neuroqc.simple.Presets.contract(obj.EEG, o.measure, o.events, o.segment);
+                c = pipecompare.simple.Presets.contract(obj.EEG, o.measure, o.events, o.segment);
                 c.validate(obj.State);
-                [plan, notes] = neuroqc.simple.Presets.recipe(o.recipe, obj.State, c);
+                [plan, notes] = pipecompare.simple.Presets.recipe(o.recipe, obj.State, c);
                 [leaves, tree] = plan.enumerate(obj.State, c, struct('maxLeaves', Inf));
                 n = numel(leaves);
                 nIca = sum(arrayfun(@(k) strcmp(tree(k).inst.type, 'ica'), 2:numel(tree)));   % shared prefixes run once
@@ -161,11 +161,11 @@ classdef SimpleDialog < handle
 
         function app = advanced(obj)
             % The full panel with what has been chosen so far.
-            app = neuroqc.gui.Panel();
+            app = pipecompare.gui.Panel();
             o = obj.options();
             if ~isempty(o)
-                c = neuroqc.simple.Presets.contract(obj.EEG, o.measure, o.events, o.segment);
-                [plan, notes] = neuroqc.simple.Presets.recipe(o.recipe, obj.State, c);
+                c = pipecompare.simple.Presets.contract(obj.EEG, o.measure, o.events, o.segment);
+                [plan, notes] = pipecompare.simple.Presets.recipe(o.recipe, obj.State, c);
                 app.Plan = plan; app.showPlan();
                 if strcmp(c.analysis, 'erp')
                     for k = 1:numel(c.conditions), app.addCondition(c.conditions(k).name, c.conditions(k).events); end
@@ -173,11 +173,11 @@ classdef SimpleDialog < handle
                     comp = c.components(1);
                     app.addComponent(comp.name, comp.window, comp.roi, comp.measure, comp.polarity);
                 else
-                    neuroqc.utils.log(['The panel defines ERP contracts; a band-power contract is set from a ', ...
-                        'script for now (neuroqc.eval.Contract(''analysis'', ''bandpower'', ...)).']);
+                    pipecompare.utils.log(['The panel defines ERP contracts; a band-power contract is set from a ', ...
+                        'script for now (pipecompare.eval.Contract(''analysis'', ''bandpower'', ...)).']);
                 end
                 app.settingsChanged();
-                for k = 1:numel(notes), neuroqc.utils.log('Recipe %s: %s.', o.recipe, notes{k}); end
+                for k = 1:numel(notes), pipecompare.utils.log('Recipe %s: %s.', o.recipe, notes{k}); end
             end
             obj.close();
         end

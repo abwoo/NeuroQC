@@ -4,7 +4,7 @@
 # Never commit local research artifacts
 results/
 validation/
-neuroqc_recipes_*/
+pipecompare_recipes_*/
 
 # MATLAB
 *.asv

@@ -1,7 +1,7 @@
 classdef SimpleResults < handle
     %SIMPLERESULTS Result window of the simple mode.
     %
-    %   neuroqc.gui.SimpleResults(result)
+    %   pipecompare.gui.SimpleResults(result)
     %
     %   First line: the recommended pipeline and why; below, a table of the
     %   recommendation (marked *) followed by the best of the others. Adopt stores the recommended (or the
@@ -35,9 +35,9 @@ classdef SimpleResults < handle
             R = obj.Result.ranking; T = R.table;
             nFeas = sum(strcmp(T.status, 'feasible'));
             if isempty(R.byStratum)
-                common = neuroqc.eval.Rank.commonReasons(R, 1);
+                common = pipecompare.eval.Rank.commonReasons(R, 1);
                 t = sprintf('No pipeline meets the constraints (none relaxed). Most common reason: %s.', ...
-                    neuroqc.utils.ternary(isempty(common), 'see All results', strjoin(common, '')));
+                    pipecompare.utils.ternary(isempty(common), 'see All results', strjoin(common, '')));
             elseif numel(R.byStratum) > 1
                 t = sprintf(['%d strata (different references) are not comparable, so there is one recommendation ', ...
                     'per reference: candidates %s. Choose the one that fits your analysis (All results...).'], ...
@@ -62,8 +62,8 @@ classdef SimpleResults < handle
             for i = 1:numel(o)
                 k = o(i); id = sprintf('%d', k);
                 if any([R.byStratum.recommended] == k), id = [id '*']; end
-                data(i, :) = {id, T.status{k}, neuroqc.gui.PanelText.num(T.objective(k), '%.4g'), ...
-                    neuroqc.gui.PanelText.pctText(T.minRetention(k)), neuroqc.gui.PanelText.pctText(T.ampError(k)), ...
+                data(i, :) = {id, T.status{k}, pipecompare.gui.PanelText.num(T.objective(k), '%.4g'), ...
+                    pipecompare.gui.PanelText.pctText(T.minRetention(k)), pipecompare.gui.PanelText.pctText(T.ampError(k)), ...
                     obj.Result.labels{k}};
             end
         end
@@ -77,29 +77,29 @@ classdef SimpleResults < handle
 
         function adopt(obj)
             try
-                neuroqc.NeuroQC.adopt(obj.Result, obj.chosen());
+                pipecompare.PipeCompare.adopt(obj.Result, obj.chosen());
                 uialert(obj.Fig, 'Stored as a new EEGLAB dataset; its EEG.history reproduces it.', 'Adopted', 'Icon', 'success');
             catch ME
-                uialert(obj.Fig, ME.message, 'NeuroQC');
+                uialert(obj.Fig, ME.message, 'PipeCompare');
             end
         end
 
         function saveScript(obj, file)
             try
-                k = neuroqc.run.Executor.pickCandidate(obj.Result, obj.chosen());
+                k = pipecompare.run.Executor.pickCandidate(obj.Result, obj.chosen());
                 if nargin < 2
                     [f, p] = uiputfile('*.m', 'Save the pipeline as an EEGLAB function', sprintf('pipeline%d.m', k));
                     if isequal(f, 0), return; end
                     file = fullfile(p, f);
                 end
-                neuroqc.NeuroQC.writeScript(obj.Result, k, file);
+                pipecompare.PipeCompare.writeScript(obj.Result, k, file);
             catch ME
-                uialert(obj.Fig, ME.message, 'NeuroQC');
+                uialert(obj.Fig, ME.message, 'PipeCompare');
             end
         end
 
         function app = allResults(obj)
-            app = neuroqc.gui.Panel();
+            app = pipecompare.gui.Panel();
             app.Plan = obj.Result.plan; app.showPlan();
             app.Result = obj.Result; app.showResults();
         end

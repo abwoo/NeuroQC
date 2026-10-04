@@ -1,8 +1,8 @@
 classdef AsrRecord
     %ASRRECORD The decisions ASR took on the real data, to apply them elsewhere.
     %
-    %   rec = neuroqc.run.AsrRecord.record(EEG, cutoff)
-    %   Y   = neuroqc.run.AsrRecord.apply(rec, X)
+    %   rec = pipecompare.run.AsrRecord.record(EEG, cutoff)
+    %   Y   = pipecompare.run.AsrRecord.apply(rec, X)
     %
     %   ASR (Kothe & Makeig; clean_rawdata's clean_asr / asr_process) cleans
     %   a recording window by window: at every update point it decides,
@@ -11,7 +11,7 @@ classdef AsrRecord
     %   reconstruction matrix R; between update points it blends the
     %   previous and the new R with a raised cosine. Given the sequence of
     %   R, the operation is linear. record() recomputes that sequence for
-    %   the call NeuroQC makes (pop_clean_rawdata with only the burst
+    %   the call PipeCompare makes (pop_clean_rawdata with only the burst
     %   criterion, Euclidean distance, MaxMem 64), using clean_rawdata's own
     %   calibration (clean_windows, asr_calibrate); apply() applies the same
     %   decisions to any data of the same size (e.g. the injected signal).
@@ -24,7 +24,7 @@ classdef AsrRecord
     %
     %   This is an independent implementation of the published algorithm,
     %   not a copy of asr_process. Its decisions are only used after
-    %   neuroqc.run.Steps has checked that apply(rec, real data) equals
+    %   pipecompare.run.Steps has checked that apply(rec, real data) equals
     %   EEGLAB's own output; otherwise ASR is re-run (and flagged).
 
     properties (Constant)
@@ -45,7 +45,7 @@ classdef AsrRecord
             if exist('hlp_diskcache', 'file')
                 [~, state] = evalc('hlp_diskcache(''filterdesign'', @asr_calibrate, ref.data, ref.srate, cutoff)');
             else
-                [~, state] = evalc('asr_calibrate(ref.data, ref.srate, cutoff, [], [], [], [], [], [], [], neuroqc.run.AsrRecord.MaxMemMB)');
+                [~, state] = evalc('asr_calibrate(ref.data, ref.srate, cutoff, [], [], [], [], [], [], [], pipecompare.run.AsrRecord.MaxMemMB)');
             end
             pad = round(windowlen / 2 * fs);
             S = n + pad;
@@ -54,8 +54,8 @@ classdef AsrRecord
             sigData = padded(X0, pad);
             carry = repmat(2 * sigData(:, 1), 1, P) - sigData(:, 1 + mod(((P + 1):-1:2) - 1, S));
             D = [carry sigData]; D(~isfinite(D)) = 0;
-            maxmem = neuroqc.run.AsrRecord.MaxMemMB;
-            assert(maxmem * 1024 * 1024 - C * C * P * 8 * 3 >= 0, 'NeuroQC:Asr', 'ASR memory split not reproducible.');
+            maxmem = pipecompare.run.AsrRecord.MaxMemMB;
+            assert(maxmem * 1024 * 1024 - C * C * P * 8 * 3 >= 0, 'PipeCompare:Asr', 'ASR memory split not reproducible.');
             splits = ceil((C*C*S*8*8 + C*C*8*S/stepsize + C*S*8*2 + S*8*5) / (maxmem*1024*1024 - C*C*P*8*3));
             splits = min(splits, 10000);
             iir = state.iir; cov = []; lastR = []; lastTrivial = state.last_trivial;
@@ -79,7 +79,7 @@ classdef AsrRecord
                     if ~trivial
                         R = real(state.M * pinv(bsxfun(@times, keep', V' * state.M)) * V');
                         stored = stored + C * C * 8;
-                        assert(stored < neuroqc.run.AsrRecord.MaxStoredMB * 2^20, 'NeuroQC:AsrTooLarge', ...
+                        assert(stored < pipecompare.run.AsrRecord.MaxStoredMB * 2^20, 'PipeCompare:AsrTooLarge', ...
                             'ASR changed too many windows to store its decisions.');
                     else
                         R = [];
@@ -95,7 +95,7 @@ classdef AsrRecord
         function Y = apply(rec, X)
             % The recorded ASR decisions applied to data X (C x n).
             X = double(X);
-            assert(isequal(size(X), [rec.C rec.n]), 'NeuroQC:Asr', 'Data size differs from the recorded ASR run.');
+            assert(isequal(size(X), [rec.C rec.n]), 'PipeCompare:Asr', 'Data size differs from the recorded ASR run.');
             sigData = padded(X, rec.pad);
             P = rec.P; S = rec.S;
             carry = repmat(2 * sigData(:, 1), 1, P) - sigData(:, 1 + mod(((P + 1):-1:2) - 1, S));

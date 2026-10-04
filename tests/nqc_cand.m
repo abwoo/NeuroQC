@@ -7,13 +7,13 @@ if ~iscell(X), X = {{X}}; elseif ~iscell(X{1}), X = {X}; end
 o = struct('kind', {repmat({'scalar'}, 1, numel(X))}, 'times', [], 'stratum', '', 'signal', [], 'key', '', ...
     'polarity', 'positive', 'units', {repmat({'uV'}, 1, numel(X))});
 for k = 1:2:numel(varargin), o.(varargin{k}) = varargin{k+1}; end
-opts = neuroqc.eval.Measure.defaults();
+opts = pipecompare.eval.Measure.defaults();
 objs = struct('name', {}, 'unit', {}, 'kind', {}, 'polarity', {}, 'times', {}, 'X', {}, 'estimate', {}, 'sme', {}, 'agg', {});
 for k = 1:numel(X)
     ob = struct('name', sprintf('obj%d', k), 'unit', o.units{k}, 'kind', o.kind{k}, 'polarity', o.polarity, ...
         'times', o.times, 'X', {X{k}}, 'estimate', [], 'sme', [], 'agg', NaN);
     for cc = 1:numel(X{k})
-        [ob.estimate(cc), ob.sme(cc)] = neuroqc.eval.Measure.estimate(ob, X{k}{cc}, opts, k * 1000 + cc);
+        [ob.estimate(cc), ob.sme(cc)] = pipecompare.eval.Measure.estimate(ob, X{k}{cc}, opts, k * 1000 + cc);
     end
     ob.agg = sqrt(mean(ob.sme .^ 2));
     objs(k) = ob;

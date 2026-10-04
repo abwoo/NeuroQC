@@ -5,10 +5,10 @@ the copy it ran on). They cannot click inside an EEGLAB dialog. This check takes
 Run it when no other process is driving MATLAB.
 
 ```matlab
-cd /path/to/NeuroQC; addpath(pwd, fullfile(pwd, 'tests'));
+cd /path/to/PipeCompare; addpath(pwd, fullfile(pwd, 'tests'));
 eeglab;                                   % main window
 nqc_setBase(nqc_synth(struct('seconds', 60, 'nPerCond', 10))); eeglab redraw
-neuroqc.NeuroQC.app();                    % or EEGLAB > Tools > NeuroQC > Advanced panel...
+pipecompare.PipeCompare.app();                    % or EEGLAB > Tools > PipeCompare > Advanced panel...
 ```
 
 For every dialog: **OK** must fill the panel as described, **Cancel** must change nothing and show no
@@ -22,7 +22,7 @@ error. The History list must keep 1 row unless the step says *Apply now*.
 | 4 | *EEGLAB pop_epoch…*: set limits −0.3 0.9. | Epoch field `-0.3 0.9`. |
 | 5 | *EEGLAB pop_rmbase…*: set −300 0 ms. | Baseline field `-0.3 0`. |
 | 6 | *Add component…*: P3, 0.3, 0.5, mean; then pick Pz P3 P4 in the channel window. *Set ROI…* again. | Components field shows the ROI; Objective list contains `P3.mean`. |
-| 7 | *View ERP (EEGLAB)…* | EEGLAB's `pop_timtopo` opens on the preview (title says NeuroQC preview). |
+| 7 | *View ERP (EEGLAB)…* | EEGLAB's `pop_timtopo` opens on the preview (title says PipeCompare preview). |
 | 8 | Add `lowpass`, select it, *Configure in EEGLAB…*: higher edge 30. Again with 40. | Values column: `cutoff = {30, 40}`. The step stays `lowpass`. |
 | 9 | Add `reject_threshold`, *Configure in EEGLAB…*: limits −60 / 120. | A question naming the asymmetric limits. *Only the step's values*: `uv = 120` added. |
 | 10 | Repeat 9 and choose *Keep whole command*. | The step becomes the EEGLAB workflow (`pop_eegthresh` … then `pop_rejepoch`), both lines shown in the details area. |
@@ -31,10 +31,10 @@ error. The History list must keep 1 row unless the step says *Apply now*.
 | 13 | Select `reref` (Add), *Apply now in EEGLAB*: average reference. | The History list gains a `reref` row; EEGLAB shows the new dataset. |
 | 14 | *Chan. locations…* | `pop_chanedit` opens on the current dataset; OK updates it (history row). |
 | 15 | *Options…*: choose a checkpoint folder. *Run search*. | Status shows done; results appear; details area shows the selected row in full. |
-| 16 | Select a result, *Inspect selected (EEGLAB)…* > candidate > *Scroll data*. | `eegplot` titled `NeuroQC candidate n (not adopted)`; ALLEEG unchanged. |
+| 16 | Select a result, *Inspect selected (EEGLAB)…* > candidate > *Scroll data*. | `eegplot` titled `PipeCompare candidate n (not adopted)`; ALLEEG unchanged. |
 | 17 | Make the window small. | The panel scrolls; no part is squeezed to nothing. |
-| 18 | Start *Run search* on a plan that takes a while, then close the panel window while it runs. | No error in the Command Window when the search ends; the result is in `neuroqc_result`. Same for closing during *Inspect selected* and *Adopt selected*. |
-| 19 | EEGLAB > Tools > NeuroQC > *Compare pipelines…* | Data = Event-related with the reason `Continuous data with events: 11 (10), 31 (10).`; Measure `(choose)`, no event selected, Compare `(choose)`, *Run* greyed. |
+| 18 | Start *Run search* on a plan that takes a while, then close the panel window while it runs. | No error in the Command Window when the search ends; the result is in `pipecompare_result`. Same for closing during *Inspect selected* and *Adopt selected*. |
+| 19 | EEGLAB > Tools > PipeCompare > *Compare pipelines…* | Data = Event-related with the reason `Continuous data with events: 11 (10), 31 (10).`; Measure `(choose)`, no event selected, Compare `(choose)`, *Run* greyed. |
 | 20 | Select `11` and `31`, Measure `P3`, Compare *Filters only*; *Run* | Count `12 pipelines will be compared`; after Run a window `Pipeline comparison` with the recommendation first (`*`); ALLCOM gains `EEG = pop_pipecompare(EEG, ...)`. |
 | 21 | In the result window: *Save script…*, then *Adopt*, then *All results…* | A `.m` file is written; a new EEGLAB dataset appears; the panel opens with the result table. |
 | 22 | *Compare pipelines…* again, Compare *Full*; then *Advanced…* | Count says above the limit and *Run* is greyed; *Advanced…* opens the panel with conditions, epoch, baseline, the P3 component and the full plan filled in. |

@@ -2,7 +2,7 @@ classdef Contract
     %CONTRACT What will be measured: the analysis definition.
     %
     %   ERP analysis
-    %   c = neuroqc.eval.Contract( ...
+    %   c = pipecompare.eval.Contract( ...
     %       'conditions', {'target', {'11','21'}; 'standard', {'31'}}, ...
     %       'epoch', [-0.2 1.0], 'baseline', [-0.2 0], ...
     %       'components', {'P3', [0.30 0.60], {'Pz','CPz','POz'}, 'mean'; ...
@@ -16,10 +16,10 @@ classdef Contract
     %       ('positive' default, 'negative').
     %
     %   Band power (e.g. resting state)
-    %   c = neuroqc.eval.Contract('analysis', 'bandpower', 'segment', 2, ...
+    %   c = pipecompare.eval.Contract('analysis', 'bandpower', 'segment', 2, ...
     %       'bands', {'alpha', [8 12], {'O1','Oz','O2'}});
     %       continuous data are cut into consecutive 2 s segments (EEGLAB's
-    %       eeg_regepochs on NeuroQC's copy, events 'nqc_seg' with their
+    %       eeg_regepochs on PipeCompare's copy, events 'pipecompare_seg' with their
     %       urevents, so a segment is the same segment in every candidate);
     %       score = log10 of the band power per segment (ROI mean, Hann
     %       taper), precision = SD / sqrt(number of segments).
@@ -47,7 +47,7 @@ classdef Contract
     end
 
     properties (Constant)
-        SegmentEvent = 'nqc_seg'  % event type of the segments NeuroQC marks on its copy
+        SegmentEvent = 'pipecompare_seg'  % event type of the segments PipeCompare marks on its copy
     end
 
     methods
@@ -82,7 +82,7 @@ classdef Contract
                         obj.(name) = double(v(:)');
                     case 'analysis'
                         obj.analysis = lower(char(v));
-                        assert(any(strcmp(obj.analysis, {'erp','bandpower'})), 'NeuroQC:Contract', ...
+                        assert(any(strcmp(obj.analysis, {'erp','bandpower'})), 'PipeCompare:Contract', ...
                             'analysis must be erp or bandpower');
                     case 'bands'
                         for r = 1:size(v, 1)
@@ -91,16 +91,16 @@ classdef Contract
                     case 'segment'
                         obj.segment = double(v);
                     case 'trials'
-                        assert(isstruct(v) && isfield(v, 'mode'), 'NeuroQC:Contract', 'trials must be a struct with a mode field');
+                        assert(isstruct(v) && isfield(v, 'mode'), 'PipeCompare:Contract', 'trials must be a struct with a mode field');
                         obj.trials = v;
                     otherwise
-                        error('NeuroQC:Contract', 'Unknown contract field %s', name);
+                        error('PipeCompare:Contract', 'Unknown contract field %s', name);
                 end
             end
             if obj.isSegmented()
                 % the segments are the trials: one condition, time-locked to
                 % the segment events, window = the segment
-                obj.conditions = struct('name', 'segments', 'events', {{neuroqc.eval.Contract.SegmentEvent}});
+                obj.conditions = struct('name', 'segments', 'events', {{pipecompare.eval.Contract.SegmentEvent}});
                 obj.epoch = [0 obj.segment];
                 obj.baseline = [];
             end
@@ -139,26 +139,26 @@ classdef Contract
                 obj.validateBands(nargin > 1 && ~isempty(state), state);
                 return;
             end
-            assert(~isempty(obj.components), 'NeuroQC:Contract', 'Define at least one component (name, window, ROI).');
-            assert(~isempty(obj.conditions), 'NeuroQC:Contract', 'Define at least one condition (name + event types).');
-            assert(numel(obj.epoch) == 2 && obj.epoch(1) < obj.epoch(2), 'NeuroQC:Contract', ...
+            assert(~isempty(obj.components), 'PipeCompare:Contract', 'Define at least one component (name, window, ROI).');
+            assert(~isempty(obj.conditions), 'PipeCompare:Contract', 'Define at least one condition (name + event types).');
+            assert(numel(obj.epoch) == 2 && obj.epoch(1) < obj.epoch(2), 'PipeCompare:Contract', ...
                 'epoch must be [start end] in seconds around the event.');
             names = {obj.conditions.name};
-            assert(numel(unique(names)) == numel(names), 'NeuroQC:Contract', 'Condition names must be unique.');
+            assert(numel(unique(names)) == numel(names), 'PipeCompare:Contract', 'Condition names must be unique.');
             ev = [obj.conditions.events];
-            assert(numel(unique(ev)) == numel(ev), 'NeuroQC:Contract', 'An event type belongs to two conditions.');
-            assert(obj.epoch(1) < 0 && obj.epoch(2) > 0, 'NeuroQC:Contract', 'ERP epochs must include time 0 (start < 0 < end).');
+            assert(numel(unique(ev)) == numel(ev), 'PipeCompare:Contract', 'An event type belongs to two conditions.');
+            assert(obj.epoch(1) < 0 && obj.epoch(2) > 0, 'PipeCompare:Contract', 'ERP epochs must include time 0 (start < 0 < end).');
             assert(numel(obj.baseline) == 2 && obj.baseline(1) < obj.baseline(2) && ...
-                obj.baseline(1) >= obj.epoch(1) && obj.baseline(2) <= obj.epoch(2), 'NeuroQC:Contract', ...
+                obj.baseline(1) >= obj.epoch(1) && obj.baseline(2) <= obj.epoch(2), 'PipeCompare:Contract', ...
                 'baseline must lie inside the epoch.');
             for k = 1:numel(obj.components)
                 w = obj.components(k).window; cname = obj.components(k).name;
                 assert(numel(w) == 2 && w(1) < w(2) && w(1) >= obj.epoch(1) && w(2) <= obj.epoch(2), ...
-                    'NeuroQC:Contract', 'Component %s window must lie inside the epoch.', cname);
-                assert(~isempty(obj.components(k).roi), 'NeuroQC:Contract', 'Component %s needs ROI channels.', cname);
-                assert(any(strcmp(obj.components(k).measure, {'mean','peakAmplitude','peakLatency'})), 'NeuroQC:Contract', ...
+                    'PipeCompare:Contract', 'Component %s window must lie inside the epoch.', cname);
+                assert(~isempty(obj.components(k).roi), 'PipeCompare:Contract', 'Component %s needs ROI channels.', cname);
+                assert(any(strcmp(obj.components(k).measure, {'mean','peakAmplitude','peakLatency'})), 'PipeCompare:Contract', ...
                     'Component %s: measure must be mean, peakAmplitude or peakLatency.', cname);
-                assert(any(strcmp(obj.components(k).polarity, {'positive','negative'})), 'NeuroQC:Contract', ...
+                assert(any(strcmp(obj.components(k).polarity, {'positive','negative'})), 'PipeCompare:Contract', ...
                     'Component %s: polarity must be positive or negative.', cname);
             end
             obj.validateTrialRule();
@@ -173,7 +173,7 @@ classdef Contract
                     hint = sprintf(' Event types are case-sensitive: did you mean %s?', ...
                         strjoin(strcat('''', state.eventTypes(at(near)), ''''), ', '));
                 end
-                error('NeuroQC:Contract', 'Event type(s) not in the dataset: %s (present: %s).%s', ...
+                error('PipeCompare:Contract', 'Event type(s) not in the dataset: %s (present: %s).%s', ...
                     strjoin(missing, ', '), strjoin(state.eventTypes, ', '), hint);
             end
             roi = obj.allRoi();
@@ -184,47 +184,47 @@ classdef Contract
             end
             % a removed channel that a restore step can bring back is a valid ROI
             % channel; pipelines without the restore fail with that reason
-            assert(all(ismember(absent, restorable)), 'NeuroQC:Contract', 'ROI channel(s) not in the dataset: %s', ...
+            assert(all(ismember(absent, restorable)), 'PipeCompare:Contract', 'ROI channel(s) not in the dataset: %s', ...
                 strjoin(setdiff(absent, restorable), ', '));
             if state.isEpoched
                 w = obj.epoch;
                 assert(state.xmin <= w(1) + 1.5/state.srate && state.xmax >= w(2) - 1.5/state.srate, ...
-                    'NeuroQC:Contract', 'The dataset epochs [%g %g] s do not cover the contract epoch.', state.xmin, state.xmax);
+                    'PipeCompare:Contract', 'The dataset epochs [%g %g] s do not cover the contract epoch.', state.xmin, state.xmax);
             end
         end
 
         function validateBands(obj, haveState, state)
-            assert(~isempty(obj.bands), 'NeuroQC:Contract', 'Define at least one band (name, [f1 f2] Hz, ROI).');
+            assert(~isempty(obj.bands), 'PipeCompare:Contract', 'Define at least one band (name, [f1 f2] Hz, ROI).');
             for k = 1:numel(obj.bands)
                 f = obj.bands(k).freq;
-                assert(numel(f) == 2 && f(1) > 0 && f(1) < f(2), 'NeuroQC:Contract', ...
+                assert(numel(f) == 2 && f(1) > 0 && f(1) < f(2), 'PipeCompare:Contract', ...
                     'Band %s: [f1 f2] Hz with 0 < f1 < f2.', obj.bands(k).name);
-                assert(~isempty(obj.bands(k).roi), 'NeuroQC:Contract', 'Band %s needs ROI channels.', obj.bands(k).name);
+                assert(~isempty(obj.bands(k).roi), 'PipeCompare:Contract', 'Band %s needs ROI channels.', obj.bands(k).name);
             end
             if obj.isSegmented()
-                assert(isscalar(obj.segment) && obj.segment > 0, 'NeuroQC:Contract', 'segment must be a length in s.');
+                assert(isscalar(obj.segment) && obj.segment > 0, 'PipeCompare:Contract', 'segment must be a length in s.');
                 % a segment of T s resolves 1/T Hz; two cycles of the lowest band
                 % edge must fit in it for a stable estimate there
                 fmin = min(arrayfun(@(b) b.freq(1), obj.bands));
-                assert(obj.segment >= 2 / fmin, 'NeuroQC:Contract', ['Segments of %g s hold fewer than two cycles ', ...
+                assert(obj.segment >= 2 / fmin, 'PipeCompare:Contract', ['Segments of %g s hold fewer than two cycles ', ...
                     'of %g Hz; use segment >= %g s.'], obj.segment, fmin, 2 / fmin);
             else
                 assert(~isempty(obj.conditions) && numel(obj.epoch) == 2 && obj.epoch(1) < obj.epoch(2), ...
-                    'NeuroQC:Contract', 'Band power needs either segment (continuous data) or conditions and epoch.');
+                    'PipeCompare:Contract', 'Band power needs either segment (continuous data) or conditions and epoch.');
             end
             obj.validateTrialRule();
             if ~haveState, return; end
             fmax = max(arrayfun(@(b) b.freq(2), obj.bands));
-            assert(fmax < state.srate / 2, 'NeuroQC:Contract', 'Band edge %g Hz is at or above Nyquist (%g Hz).', fmax, state.srate / 2);
+            assert(fmax < state.srate / 2, 'PipeCompare:Contract', 'Band edge %g Hz is at or above Nyquist (%g Hz).', fmax, state.srate / 2);
             if obj.isSegmented()
-                assert(~state.isEpoched, 'NeuroQC:Contract', ['Segments are cut from continuous data; this dataset is ', ...
+                assert(~state.isEpoched, 'PipeCompare:Contract', ['Segments are cut from continuous data; this dataset is ', ...
                     'epoched (use conditions and epoch for event-related band power).']);
             else
                 missing = setdiff([obj.conditions.events], state.eventTypes);
-                assert(isempty(missing), 'NeuroQC:Contract', 'Event type(s) not in the dataset: %s', strjoin(missing, ', '));
+                assert(isempty(missing), 'PipeCompare:Contract', 'Event type(s) not in the dataset: %s', strjoin(missing, ', '));
             end
             absent = setdiff(lower(obj.allRoi()), lower(state.labels));
-            assert(isempty(absent), 'NeuroQC:Contract', 'ROI channel(s) not in the dataset: %s', strjoin(absent, ', '));
+            assert(isempty(absent), 'PipeCompare:Contract', 'ROI channel(s) not in the dataset: %s', strjoin(absent, ', '));
         end
 
         function roi = allRoi(obj)
@@ -237,13 +237,13 @@ classdef Contract
                 case 'all'
                 case 'time_ranges'
                     assert(isfield(r, 'ranges') && isnumeric(r.ranges) && size(r.ranges, 2) == 2 && ...
-                        all(r.ranges(:, 2) > r.ranges(:, 1)), 'NeuroQC:Contract', 'time_ranges needs ranges = [start end; ...] in s');
+                        all(r.ranges(:, 2) > r.ranges(:, 1)), 'PipeCompare:Contract', 'time_ranges needs ranges = [start end; ...] in s');
                 case 'marker_ranges'
-                    assert(isfield(r, 'startCode') && isfield(r, 'endCode'), 'NeuroQC:Contract', 'marker_ranges needs startCode and endCode');
+                    assert(isfield(r, 'startCode') && isfield(r, 'endCode'), 'PipeCompare:Contract', 'marker_ranges needs startCode and endCode');
                 case 'urevents'
-                    assert(isfield(r, 'ids') && isnumeric(r.ids), 'NeuroQC:Contract', 'urevents needs ids');
+                    assert(isfield(r, 'ids') && isnumeric(r.ids), 'PipeCompare:Contract', 'urevents needs ids');
                 otherwise
-                    error('NeuroQC:Contract', 'Unknown trial rule mode %s', r.mode);
+                    error('PipeCompare:Contract', 'Unknown trial rule mode %s', r.mode);
             end
         end
 

@@ -1,8 +1,28 @@
 # Changelog
 
-All notable changes. Versions follow `NeuroQC.Version`; each release has a git tag `vX.Y.Z`.
+All notable changes. Versions follow `PipeCompare.Version` (`NeuroQC.Version` up to 0.7.1); each
+release has a git tag `vX.Y.Z`.
 
-## Unreleased
+## 0.8.0 (2026-10-04)
+
+**Renamed: NeuroQC is now PipeCompare.** This is an incompatible change:
+- Package `+neuroqc` → `+pipecompare`, class `NeuroQC` → `PipeCompare`
+  (`pipecompare.PipeCompare.optimize`, `.adopt`, …), `eegplugin_pipecompare`,
+  `pipecompare_setup`.
+- Error IDs `PipeCompare:…`; Command Window prefix `[PipeCompare]`; base variable
+  `pipecompare_result`; menu tag `pipecompare_menu`; environment variable
+  `PIPECOMPARE_REAL_SET`.
+- New datasets carry `EEG.etc.pipecompare`, and history lines are tagged `% PipeCompare`.
+- The segment event type is `pipecompare_seg`.
+
+**Compatibility.**
+- Datasets adopted with NeuroQC still work: a trial rule they carry under `EEG.etc.neuroqc` is
+  cleared before a search, as the new field is, and their `% NeuroQC` history lines are still
+  recognized as NeuroQC's own.
+- Checkpoint folders written by NeuroQC 0.7 cannot be resumed (other class names and search
+  identity); run those searches again.
+- Install the plugin folder as `PipeCompare` (or `PipeCompare0.8.0`) under `eeglab/plugins/`,
+  and remove the old `NeuroQC` folder, or both menus appear.
 
 **Added**
 - Simple mode: EEGLAB > Tools > NeuroQC > *Compare pipelines…* (`pop_pipecompare`). It takes three
