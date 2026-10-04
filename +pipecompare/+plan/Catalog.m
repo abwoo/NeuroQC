@@ -105,6 +105,7 @@ classdef Catalog
                     st.srate = p.fs;
                 case {'highpass','lowpass','linenoise','asr'}
                     if st.epoched, reason = sprintf('%s must run on continuous data (before epoching)', type); return; end
+                    if strcmp(type, 'asr'), reason = missingPlugin('pop_clean_rawdata'); if ~isempty(reason), return; end; end
                     if any(strcmp(type, {'highpass','lowpass'})) && p.cutoff >= st.srate/2
                         reason = sprintf('%s %g Hz is at/above Nyquist (%g Hz)', type, p.cutoff, st.srate/2); return;
                     end
@@ -150,6 +151,7 @@ classdef Catalog
                     st.hasICA = true; st.icRemoved = false;
                 case 'icremove'
                     if ~st.hasICA, reason = 'IC removal needs ICA earlier in the plan or in the dataset'; return; end
+                    reason = missingPlugin('pop_iclabel'); if ~isempty(reason), return; end
                     if ~st.anyLocations
                         reason = 'ICLabel needs channel locations (its features include the scalp maps of the components; Pion-Tonachini et al., 2019)'; return;
                     end
@@ -166,6 +168,7 @@ classdef Catalog
                     for stmt = pipecompare.run.Native.statements(p.command)
                         e = pipecompare.live.History.classify(stmt{1});
                         if strcmp(e.fn, 'pop_chanedit'), st.anyLocations = true; end   % locations set in the plan
+                        reason = missingPlugin(e.fn); if ~isempty(reason), return; end
                         if any(strcmp(e.fn, {'pop_interp','pop_iclabel'})) && ~st.anyLocations
                             reason = sprintf('native %s needs channel locations (Edit > Channel locations)', e.fn); return;
                         end
@@ -191,6 +194,16 @@ classdef Catalog
             end
         end
     end
+end
+
+function reason = missingPlugin(fn)
+% Steps that call a plugin are illegal when it is not installed, so the
+% plan says so before the search instead of every candidate failing in it.
+plugins = struct('pop_clean_rawdata', 'clean_rawdata', 'pop_iclabel', 'ICLabel');
+reason = '';
+if isfield(plugins, fn) && exist(fn, 'file') ~= 2
+    reason = sprintf('%s needs the %s plugin (EEGLAB > File > Manage EEGLAB extensions)', fn, plugins.(fn));
+end
 end
 
 function reason = invalidValue(type, p)

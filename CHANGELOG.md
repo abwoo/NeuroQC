@@ -3,6 +3,11 @@
 All notable changes. Versions follow `PipeCompare.Version` (`NeuroQC.Version` up to 0.7.1); each
 release has a git tag `vX.Y.Z`.
 
+## Unreleased
+
+- A plan with ASR or ICLabel IC removal is now illegal when the clean_rawdata or ICLabel plugin is
+  missing, with that reason, before the search starts; previously every candidate failed during it.
+
 ## 0.8.0 (2026-10-04)
 
 **Renamed: NeuroQC is now PipeCompare.** This is an incompatible change:

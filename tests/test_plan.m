@@ -35,6 +35,20 @@ p = pipecompare.plan.Plan(); p = p.add('icremove');
 verifyError(tc, @() p.enumerate(nqc_fakeState(false, 500), c), 'PipeCompare:NoLegalPipeline'); % no ICA
 end
 
+function testMissingPluginFailsAtPlanTime(tc)
+d = fileparts(which('pop_clean_rawdata'));
+assumeNotEmpty(tc, d, 'clean_rawdata plugin not installed');
+old = path; rmpath(d); restore = onCleanup(@() path(old));
+p = pipecompare.plan.Plan(); p = p.add('asr');
+try
+    p.enumerate(nqc_fakeState(false, 500), nqc_contract());
+    verifyFail(tc, 'a plan with ASR and no clean_rawdata enumerated');
+catch err
+    verifyEqual(tc, err.identifier, 'PipeCompare:NoLegalPipeline');
+    verifySubstring(tc, err.message, 'clean_rawdata plugin');
+end
+end
+
 function testOrderSearchWithPinAndBefore(tc)
 c = nqc_contract();
 p = pipecompare.plan.Plan();
