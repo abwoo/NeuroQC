@@ -20,6 +20,4 @@ uimenu(m, 'Label', 'Compare pipelines...', 'userdata', 'startup:off;study:off', 
     'Callback', wrap('[EEG, LASTCOM] = pop_pipecompare(EEG); if ~isempty(LASTCOM), eegh(LASTCOM); end;'));
 uimenu(m, 'Label', 'Advanced panel...', 'userdata', 'startup:on;study:off', ...
     'Callback', wrap('pipecompare.PipeCompare.app();'));
-uimenu(m, 'Label', 'Show dataset state and history', 'userdata', 'startup:off;study:off', ...
-    'Callback', wrap('pipecompare.PipeCompare.state();'));
 end

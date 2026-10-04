@@ -368,6 +368,26 @@ classdef Executor
             end
         end
 
+        function EEG = apply(EEG, steps, contract)
+            % Run steps (rows of type, params) on any dataset as the search
+            % runs them, so each step decides from these data (bad
+            % channels, components, rejected epochs); used by saved
+            % scripts. The preparation is the search's own (unit judged
+            % from the amplitude scale); every command goes to EEG.history.
+            if nargin < 3 || isempty(contract), contract = pipecompare.eval.Contract(); end
+            state = pipecompare.live.DataState.fromEEG(EEG);
+            EEG = pipecompare.run.Executor.prepareRoot(EEG, contract, struct('dataUnit', state.unitGuess));
+            ctx = struct('contract', contract, 'highpass', rootHighpass(state));
+            for k = 1:size(steps, 1)
+                in = struct('type', steps{k, 1}, 'params', steps{k, 2});
+                [EEG, coms] = pipecompare.run.Steps.run(in, EEG, ctx);
+                for q = 1:numel(coms), EEG = eeg_hist(EEG, coms{q}); end
+                ctx = advance(in, ctx, [], struct(), coms, {}, 0);
+            end
+            [EEG, com] = pipecompare.run.Executor.selectEligible(EEG, contract);
+            if ~isempty(com), EEG = eeg_hist(EEG, com); end
+        end
+
         function [elig, EEG] = eligibleUrevents(EEG, contract)
             % urevent ids the contract's trial rule keeps ([] = all trials),
             % for display before a search (EEG is a copy; urevents are

@@ -69,30 +69,72 @@ classdef Presets
             end
         end
 
-        function c = contract(EEG, measure, events, segment, pool)
+        function tf = isBand(measure)
+            % true for a frequency band (a preset name, or 'band': your own)
+            tf = any(strcmpi(measure, [pipecompare.simple.Presets.bandNames() {'band'}]));
+        end
+
+        function c = contract(EEG, measure, events, segment, pool, custom)
             % The analysis contract of a simple-mode choice. measure: an ERP
-            % component or a band name; events: the event types (ERP: one
+            % component, a band name, 'custom' (your own ERP window) or
+            % 'band' (your own band); events: the event types (ERP: one
             % condition per type, or one condition for all when pool is
-            % true) - ignored for a band.
+            % true) - ignored for a band. custom: struct with window ([t1
+            % t2] s, 'custom'), band ([f1 f2] Hz, 'band') and channels
+            % (labels; for 'band' all EEG channels when empty).
             if nargin < 4 || isempty(segment), segment = 2; end
             if nargin < 5, pool = false; end
+            if nargin < 6, custom = struct('window', [], 'band', [], 'channels', {{}}); end
+            P = pipecompare.simple.Presets;
             labels = {EEG.chanlocs.labels};
-            if any(strcmpi(measure, pipecompare.simple.Presets.bandNames()))
-                roi = pipecompare.simple.Presets.eegChannels(EEG);
-                c = pipecompare.eval.Contract('analysis', 'bandpower', 'segment', segment, ...
-                    'bands', {lower(measure), pipecompare.simple.Presets.band(measure), roi});
+            if P.isBand(measure)
+                if strcmpi(measure, 'band')
+                    f = double(custom.band(:)');
+                    assert(numel(f) == 2 && f(1) > 0 && f(2) > f(1), 'PipeCompare:Simple', ...
+                        'Your own band needs two frequencies in Hz, low then high (e.g. 8 12).');
+                    assert(f(2) < EEG.srate / 2, 'PipeCompare:Simple', ...
+                        'The band must end below half the sampling rate (%g Hz).', EEG.srate / 2);
+                    name = 'band';
+                    roi = P.channels(labels, custom.channels);
+                    if isempty(roi), roi = P.eegChannels(EEG); end
+                    segment = max(segment, ceil(2 / f(1)));   % two cycles of the lowest frequency
+                else
+                    f = P.band(measure); name = lower(measure);
+                    roi = P.eegChannels(EEG);
+                end
+                c = pipecompare.eval.Contract('analysis', 'bandpower', 'segment', segment, 'bands', {name, f, roi});
                 return;
             end
-            p = pipecompare.simple.Presets.component(measure);
+            if strcmpi(measure, 'custom')
+                w = double(custom.window(:)');
+                assert(numel(w) == 2 && w(1) >= 0 && w(2) > w(1), 'PipeCompare:Simple', ['Your own window needs two ', ...
+                    'times after the event, start then end (e.g. 300 600 ms); windows before the event: Advanced...']);
+                roi = P.channels(labels, custom.channels);
+                assert(~isempty(roi), 'PipeCompare:Simple', 'Choose the electrodes of your own window.');
+                p = struct('name', 'ERP', 'lockedTo', 'stimulus', 'epoch', [-0.2 max(0.8, w(2) + 0.2)], ...
+                    'baseline', [-0.2 0], 'sites', {roi}, 'window', w, 'polarity', 'positive');
+            else
+                p = P.component(measure);
+            end
             events = cellstr(events);
             assert(~isempty(events), 'PipeCompare:Simple', 'Choose the %s-locked event type(s) for %s.', p.lockedTo, p.name);
             [ok, at] = ismember(lower(p.sites), lower(labels));
             assert(all(ok), 'PipeCompare:Simple', ['%s is measured at %s (ERP CORE); the dataset has no %s. ', ...
-                'Use Advanced... to choose other channels.'], p.name, strjoin(p.sites, '/'), strjoin(p.sites(~ok), ', '));
+                'Choose "your own window and electrodes" instead.'], p.name, strjoin(p.sites, '/'), strjoin(p.sites(~ok), ', '));
             conds = [events(:) cellfun(@(e) {e}, events(:), 'UniformOutput', false)];
             if pool, conds = {strjoin(events, '+'), events(:)'}; end
             c = pipecompare.eval.Contract('conditions', conds, 'epoch', p.epoch, 'baseline', p.baseline, ...
                 'components', {p.name, p.window, labels(at), {'mean', p.polarity}});
+        end
+
+        function roi = channels(labels, chosen)
+            % the chosen electrodes as the dataset spells them
+            roi = {};
+            if isempty(chosen), return; end
+            chosen = cellstr(chosen);
+            [ok, at] = ismember(lower(chosen), lower(labels));
+            assert(all(ok), 'PipeCompare:Simple', 'The dataset has no channel %s.', strjoin(chosen(~ok), ', '));
+            roi = labels(at);
         end
 
         function roi = eegChannels(EEG)

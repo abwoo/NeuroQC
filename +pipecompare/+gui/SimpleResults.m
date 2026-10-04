@@ -7,13 +7,14 @@ classdef SimpleResults < handle
     %   a table of the recommendation (marked *) followed by the best of the
     %   others. "Use this pipeline" stores the recommended (or the selected)
     %   candidate as a new EEGLAB dataset; Save script writes it as a
-    %   runnable EEGLAB function; Details... opens the panel. With no
+    %   function for any recording; "Show all pipelines" lists every
+    %   pipeline with the reason it was excluded. With no
     %   feasible pipeline, the most common reason is said in one line; after
     %   a stop, how many pipelines were run.
 
     properties
         Result
-        Fig; Headline; Table
+        Fig; Headline; Table; AllBox
     end
 
     methods
@@ -23,15 +24,14 @@ classdef SimpleResults < handle
             g = uigridlayout(obj.Fig, [4 1]); g.RowHeight = {66, '1x', 22, 30};
             obj.Headline = uilabel(g, 'Text', obj.headline(), 'WordWrap', 'on', 'FontWeight', 'bold', ...
                 'VerticalAlignment', 'top');
-            [data, cols] = obj.rows();
-            obj.Table = uitable(g, 'Data', data, 'ColumnName', cols, 'RowName', {}, ...
-                'ColumnWidth', {60, 70, 85, 80, 90, 'auto'});
+            obj.Table = uitable(g, 'RowName', {});
+            obj.showRows();
             uilabel(g, 'Text', obj.shared(), 'FontColor', [0.3 0.3 0.3]);
-            b = uigridlayout(g, [1 4]); b.Padding = [0 0 0 0]; b.ColumnWidth = {'1x', 140, 120, 120};
+            b = uigridlayout(g, [1 4]); b.Padding = [0 0 0 0]; b.ColumnWidth = {'1x', 150, 140, 120};
             uilabel(b, 'Text', 'Select a row to use another pipeline.', 'FontColor', [0.4 0.4 0.4]);
+            obj.AllBox = uicheckbox(b, 'Text', 'Show all pipelines', 'ValueChangedFcn', @(~, ~) obj.showRows());
             uibutton(b, 'Text', 'Use this pipeline', 'FontWeight', 'bold', 'ButtonPushedFcn', @(~, ~) obj.adopt());
             uibutton(b, 'Text', 'Save script...', 'ButtonPushedFcn', @(~, ~) obj.saveScript());
-            uibutton(b, 'Text', 'Details...', 'ButtonPushedFcn', @(~, ~) obj.allResults());
         end
 
         function t = headline(obj)
@@ -44,7 +44,7 @@ classdef SimpleResults < handle
             if isempty(R.byStratum)
                 common = pipecompare.eval.Rank.commonReasons(R, 1);
                 t = sprintf('%sNo pipeline passed the checks. Most common reason: %s.', t, ...
-                    pipecompare.utils.ternary(isempty(common), 'see Details', strjoin(common, '')));
+                    pipecompare.utils.ternary(isempty(common), 'see Show all pipelines', strjoin(common, '')));
                 % the reason with its numbers, from one pipeline
                 k = find(~strcmp(T.status, 'feasible') & ~cellfun(@isempty, R.whyList(:)), 1);
                 if ~isempty(k), t = sprintf('%s For example, pipeline %d: %s.', t, k, strjoin(R.whyList{k}, '; ')); end
@@ -67,28 +67,40 @@ classdef SimpleResults < handle
             end
         end
 
-        function [data, cols] = rows(obj)
+        function showRows(obj)
+            showAll = ~isempty(obj.AllBox) && obj.AllBox.Value;
+            [data, cols] = obj.rows(showAll);
+            w = {60, 70, 85, 80, 90, 'auto'};
+            if showAll, w = [w {'auto'}]; end
+            obj.Table.Data = data; obj.Table.ColumnName = cols; obj.Table.ColumnWidth = w;
+        end
+
+        function [data, cols] = rows(obj, showAll)
+            % the recommendation(s) first, then the best of the others (showAll:
+            % every pipeline, with the reason it was excluded)
+            if nargin < 2, showAll = false; end
             R = obj.Result.ranking; T = R.table;
-            % the recommendation(s) first, then the best of the others
             rec = [R.byStratum.recommended];
             o = [rec(:); R.order(~ismember(R.order, rec))];
-            o = o(1:min(max(5, numel(rec)), numel(o)));
+            if ~showAll, o = o(1:min(max(5, numel(rec)), numel(o))); end
             cols = {'pipeline', 'checks', 'noise (SME)', 'trials kept', 'signal change', 'settings'};
+            if showAll, cols{end+1} = 'why excluded'; end
             data = cell(numel(o), numel(cols));
             for i = 1:numel(o)
                 k = o(i); id = sprintf('%d', k);
                 if any([R.byStratum.recommended] == k), id = [id '*']; end
                 st = statusText(T.status{k});
                 if startsWith(obj.Result.cands(k).message, 'not run'), st = 'not run'; end   % after a stop
-                data(i, :) = {id, st, pipecompare.gui.PanelText.num(T.objective(k), '%.4g'), ...
+                data(i, 1:6) = {id, st, pipecompare.gui.PanelText.num(T.objective(k), '%.4g'), ...
                     pipecompare.gui.PanelText.pctText(T.minRetention(k)), pipecompare.gui.PanelText.pctText(T.ampError(k)), ...
                     obj.name(k)};
+                if showAll, data{i, 7} = char(T.reason{k}); end
             end
         end
 
         function t = name(obj, k)
             % Pipeline k by the settings that differ between pipelines, in
-            % words (the full key is in Details and the Command Window).
+            % words (the full key is in the Command Window and the script).
             parts = {};
             for e = obj.Result.leaves(k).path
                 i = e{1};
@@ -118,10 +130,22 @@ classdef SimpleResults < handle
         end
 
         function adopt(obj)
+            % Rebuild the pipeline (its steps run again, ICA included) and
+            % store it in EEGLAB; it is in memory only until saved.
+            dlg = [];
             try
-                pipecompare.PipeCompare.adopt(obj.Result, obj.chosen());
-                uialert(obj.Fig, 'Stored as a new EEGLAB dataset; its EEG.history reproduces it.', 'Adopted', 'Icon', 'success');
+                k = pipecompare.run.Executor.pickCandidate(obj.Result, obj.chosen());
+                msg = sprintf('Building pipeline %d from the start (every step runs again)...', k);
+                if any(cellfun(@(e) strcmp(e.type, 'ica'), obj.Result.leaves(k).path))
+                    msg = sprintf('Building pipeline %d from the start; ICA runs again, which takes a while...', k);
+                end
+                dlg = uiprogressdlg(obj.Fig, 'Title', 'Use this pipeline', 'Message', msg, 'Indeterminate', 'on');
+                pipecompare.PipeCompare.adopt(obj.Result, k);
+                close(dlg);
+                uialert(obj.Fig, sprintf(['Pipeline %d is now the current EEGLAB dataset. It is not saved yet: ', ...
+                    'use File > Save current dataset as.'], k), 'Done', 'Icon', 'success');
             catch ME
+                if ~isempty(dlg) && isvalid(dlg), close(dlg); end
                 uialert(obj.Fig, ME.message, 'PipeCompare');
             end
         end
@@ -138,12 +162,6 @@ classdef SimpleResults < handle
             catch ME
                 uialert(obj.Fig, ME.message, 'PipeCompare');
             end
-        end
-
-        function app = allResults(obj)
-            app = pipecompare.gui.Panel();
-            app.Plan = obj.Result.plan; app.showPlan();
-            app.Result = obj.Result; app.showResults();
         end
     end
 end

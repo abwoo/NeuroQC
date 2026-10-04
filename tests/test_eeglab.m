@@ -704,7 +704,7 @@ uimenu(f, 'Label', 'Tools', 'Tag', 'tools');
 ts = struct('no_check', 'try,'); cs = struct('add_to_hist', '');
 evalc('eegplugin_pipecompare(f, ts, cs)');
 items = findobj(findobj(f, 'Tag', 'pipecompare_menu'), 'Type', 'uimenu', '-not', 'Tag', 'pipecompare_menu');
-verifyNumElements(tc, items, 3);                                  % simple mode, panel, state
+verifyNumElements(tc, items, 2);                                  % simple mode, panel
 for k = 1:numel(items)
     cb = items(k).MenuSelectedFcn;
     verifyTrue(tc, startsWith(cb, 'try,') && contains(cb, 'catch, eeglab_error; end'));
@@ -810,6 +810,7 @@ function testWriteScriptReproducesCandidate(tc)
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
 nqc_setBase(EEG);
 p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', 0.5); p = p.add('epoch'); p = p.add('baseline');
+p = p.add('reject_threshold', 'uv', 100);
 c = nqc_contract();
 r = pipecompare.PipeCompare.optimize(p, c);
 d = tempname; mkdir(d); cleanup = onCleanup(@() rmdir(d, 's')); %#ok<NASGU>
@@ -819,6 +820,18 @@ addpath(d); c2 = onCleanup(@() rmpath(d)); %#ok<NASGU>
 out = nqc_pipeline_test(EEG);
 m = pipecompare.eval.Measure.candidate(out, c, r.ref);
 verifyEqual(tc, [m.objectives.agg], [r.cands(1).m.objectives.agg], 'RelTol', 1e-9);
+% another recording: its own epochs are rejected, not this one's
+code = regexprep(fileread(f), '\n%[^\n]*', '');                % without the comments
+verifyFalse(tc, contains(code, 'pop_rejepoch'));
+B = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'seed', 8));
+outB = nqc_pipeline_test(B);
+verifyTrue(tc, contains(outB.history, 'pop_eegthresh'));
+[~, Be] = evalc('pop_eegfiltnew(B, ''locutoff'', 0.5, ''plotfreqz'', 0)');
+[~, Be] = evalc('pop_epoch(Be, c.allEvents(), c.epoch)');
+[~, Be] = evalc('pop_rmbase(Be, 1000 * c.baseline, [])');
+over = squeeze(max(max(abs(Be.data), [], 1), [], 2)) > 100;
+verifyGreaterThan(tc, sum(over), 0);
+verifyEqual(tc, outB.trials, Be.trials - sum(over));
 end
 
 % -------------------------------------------------------------------- GUI

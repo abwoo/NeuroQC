@@ -114,10 +114,10 @@ pipecompare_setup                         % run from the PipeCompare folder
 
 1. Load a dataset in EEGLAB.
 2. Open **Tools > PipeCompare > Compare pipelines…**
-3. Choose:
-   - the data type: event-related or continuous;
-   - the measure: an ERP component and the event types it is time-locked to, or a frequency band;
-   - the recipe: which steps to compare.
+3. Choose what to measure: an ERP component (with the event types it is time-locked to) or a
+   frequency band, or your own time window or band with the electrodes you pick. The list only
+   offers what the data support. *Standard* is preselected as the recipe, which sets the steps
+   to compare:
 
    | Recipe | Steps compared |
    |---|---|
@@ -130,16 +130,19 @@ pipecompare_setup                         % run from the PipeCompare folder
    and ICLabel require channel locations. To compare ASR (artifact subspace reconstruction) or
    other steps, use the advanced panel or a script.
 4. Press **Run**. A progress window shows how many pipelines are done and the time left; **Stop**
-   ends the search and keeps the pipelines already finished.
+   ends the search and keeps the pipelines already finished. The Command Window gets a short
+   summary; the full log goes to `pipecompare_last_run.log` in MATLAB's `tempdir`.
 5. The result window says which pipeline to use and why, naming each pipeline by its settings
    (for example *high-pass 0.5 Hz, low-pass 30 Hz*). **Use this pipeline** stores it as a new
-   EEGLAB dataset; **Save script…** writes it as a MATLAB function; **Details…** opens the full
-   result table.
+   EEGLAB dataset; **Save script…** writes it as a MATLAB function that you can run on your other
+   recordings; **Show all pipelines** lists every pipeline with the reason it was excluded.
+   **Use this pipeline** runs the steps again (ICA included), so it can take a while; save the new
+   dataset afterwards with File > Save current dataset as.
 
-For custom time windows and regions of interest, any EEGLAB step, order search or different
-constraints, open **Advanced…** in the dialog, or **Tools > PipeCompare > Advanced panel…**. The
-panel defines ERP measures only; band power with other bands, channels or steps is set up from a
-script (see [Scripting interface](#scripting-interface)). See [docs/PANEL.md](docs/PANEL.md) for a
+For any EEGLAB step, order search, several components or different constraints, open
+**Advanced…** in the dialog, or **Tools > PipeCompare > Advanced panel…**. The panel defines ERP
+measures only; band power with other steps is set up from a script (see
+[Scripting interface](#scripting-interface)). See [docs/PANEL.md](docs/PANEL.md) for a
 description of every control.
 
 ### From the command line
@@ -152,6 +155,10 @@ EEG = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'target', 'standard'}, 'r
 
 % Continuous data: compare pipelines for alpha-band power in 2 s segments
 EEG = pop_pipecompare(EEG, 'measure', 'alpha', 'recipe', 'filters');
+
+% Your own window (s) and electrodes; or 'measure', 'band', 'band', [8 12]
+EEG = pop_pipecompare(EEG, 'measure', 'custom', 'window', [0.25 0.5], 'channels', {'Cz', 'CPz'}, ...
+    'events', {'target'}, 'recipe', 'standard');
 ```
 
 Replace `'target'` and `'standard'` with the event types in your dataset. The dataset is returned
@@ -186,7 +193,7 @@ p = p.add('reject_threshold', 'uv', {100, 150});
 r = pipecompare.PipeCompare.optimize(p, c, struct('checkpoint', 'pc_run1'));
 
 pipecompare.PipeCompare.adopt(r);                          % recommended pipeline -> new dataset
-pipecompare.PipeCompare.writeScript(r, 3, 'pipeline3.m');  % candidate 3 as a MATLAB function
+pipecompare.PipeCompare.writeScript(r, 3, 'pipeline3.m');  % candidate 3 as a function for any recording
 r = pipecompare.PipeCompare.resume('pc_run1');             % continue an interrupted search
 ```
 
@@ -241,7 +248,8 @@ descriptive and not used in the ranking. The full derivations are in
   reason for each exclusion.
 - The recommended pipeline and why it was chosen.
 - The full EEGLAB command sequence for every candidate.
-- A standalone MATLAB function that reproduces a chosen candidate (`writeScript`).
+- A MATLAB function that runs a chosen candidate's steps on any recording, deciding bad channels,
+  components and rejected epochs from that recording's data (`writeScript`).
 - Adoption of a candidate as a new EEGLAB dataset whose `EEG.history` replays it (`adopt`).
 
 ## Limitations

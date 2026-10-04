@@ -17,6 +17,25 @@ release has a git tag `vX.Y.Z`.
 - Simple mode: `boundary` markers are not offered as events; on epoched data the time-locking
   types are preselected; selected types can be scored as one condition (`'pool'`); a condition
   with fewer than 10 events is flagged before *Run* instead of excluding every pipeline after it.
+- Simple-mode dialog: one *Measure* list with what the data support (the data-type menu and the
+  segment field are gone; segments stay settable from scripts), *Standard* preselected, and *Run*
+  off when fewer than two pipelines would be compared. The list adds *your own window and
+  electrodes* (ERP) and *your own band and electrodes*; `pop_pipecompare` takes them as
+  `'measure', 'custom'` with `'window'` and `'channels'`, or `'measure', 'band'` with `'band'`.
+- *Save script…* / `writeScript` writes a function that runs the pipeline's steps on any
+  recording (`pipecompare.PipeCompare.apply`): bad channels, ICLabel components and rejected
+  epochs are decided from that recording's data. Previously the file replayed this dataset's
+  channel, component and epoch numbers, which gave wrong results on other recordings without an
+  error. The exact commands follow as comments.
+- *Advanced…* in the simple dialog no longer leaves an empty panel and an error when the choices
+  cannot be handed over (e.g. a missing electrode): it says why and the dialog stays open. It is
+  off for band power, which the panel does not define.
+- Result window: *Use this pipeline* shows that it is building the pipeline again (ICA too) and
+  then says the new dataset is not saved yet; *Show all pipelines* lists every pipeline with the
+  reason it was excluded, in place of *Details…* (the panel remains in the menu).
+- `pop_pipecompare` prints a two-line summary instead of about 900 lines; the full log goes to
+  `pipecompare_last_run.log` in `tempdir`. The menu item *Show dataset state and history* is
+  removed (it only printed to the Command Window); `pipecompare.PipeCompare.state()` remains.
 
 - A plan with ASR or ICLabel IC removal is now illegal when the clean_rawdata or ICLabel plugin is
   missing, with that reason, before the search starts; previously every candidate failed during it.
