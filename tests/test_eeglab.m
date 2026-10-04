@@ -460,6 +460,37 @@ nqc_setBase(NL); app.refreshLive(false);
 verifyTrue(tc, contains(app.DatasetLabel.Text, 'channel locations: NONE'));
 end
 
+function testNoDialogSettingIsDroppedSilently(tc)
+% Every dialog setting a catalog step does not reproduce is reported, so
+% the user decides (keep the whole EEGLAB command or the step's values).
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
+[~, Ep] = evalc('pop_epoch(EEG, {''11'',''31''}, [-0.2 1])');
+V = @(t, com, E) neuroqc.run.Native.catalogValues(t, com, E);
+has = @(notes, txt) any(contains(notes, txt));
+[~, n] = V('ica', 'EEG = pop_runica(EEG, ''icatype'',''runica'',''extended'',1,''pca'',20);', EEG);
+verifyTrue(tc, has(n, 'pca = 20'));
+[~, n] = V('ica', 'EEG = pop_runica(EEG, ''icatype'',''runica'',''extended'',1,''chanind'',[1:20]);', EEG);
+verifyTrue(tc, has(n, 'ICA on 20 of 32 channels'));
+[~, n] = V('ica', 'EEG = pop_runica(EEG, ''icatype'',''jader'');', EEG);
+verifyTrue(tc, has(n, 'icatype'));
+[~, n] = V('ica', 'EEG = pop_runica(EEG, ''icatype'',''runica'',''extended'',1,''interrupt'',''on'');', EEG);
+verifyEmpty(tc, n);                                            % display-only option: nothing lost
+[~, n] = V('badchannels', 'EEG = pop_rejchan(EEG, ''elec'',[1:32],''threshold'',5,''norm'',''off'',''measure'',''kurt'');', EEG);
+verifyTrue(tc, has(n, 'norm'));
+[~, n] = V('badchannels', 'EEG = pop_rejchan(EEG, ''elec'',[1:32],''threshold'',5,''norm'',''on'',''measure'',''spec'',''freqrange'',[1 30]);', EEG);
+verifyTrue(tc, has(n, 'freqrange'));
+[~, n] = V('reject_threshold', 'EEG = pop_eegthresh(EEG,1,[1:32],-100,100,0,0.5,0,0);', Ep);
+verifyTrue(tc, has(n, 'time range [0 0.5] s'));
+[~, n] = V('reject_threshold', 'EEG = pop_eegthresh(EEG,0,[1:10],-100,100,-0.2,0.996,0,0);', Ep);
+verifyTrue(tc, has(n, 'ICA components'));
+[~, n] = V('reject_threshold', sprintf('EEG = pop_eegthresh(EEG,1,[1:32],-100,100,%.15g,%.15g,0,0);', Ep.xmin, Ep.xmax), Ep);
+verifyEmpty(tc, n);                                            % the whole epoch: as the step does
+[~, n] = V('asr', 'EEG = pop_clean_rawdata(EEG, ''FlatlineCriterion'',''off'',''ChannelCriterion'',''off'',''LineNoiseCriterion'',''off'',''Highpass'',''off'',''BurstCriterion'',20,''WindowCriterion'',''off'',''BurstRejection'',''on'',''Distance'',''Riemannian'');', EEG);
+verifyTrue(tc, has(n, 'BurstRejection') && has(n, 'Distance'));
+[~, n] = V('resample', 'EEG = pop_resample( EEG, 125, 0.8, 0.4);', EEG);
+verifyTrue(tc, has(n, 'anti-aliasing'));
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');

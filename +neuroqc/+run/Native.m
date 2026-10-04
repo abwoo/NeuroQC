@@ -138,10 +138,19 @@ classdef Native
             labs = {EEG.chanlocs.labels};
             [nv, pos] = nameValues(a);
             function chk(allowed)
+                % options the step reproduces exactly; any other one is a note
                 extra = setdiff(fieldnames(nv), allowed);
                 if ~isempty(extra)
                     notes{end+1} = sprintf('%s option(s) %s are not part of the %s step', fn, strjoin(extra, ', '), type);
                 end
+            end
+            function differs(name, stepValue, what)
+                % a named option whose value differs from what the step uses
+                if ~isfield(nv, name), return; end
+                v = nv.(name);
+                same = isequal(v, stepValue) || (ischar(v) && ischar(stepValue) && strcmpi(v, stepValue)) || ...
+                    (isnumeric(v) && isnumeric(stepValue) && isequal(size(v), size(stepValue)) && all(abs(v(:) - stepValue(:)) < 1e-9));
+                if ~same, notes{end+1} = sprintf('%s = %s (the %s step uses %s)', name, valueCode(v), type, what); end
             end
             switch type
                 case {'highpass','lowpass','linenoise'}
@@ -163,16 +172,30 @@ classdef Native
                     chk({'locutoff','hicutoff','revfilt','plotfreqz'});
                 case 'resample'
                     vals.fs = pos{1};
+                    if numel(pos) > 1 && ~all(cellfun(@isempty, pos(2:end)))
+                        notes{end+1} = 'the anti-aliasing filter settings of pop_resample are not part of the resample step (it uses the defaults)';
+                    end
+                    chk({});
                 case 'asr'
                     vals.cutoff = getOr(nv, 'BurstCriterion', 20);
                     off = {'FlatlineCriterion','ChannelCriterion','LineNoiseCriterion','Highpass','WindowCriterion'};
                     on = off(cellfun(@(f) isfield(nv, f) && ~(ischar(nv.(f)) && strcmpi(nv.(f), 'off')), off));
                     if ~isempty(on), notes{end+1} = sprintf('the asr step only corrects bursts; %s not used', strjoin(on, ', ')); end
+                    differs('BurstRejection', 'off', '''off'' (repair, not removal)');
+                    differs('Distance', 'Euclidian', 'Euclidian');
+                    differs('BurstCriterionRefMaxBadChns', 0.075, '0.075');
+                    differs('BurstCriterionRefTolerances', [-inf 5.5], '[-Inf 5.5]');
+                    chk([off {'BurstCriterion','BurstRejection','Distance','MaxMem','availableRAM_GB', ...
+                        'BurstCriterionRefMaxBadChns','BurstCriterionRefTolerances','WindowCriterionTolerances', ...
+                        'ChannelCriterionMaxBadTime','NoLocsChannelCriterion','NoLocsChannelCriterionExcluded', 'fusechanrej'}]);
                 case 'badchannels'
                     vals.measure = getOr(nv, 'measure', 'kurt'); vals.threshold = getOr(nv, 'threshold', 5);
                     elec = getOr(nv, 'elec', 1:numel(labs));
                     if numel(elec) < numel(labs), vals.exclude = labs(setdiff(1:numel(labs), elec)); end
                     if numel(vals.threshold) > 1, notes{end+1} = 'only the upper threshold is used'; vals.threshold = max(vals.threshold); end
+                    differs('norm', 'on', '''on'' (z-scored measure)');
+                    if strcmp(vals.measure, 'spec'), differs('freqrange', [1 min(50, EEG.srate / 2 - 1)], sprintf('[1 %g] Hz', min(50, EEG.srate / 2 - 1)));
+                    elseif isfield(nv, 'freqrange'), notes{end+1} = 'freqrange only applies to the spec measure'; end
                     chk({'elec','threshold','norm','measure','freqrange'});
                 case 'reref'
                     ref = pos{1};
@@ -188,6 +211,9 @@ classdef Native
                     vals.action = 'remove';
                     chk({'rmchannel','nochannel','channel'});
                 case {'reject_threshold','reject_jointprob','reject_kurtosis'}
+                    if ~isequal(pos{1}, 1)
+                        notes{end+1} = 'the dialog tests ICA components, the step tests the channel data';
+                    end
                     elec = pos{2};
                     if numel(elec) < numel(labs), vals.exclude = labs(setdiff(1:numel(labs), elec)); end
                     if strcmp(type, 'reject_threshold')
@@ -195,6 +221,9 @@ classdef Native
                         assert(isscalar(lo) && isscalar(hi), 'NeuroQC:Native', 'Per-channel limits: keep the whole EEGLAB command to use them.');
                         vals.uv = hi;
                         if lo ~= -hi, notes{end+1} = sprintf('asymmetric limits [%g %g]: the step uses +/-%g', lo, hi, hi); end
+                        if numel(pos) >= 6 && EEG.trials > 1 && (abs(pos{5} - EEG.xmin) > 1 / EEG.srate || abs(pos{6} - EEG.xmax) > 1 / EEG.srate)
+                            notes{end+1} = sprintf('time range [%g %g] s: the step tests the whole epoch [%g %g] s', pos{5}, pos{6}, EEG.xmin, EEG.xmax);
+                        end
                     else
                         vals.sd = pos{3};
                         if numel(pos) >= 4 && ~isequal(pos{4}, pos{3})
@@ -203,6 +232,12 @@ classdef Native
                     end
                 case 'ica'
                     vals.extended = getOr(nv, 'extended', 1);
+                    differs('icatype', 'runica', 'runica');
+                    differs('rndreset', 'no', '''no'' (reproducible)');
+                    if isfield(nv, 'pca') && ~isempty(nv.pca), notes{end+1} = sprintf('pca = %s: the ica step does not reduce the dimension (EEGLAB limits it to the data rank)', valueCode(nv.pca)); end
+                    if isfield(nv, 'chanind') && ~isempty(nv.chanind) && numel(nv.chanind) < numel(labs)
+                        notes{end+1} = sprintf('ICA on %d of %d channels: the ica step uses all channels', numel(nv.chanind), numel(labs));
+                    end
                     chk({'icatype','extended','interrupt','rndreset','chanind','pca'});
                 case 'icremove'
                     T = pos{1};

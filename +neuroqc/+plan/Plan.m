@@ -167,7 +167,7 @@ classdef Plan
             upper = nOrders * prod(counts);
             st0 = rootState(state);
             leaves = struct('path', {}, 'key', {}, 'order', {}, 'stratum', {});
-            seen = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+            seen = containers.Map('KeyType', 'char', 'ValueType', 'any');
             reasons = containers.Map('KeyType', 'char', 'ValueType', 'double');
             report = struct('upperBound', upper);
             visits = 0;
@@ -213,8 +213,16 @@ classdef Plan
             function addLeaf(order, path)
                 key = strjoin(cellfun(@(i) i.key, path, 'UniformOutput', false), ' > ');
                 if isempty(key), key = '(no step)'; end
-                if isKey(seen, key), return; end
-                seen(key) = true;
+                % the same pipeline reached through another order (e.g. a
+                % skipped step) is one candidate; two DIFFERENT pipelines
+                % must never share a key, or one would be dropped silently
+                sig = getByteStreamFromArray(cellfun(@(i) {i.type, i.params}, path, 'UniformOutput', false));
+                if isKey(seen, key)
+                    assert(isequal(seen(key), sig), 'NeuroQC:Plan', ['Internal error: two different pipelines share ', ...
+                        'the key %s; refusing rather than dropping one.'], key);
+                    return;
+                end
+                seen(key) = sig;
                 leaves(end+1) = struct('path', {path}, 'key', key, 'order', order, 'stratum', stratumOf(path));
                 assert(numel(leaves) <= opts.maxLeaves, 'NeuroQC:SearchTooLarge', ...
                     ['More than maxLeaves = %d legal pipelines. Nothing was run or truncated. Fix more ', ...
@@ -470,7 +478,12 @@ for g = 1:numel(idx)
             shown{end+1} = sprintf('%s=%s', args(i).name, valText(vals{i})); %#ok<AGROW>
         end
     end
-    if isempty(shown), key = sprintf('%s: %s', P.fn, com); else, key = sprintf('%s(%s)', P.fn, strjoin(shown, ',')); end
+    % the key holds EVERY argument: two configurations that differ only in
+    % a fixed argument are different pipelines and must not be merged as
+    % duplicates (the label shows the searched arguments first)
+    allTxt = arrayfun(@(i) sprintf('%s=%s', args(i).name, valText(vals{i})), 1:numel(args), 'UniformOutput', false);
+    fixedTxt = allTxt(~ismember({args.name}, searched));
+    key = sprintf('%s(%s)', P.fn, strjoin([shown fixedTxt], ','));
     list{g} = struct('slot', slotId, 'type', 'native', 'params', p, 'key', key, 'label', key, ...
         'searched', {cellfun(@matlab.lang.makeValidName, searched, 'UniformOutput', false)}, 'defining', referenceOf(com));
 end

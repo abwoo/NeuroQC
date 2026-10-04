@@ -196,6 +196,19 @@ for k = 1:numel(l)
 end
 end
 
+function testDifferentFixedArgumentsAreDifferentPipelines(tc)
+% Two configurations that differ only in a fixed argument (high-pass 0.1
+% vs 0.5, both searching the low-pass) are four pipelines, none dropped.
+p = neuroqc.plan.Plan();
+p = p.addEeglab('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''hicutoff'',20);', 'filt', 'hicutoff', {20, 30});
+alt = neuroqc.run.Native.eeglabAlt('EEG = pop_eegfiltnew(EEG, ''locutoff'',0.5,''hicutoff'',20);');
+alt.params.args(2).values = {20, 30};
+p = p.addAlternative('filt', alt);
+leaves = p.enumerate(nqc_fakeState(false, 500), nqc_contract());
+verifyEqual(tc, numel(leaves), 4);
+verifyEqual(tc, numel(unique({leaves.key})), 4);
+end
+
 function testEeglabCommandArgumentsAreSearchParameters(tc)
 % A command from an EEGLAB dialog keeps every argument; named and
 % positional arguments can be searched; values are written back exactly.

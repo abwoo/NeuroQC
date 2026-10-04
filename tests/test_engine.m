@@ -498,7 +498,7 @@ p = p.setSkippable('filter', true);
 p = p.add('epoch'); p = p.add('baseline');
 r = neuroqc.NeuroQC.optimize(p, nqc_c());
 verifyEqual(tc, numel(r.leaves), 3);
-verifyEqual(tc, sum(contains(r.labels, 'filtorder'',3300')), 1);   % the full dialog setting is kept
+verifyEqual(tc, sum(contains(r.labels, 'filtorder=3300')), 1);     % the full dialog setting is kept (and shown)
 verifyEqual(tc, sum(startsWith(r.labels, 'epoch')), 1);            % the skipped variant
 verifyTrue(tc, any(strcmp(r.marginal.parameter, 'filter.(alternative)')));
 p = p.setSkippable('filter', false);
