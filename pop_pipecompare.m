@@ -19,6 +19,10 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %   'pool'     ERP: true scores all the event types as one condition
 %              (default false)
 %   'recipe'   'filters' | 'standard': which steps are compared
+%   'reference' 'asis' (default) | 'average': the average reference as a
+%              fixed step of every pipeline, after the bad channels and
+%              before ICA (channels typed as EOG, ECG, ... are left out of
+%              the average)
 %   'segment'  band power: segment length in s (default 2)
 %   'show'     'on' (default) shows a progress window with a Stop button
 %              (stopping keeps the pipelines already run) and opens the
@@ -38,11 +42,11 @@ if nargin < 2
     if isempty(opts), return; end                       % cancelled, or continued in the panel
 else
     opts = struct('measure', '', 'events', {{}}, 'pool', false, 'window', [], 'band', [], 'channels', {{}}, ...
-        'recipe', '', 'segment', 2, 'show', 'on');
+        'recipe', '', 'reference', 'asis', 'segment', 2, 'show', 'on');
     for k = 1:2:numel(varargin)
         f = lower(char(varargin{k}));
         assert(isfield(opts, f), 'PipeCompare:Simple', ['Unknown option %s (measure, events, pool, window, band, channels, recipe, ', ...
-            'segment, show).'], f);
+            'reference, segment, show).'], f);
         opts.(f) = varargin{k+1};
     end
     opts.events = cellstr(opts.events);
@@ -54,7 +58,8 @@ assert(~isempty(cur) && strcmp(pipecompare.live.Session.fingerprint(cur), pipeco
 state = pipecompare.live.DataState.fromEEG(EEG);
 c = pipecompare.simple.Presets.contract(EEG, opts.measure, opts.events, opts.segment, opts.pool, ...
     struct('window', opts.window, 'band', opts.band, 'channels', {cellstr(opts.channels)}));
-[plan, notes] = pipecompare.simple.Presets.recipe(opts.recipe, state, c);
+[plan, notes] = pipecompare.simple.Presets.recipe(opts.recipe, state, c, opts.reference, ...
+    pipecompare.simple.Presets.nonEegChannels(EEG));
 for k = 1:numel(notes), pipecompare.utils.log('Recipe %s: %s.', opts.recipe, notes{k}); end
 % the unit judged from the amplitude scale, as in the panel: rejection
 % thresholds in uV would remove nothing from data stored in V
@@ -93,6 +98,7 @@ if ~pipecompare.simple.Presets.isBand(opts.measure)
     if opts.pool, args = [args {'pool', true}]; end
 elseif opts.segment ~= 2, args = [args {'segment', opts.segment}]; end
 args = [args {'recipe', opts.recipe}];
+if strcmp(opts.reference, 'average'), args = [args {'reference', 'average'}]; end
 com = sprintf('EEG = pop_pipecompare(EEG, %s);', vararg2str(args));
 if ~strcmp(opts.show, 'off'), pipecompare.gui.SimpleResults(result); end
 

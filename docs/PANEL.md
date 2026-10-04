@@ -34,6 +34,11 @@ Two choices (what to measure; for ERP, the event types); the recipe is preselect
    are already epoched. Filter edges the data already have (read from the history) are not
    compared: they would leave the data unchanged but still filter the known signal. Above the search limit (500) *Run* stays off; use *Advanced…* to fix
    some values.
+4. **Reference**: *as recorded* (default) or *average reference*, a fixed step of every pipeline
+   placed after the bad channels are interpolated (otherwise a bad channel spreads into every
+   channel) and before ICA; channels typed EOG, ECG, … are left out of the average. It is not
+   searched: the reference changes what is measured, so it is chosen for your analysis, not by
+   noise. Filtering and re-referencing are both linear, so their order does not matter.
 
 *Run* shows a progress window (pipelines done, time left) with *Stop*: stopping keeps the
 pipelines already run, and the result covers those. The time left is estimated from the

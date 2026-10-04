@@ -27,7 +27,7 @@ classdef SimpleDialog < handle
         ChannelsFor = ''       % which custom measure they were chosen for
         EventList; PoolBox
         Types; Counts          % the event types offered and how many of each
-        RecipeDrop
+        RecipeDrop; RefDrop
         CountLabel; NotesLabel
         RunButton; AdvancedButton
         Answer = []            % the options when Run was pressed
@@ -61,10 +61,10 @@ classdef SimpleDialog < handle
             obj.Types = s.eventTypes(keep); obj.Counts = s.eventCounts(keep);
             [isLock, at] = ismember(obj.Types, s.lockingTypes);
             obj.Counts(isLock) = s.lockingCounts(at(isLock));
-            obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', [200 200 620 440], ...
+            obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', [200 200 620 470], ...
                 'CloseRequestFcn', @(~, ~) obj.close());
-            g = uigridlayout(obj.Fig, [9 2]); obj.Grid = g;
-            g.RowHeight = {22, 22, 0, '1x', 22, 22, 22, 44, 30};
+            g = uigridlayout(obj.Fig, [10 2]); obj.Grid = g;
+            g.RowHeight = {22, 22, 0, '1x', 22, 22, 22, 22, 44, 30};
             g.ColumnWidth = {150, '1x'};
             uilabel(g, 'Text', '1. Data', 'FontWeight', 'bold');
             obj.TypeWhy = uilabel(g, 'Text', obj.typeReason(), 'FontColor', [0.3 0.3 0.3], 'WordWrap', 'on');
@@ -91,6 +91,10 @@ classdef SimpleDialog < handle
             labels = cellfun(@pipecompare.simple.Presets.recipeLabel, pipecompare.simple.Presets.recipeNames(), 'UniformOutput', false);
             obj.RecipeDrop = uidropdown(g, 'Items', labels, 'ItemsData', pipecompare.simple.Presets.recipeNames(), ...
                 'Value', 'standard', 'ValueChangedFcn', @(~, ~) obj.update());
+            uilabel(g, 'Text', 'Reference');
+            % fixed in every pipeline (not searched): it changes what is measured
+            obj.RefDrop = uidropdown(g, 'Items', {'As recorded', 'Average reference (after bad channels, before ICA)'}, ...
+                'ItemsData', {'asis', 'average'}, 'Value', 'asis', 'ValueChangedFcn', @(~, ~) obj.update());
             uilabel(g, 'Text', '');
             obj.CountLabel = uilabel(g, 'Text', '', 'FontWeight', 'bold');
             uilabel(g, 'Text', '');
@@ -195,7 +199,7 @@ classdef SimpleDialog < handle
             erp = obj.isErp();
             if erp && isempty(obj.EventList.Value), return; end
             o = struct('measure', m, 'events', {cellstr(obj.EventList.Value)}, 'pool', obj.PoolBox.Value, ...
-                'window', [], 'band', [], 'channels', {{}}, 'recipe', obj.RecipeDrop.Value, 'segment', 2, 'show', 'on');
+                'window', [], 'band', [], 'channels', {{}}, 'recipe', obj.RecipeDrop.Value, 'reference', obj.RefDrop.Value, 'segment', 2, 'show', 'on');
             if ~erp, o.events = {}; o.pool = false; end
             if any(strcmp(m, {obj.CustomErp, obj.CustomBand}))
                 v = sscanf(strrep(obj.WindowField.Value, ',', ' '), '%f')';
@@ -227,7 +231,8 @@ classdef SimpleDialog < handle
             try
                 c = obj.contract(o);
                 c.validate(obj.State);
-                [plan, notes] = pipecompare.simple.Presets.recipe(o.recipe, obj.State, c);
+                [plan, notes] = pipecompare.simple.Presets.recipe(o.recipe, obj.State, c, o.reference, ...
+                    pipecompare.simple.Presets.nonEegChannels(obj.EEG));
                 [leaves, tree] = plan.enumerate(obj.State, c, struct('maxLeaves', Inf));
                 n = numel(leaves);
                 nIca = sum(arrayfun(@(k) strcmp(tree(k).inst.type, 'ica'), 2:numel(tree)));   % shared prefixes run once
@@ -297,7 +302,8 @@ classdef SimpleDialog < handle
             end
             app = pipecompare.gui.Panel();
             if ~isempty(c) && strcmp(c.analysis, 'erp')
-                [plan, notes] = pipecompare.simple.Presets.recipe(o.recipe, obj.State, c);
+                [plan, notes] = pipecompare.simple.Presets.recipe(o.recipe, obj.State, c, o.reference, ...
+                    pipecompare.simple.Presets.nonEegChannels(obj.EEG));
                 app.Plan = plan; app.showPlan();
                 for k = 1:numel(c.conditions), app.addCondition(c.conditions(k).name, c.conditions(k).events); end
                 app.EpochField.Value = sprintf('%g %g', c.epoch); app.BaseField.Value = sprintf('%g %g', c.baseline);

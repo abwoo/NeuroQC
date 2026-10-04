@@ -41,5 +41,6 @@ error. The History list must keep 1 row unless the step says *Apply now*.
 | 23 | *Compare pipelines…* again, Compare *Standard*; then *Advanced…* | The panel opens with conditions, epoch, baseline, the P3 component and the standard plan (bad channels, ICA, filters, …) filled in. |
 | 24 | On a dataset where one event type has fewer than 10 events: select only that type, Measure `P3`, Compare *Filters only*; then select a second type; then tick *Score the selected event types as one condition* | First `… has n events; each condition needs at least 10.` with *Run* greyed; with two types the message suggests the tick box; after ticking, *Run* is on. |
 | 25 | *Compare pipelines…* again, Measure *ERP: your own window and electrodes…*, type `250 500`, *Electrodes…* > `Cz`, `CPz`; select `11`; Compare *Filters only* | A window/electrodes row appears; the count shows `12 pipelines will be compared`; *Run* on. With Measure *Band power: your own band…* and `8 12`, the electrodes read `n electrodes` (all EEG) and *Run* is on. |
+| 26 | *Compare pipelines…*, Measure `P3`, events `11` and `31`, Compare *Standard*, Reference *Average reference*; then *Advanced…* | The count stays `108 pipelines will be compared (1 ICA decomposition)`; the panel's plan lists `reref` after `badchannels` and before `ica`. |
 
 Report any row whose result differs from the expected column.

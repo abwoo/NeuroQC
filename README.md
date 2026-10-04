@@ -129,6 +129,10 @@ pipecompare_setup                         % run from the PipeCompare folder
    start. Steps the data cannot support are left out, with the reason; for example, interpolation
    and ICLabel require channel locations. To compare ASR (artifact subspace reconstruction) or
    other steps, use the advanced panel or a script.
+
+   Start from the raw continuous data. If your analysis uses the average reference, choose it under
+   **Reference** rather than re-referencing beforehand: it is then applied in every pipeline after
+   the bad channels are interpolated and before ICA.
 4. Press **Run**. A progress window shows how many pipelines are done and the time left; **Stop**
    ends the search and keeps the pipelines already finished. The Command Window gets a short
    summary; the full log goes to `pipecompare_last_run.log` in MATLAB's `tempdir`.
