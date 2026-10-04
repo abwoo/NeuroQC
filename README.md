@@ -1,15 +1,21 @@
 # NeuroQC
 
 <p>
-  <img src="https://img.shields.io/badge/version-0.7.0-2f6fed?style=flat-square" alt="version"/>
+  <img src="https://img.shields.io/badge/version-0.7.1-2f6fed?style=flat-square" alt="version"/>
   <img src="https://img.shields.io/badge/MATLAB-R2026a-orange?style=flat-square" alt="MATLAB"/>
   <img src="https://img.shields.io/badge/EEGLAB-2026.0.0-blueviolet?style=flat-square" alt="EEGLAB"/>
 </p>
 
-NeuroQC is a semi-automatic preprocessing optimizer attached to EEGLAB. It starts from the dataset as
-it is in EEGLAB now, takes the steps, order and fixed values you choose, runs every allowed
-combination of what you left open through EEGLAB itself, evaluates and compares the results, and
-hands the candidate pipelines back to you.
+NeuroQC compares EEGLAB preprocessing pipelines on event-related data by the standardized
+measurement error (SME) of your ERP measures, after checking constraints and that a known signal
+survives the processing. It currently supports event-related data only (epoched data, or
+continuous data with event markers).
+
+It starts from the dataset as it is in EEGLAB now, takes the steps, order and fixed values you
+choose, runs every allowed combination of what you left open through EEGLAB itself, evaluates and
+compares the results, and hands the candidate pipelines back to you.
+
+![The NeuroQC panel on synthetic data](docs/assets/panel.png)
 
 What it does, and nothing more:
 
@@ -35,7 +41,7 @@ What it does, and nothing more:
 
 Copy the NeuroQC folder into `eeglab/plugins/` and start (or restart) EEGLAB: it adds
 EEGLAB > Tools > NeuroQC by itself, every time EEGLAB starts. Name the folder `NeuroQC` (or
-`NeuroQC0.7.0`): EEGLAB takes the plugin's name and version from the folder name, so a folder
+`NeuroQC0.7.1`): EEGLAB takes the plugin's name and version from the folder name, so a folder
 called e.g. `111` would show up as a plugin named `111`.
 
 `neuroqc_setup` is for development from another folder: it puts NeuroQC on the path and adds the
@@ -53,51 +59,18 @@ Requirements:
 - EEGLAB with firfilt (included by default).
 - The ICLabel plugin for `icremove`, and clean_rawdata for `asr`.
 - Optional: the Parallel Computing Toolbox, for `parallel`.
+## Quick start
 
-## Use it
+1. Load or select a dataset in EEGLAB as usual.
+2. EEGLAB > Tools > NeuroQC > *Optimize from current dataset…*. Define the conditions (*Add from
+   events…*), the epoch, and a component (time window, ROI, measure), add the steps to compare,
+   and press *Run search*.
+3. Select a result to see why it was recommended or excluded; *Adopt selected* stores it as a new
+   EEGLAB dataset whose `EEG.history` reproduces it.
 
-Load or select a dataset in EEGLAB as usual. NeuroQC has no load step: it always works on the current
-dataset and never modifies it during a search. Each candidate runs on its own copy.
+Every button of the panel is described in [docs/PANEL.md](docs/PANEL.md).
 
-**Panel**: open EEGLAB > Tools > NeuroQC > *Optimize from current dataset…*
-
-- **History and state.** The left side shows the live `EEG.history`, parsed line by line. The top
-  shows the dataset's state (including channel locations) and any inconsistency between data and
-  history.
-- **Analysis contract, from EEGLAB's own dialogs.** Conditions are picked from the dataset's event
-  list (*Add from events…*); the trials that count from markers, an EEGLAB data selection
-  (`pop_select`) or event selection (`pop_selectevent`); the epoch from `pop_epoch`; the baseline from
-  `pop_rmbase` (ms converted to s); the ROI from EEGLAB's channel selection. When a dialog sets
-  something the contract cannot hold as is (epoch events that differ from the conditions, epoch
-  options, a baseline on a channel subset), the panel asks which to keep. A trial rule belongs to
-  the recording it was set on and is reset (or flagged) when another recording becomes current. *View ERP* opens
-  `pop_timtopo`, *Chan. locations…* opens `pop_chanedit`. The text fields stay editable and show
-  the trials per condition under the rule.
-- **Nothing is prefilled for a particular study.** Conditions, epoch and components start empty.
-  Defaults that are used are stated and come from conventions or from the data: an empty baseline
-  is the pre-stimulus interval [epoch start, 0]; an empty epoch on epoched data is the data's own
-  epochs; the line-noise frequency (50/60 Hz) and the data unit (uV/V) are judged from the
-  recording; resampling has no default rate. Constraint limits and the catalog's search lists are
-  general starting values, shown in the panel and editable.
-- **Plan.** Add steps in the order they should run. The table shows every parameter as it will
-  run (one value = fixed, several = searched, defaults marked). *Configure in EEGLAB…* opens the
-  step's EEGLAB dialog: its values join the step, and a value that differs from those already there
-  becomes a searched candidate; settings the step cannot hold (e.g. asymmetric limits) are kept as
-  the whole EEGLAB command if you choose so. Each dialog opens on the data as the plan has them at
-  that step (the current dataset's first 120 s run through the steps before it). *Add EEGLAB menu
-  step…* adds any operation of EEGLAB's menus, plugins included (e.g. CleanLine, ERPLAB): its own
-  dialog opens and the command it returns becomes a step whose arguments can be searched.
-  *Edit values…* lists the parameters (channel lists picked in EEGLAB's channel list). *Skipping allowed*, *Must come before…* and the *pin* column
-  control alternatives and order.
-- **Apply now in EEGLAB.** Runs the step on the current dataset through EEGLAB's own menu code path
-  (`EEG.history`, `ALLCOM`, new dataset), so the plan starts after it.
-- **Run search / Options… / Resume…** Every command and score is printed in the Command Window and
-  the result is stored in `neuroqc_result`. Options: data unit, checkpoint folder, parallel.
-- **Results.** Selecting a row shows its full pipeline, reason, measures and commands below the
-  table. *Inspect selected* opens a rebuilt candidate (not adopted) or the source in EEGLAB's
-  viewers; *Adopt* stores a candidate as a new EEGLAB dataset whose `EEG.history` reproduces it.
-
-**Script**
+**The same from a script**
 
 ```matlab
 neuroqc.NeuroQC.state();                          % current dataset, parsed history
@@ -126,72 +99,6 @@ Options are listed in `help neuroqc.run.Executor` (search) and `help neuroqc.eva
 (constraints and ranking). By default the order you add steps is the order they run; if it is
 illegal, NeuroQC lists the conflicts and rearranges nothing. `p.OrderMode = 'search'` tries every
 legal order; `p.pin(id)` keeps a step in place and `p.before(a, b)` constrains two steps.
-
-## How the search works
-
-1. **Starting point.**
-   - The current state is read from the EEG structure: epoched or not, sampling rate, channels and
-     their locations, ICA matrices, IC flags and reference.
-   - `EEG.history` is parsed in order, without deduplication; continuation lines (`...`) are joined.
-   - Where the history cannot describe the data, NeuroQC says so instead of guessing.
-   - The data unit (uV or V) is judged from the amplitude scale (or set with `dataUnit`); volts are
-     converted on NeuroQC's copy.
-   - A floating-point sampling-rate residue (common after EDF import) is rounded on the copy, and
-     the change is recorded.
-2. **Legal pipelines.**
-   - The plan expands into all combinations of searched values, alternatives and orders. Each is
-     checked against the simulated data state; excluded combinations are counted with their reason.
-   - Every legal pipeline is run; above `maxLeaves` (500 by default) the search is refused with its
-     size, never sampled or truncated. To bring a large search within reach: fix the values you
-     are already sure of, pin steps or add `before()` rules instead of searching every order, or
-     search in stages (search the early steps, adopt the result, then search the later steps from
-     that dataset). Raising `maxLeaves` is possible but every pipeline really runs.
-3. **Execution.**
-   - Pipelines run as a prefix tree, so a shared prefix (e.g. one ICA before several IC thresholds)
-     is computed once.
-   - Every step is a native EEGLAB call. Its command is printed and appended to that candidate's
-     `EEG.history`.
-   - Each candidate is checkpointed. `resume` continues and gives the same result as an
-     uninterrupted run.
-   - `parallel = true` distributes independent subtrees over a pool.
-4. **What is measured.**
-   - The contract defines the measures: mean amplitude, peak amplitude or peak latency per
-     component.
-   - No experimental effect is used, so choosing a pipeline cannot inflate the effect you test later.
-   - The data quality of each measure is its standardized measurement error (SME): analytic for
-     means, bootstrapped for peaks and latencies (Luck et al., 2021). SME falls when noise is removed
-     and rises when trials are lost, so it prices the rejection trade-off.
-5. **Signal preservation.** A known signal is used to catch processing that removes the effect along
-   with the noise.
-   - A copy containing only a known signal is carried through every candidate with the same
-     operations and the same decisions as the real data (bad channels, ICA, removed components,
-     rejected epochs, ASR reconstructions). Native commands that decide from the data on their own
-     are re-run on the copy and flagged.
-   - Amplitude error, peak shift, artifactual deflection, and waveform and topography correlation
-     are each checked against a limit.
-6. **Ranking.**
-   - Failures are reported, never ranked. Constraint violations are listed with their reasons.
-     If nothing is feasible, NeuroQC says so and relaxes nothing.
-   - Objective: the **gain-corrected SME**, SME divided by the factor by which the candidate scales a
-     known signal in that measure (read from the signal check). Raw SME would reward a pipeline that
-     shrinks signal and noise alike; SME/gain does not, and ranking it is ranking signal-to-noise
-     (Zhang, Garrett & Luck, 2024). Composite over measures that share a unit, or the one measure
-     you choose; the others are reported. Derivation in [docs/METHODS.md](docs/METHODS.md).
-   - Paired bootstrap over trials (matched by `urevent`); intervals of the difference from the best
-     are simultaneous over all candidates (bootstrap max statistic; White, 2000; Romano & Wolf,
-     2005), so a larger search does not produce more false "worse" verdicts. *Not distinguished* is
-     absence of evidence, not equivalence.
-   - A multiverse summary reports, for each measure and condition, the spread of its value over the
-     feasible pipelines and the searched choice behind most of it (`result.robustness`; Steegen et
-     al., 2016). It shows sensitivity to processing and is not used for the ranking.
-   - A candidate that ends with epochs marked for rejection but not removed (e.g. an ERPLAB artifact
-     detection step without a removal) carries a note: marks do not remove epochs.
-   - Candidates that differ in the reference are ranked in separate strata, never against each other.
-     With several strata there is no overall recommendation: each stratum has its own (marked `*`),
-     and you choose the one that fits your analysis.
-   - The recommendation is the least aggressive candidate among those not distinguished from the
-     best: most trials kept, then least distortion.
-
 ## Limitations (read before trusting a result)
 
 - The contract (events, epoch and baseline windows, ROIs and time windows) defines what is measured.
@@ -216,7 +123,6 @@ legal order; `p.pin(id)` keeps a step in place and `p.before(a, b)` constrains t
 - Depth-first execution keeps one copy of the dataset and one of the signal copy per plan depth in
   memory (per worker in parallel mode); the expected peak is printed when it exceeds 2 GB. Resample
   early in the plan to reduce it.
-
 ## Tests
 
 ```matlab
@@ -241,7 +147,6 @@ Two optional runs use your own data and are never committed:
 
 Clicking inside EEGLAB's dialogs cannot be automated; [tests/MANUAL_GUI_CHECK.md](tests/MANUAL_GUI_CHECK.md)
 lists what to click and what to expect.
-
 ## Cite
 
 ```bibtex
@@ -249,34 +154,12 @@ lists what to click and what to expect.
   author  = {abwoo},
   title   = {NeuroQC: an optimization layer for EEGLAB preprocessing pipelines},
   year    = {2026},
-  version = {0.7.0},
+  version = {0.7.1},
   url     = {https://github.com/abwoo/NeuroQC}
 }
 ```
-
 ## References
 
-- Luck, S. J., Stewart, A. X., Simmons, A. M., & Rhemtulla, M. (2021). Standardized measurement error:
-  A universal metric of data quality for averaged event-related potentials. *Psychophysiology*, 58.
-- Zhang, G., Garrett, D. R., & Luck, S. J. (2024). Optimal filters for ERP research I: A general
-  approach for selecting filter settings; II: Recommended settings for seven common ERP components.
-  *Psychophysiology*, 61.
-- Kothe, C. A. E., & Makeig, S. (2013). BCILAB: a platform for brain-computer interface
-  development. *Journal of Neural Engineering*, 10 (artifact subspace reconstruction).
-- White, H. (2000). A reality check for data snooping. *Econometrica*, 68, 1097–1126.
-- Romano, J. P., & Wolf, M. (2005). Stepwise multiple testing as formalized data snooping.
-  *Econometrica*, 73, 1237–1282.
-- Hansen, P. R., Lunde, A., & Nason, J. M. (2011). The model confidence set. *Econometrica*, 79,
-  453–497.
-- Davison, A. C., & Hinkley, D. V. (1997). *Bootstrap Methods and Their Application*. Cambridge
-  University Press.
-- Perrin, F., Pernier, J., Bertrand, O., & Echallier, J. F. (1989). Spherical splines for scalp
-  potential and current density mapping. *Electroencephalography and Clinical Neurophysiology*, 72,
-  184–187.
-- Pion-Tonachini, L., Kreutz-Delgado, K., & Makeig, S. (2019). ICLabel: An automated
-  electroencephalographic independent component classifier, dataset, and website. *NeuroImage*,
-  198, 181–197.
-
-The full derivations, and the remaining sources, are in [docs/METHODS.md](docs/METHODS.md).
-
-MIT License.
+The methods, their derivations and all sources are in [docs/METHODS.md](docs/METHODS.md); the main
+ones are Luck et al. (2021) for the SME, Zhang, Garrett & Luck (2024) for comparing pipelines by
+signal-to-noise, and White (2000) / Romano & Wolf (2005) for the simultaneous comparison.

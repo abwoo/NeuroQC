@@ -69,7 +69,6 @@ Each item has four status columns:
 | Source dataset and file never modified | ✓ | ✓ | ✓ real data |
 | Prefix sharing equals independent runs | ✓ | ✓ (with ICA) | ✓ |
 | Exhaustive enumeration equals brute force; illegal orders explained | ✓ | ✓ | ✓ |
-| Seeded sampling, labelled approximate | ✓ | ✓ | ✓ |
 | Checkpoint and resume equal an uninterrupted run | ✓ | ✓ | ✓ |
 | Parallel equals serial | ✓ | ✓ | ✓ (local pool) |
 | V → µV conversion, srate residue rounding (recorded) | ✓ | ✓ | ✓ real data (srate) |

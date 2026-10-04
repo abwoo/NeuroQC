@@ -1,49 +1,43 @@
 name: Bug report
-description: Report an issue in this repository (docs, examples, plugin entry files)
-title: "[docs] "
-labels: ["documentation"]
+description: Something in NeuroQC does not work as documented
+title: "[bug] "
+labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report an issue.
-        **Note:** this template covers the documentation, screenshots, configs, examples and the
-        plugin entry files (README, docs, eegplugin_neuroqc.m). The test suite and validation
-        artifacts are not part of this repository.
-  - type: dropdown
-    id: area
+        Thanks for reporting. Please never attach real subject data; a synthetic dataset
+        (`tests/nqc_synth.m`) or a description of the data's shape is enough.
+  - type: input
+    id: matlab
     attributes:
-      label: Area
-      description: Where is the problem?
-      options:
-        - README (English)
-        - docs/ tutorial or guide
-        - screenshots / demo GIF
-        - configs (search space)
-        - examples (reference scripts)
-        - plugin entry / EEGLAB menu
-        - CI / link check
-        - Other
+      label: MATLAB version
+      placeholder: e.g. R2026a (output of `version`)
+    validations:
+      required: true
+  - type: input
+    id: eeglab
+    attributes:
+      label: EEGLAB version and plugins
+      placeholder: e.g. 2026.0.0, ICLabel 1.6, clean_rawdata 2.11
     validations:
       required: true
   - type: textarea
-    id: what-happened
+    id: steps
     attributes:
-      label: What did you find?
-      description: A clear description of the problem (wrong step, broken wording, misleading screenshot, etc.)
-      placeholder: e.g. "Step 4 in the docs mentions a dialog that no longer exists in v0.6."
+      label: Steps to reproduce
+      description: The dataset's shape (channels, rate, continuous/epoched, events), the plan and contract (or panel actions), what you clicked or ran.
     validations:
       required: true
   - type: textarea
-    id: where
+    id: expected
     attributes:
-      label: Where exactly?
-      description: File, section heading or screenshot. A link helps a lot.
-      placeholder: e.g. README.md → "Getting started" heading
+      label: What did you expect, and what happened?
     validations:
       required: true
   - type: textarea
-    id: suggestion
+    id: output
     attributes:
-      label: Suggested fix (optional)
-      placeholder: How should it read instead?
+      label: Command Window output
+      description: The [NeuroQC] lines and any error message with its stack.
+      render: text
