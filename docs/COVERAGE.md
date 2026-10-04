@@ -54,6 +54,7 @@ Each item has four status columns:
 |---|---|---|---|
 | Mean amplitude, analytic SME | ✓ | ✓ (vs. empirical SD) | ✓ real data |
 | Gain-corrected objective (SME / signal gain) | ✓ | ✓ (invariance to scaling) | ✓ real data |
+| Band power of continuous data: segments (eeg_regepochs), log band power SME, sinusoid signal check, moving-block bootstrap | ✓ | ✓ (end to end; error rate with AR(1) segments) | — |
 | Peak amplitude / latency, bootstrapped SME | ✓ | ✓ (vs. replications) | ✓ synthetic |
 | Composite objective or one chosen measure; unit safety | ✓ | ✓ | ✓ |
 | Paired bootstrap, simultaneous not-distinguished set, α = 0.02 calibration (2-24 candidates) | ✓ | ✓ (simulation) | ✓ |

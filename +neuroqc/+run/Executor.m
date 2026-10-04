@@ -261,6 +261,15 @@ classdef Executor
                 root = eeg_checkset(root, 'makeur');
                 add('EEG = eeg_checkset(EEG, ''makeur''); % NeuroQC: trial identities');
             end
+            if contract.isSegmented() && root.trials == 1
+                % consecutive analysis segments, marked with EEGLAB's own function
+                % (events and urevents, so each segment is paired across candidates)
+                cmd = sprintf(['EEG = eeg_regepochs(EEG, ''recurrence'', %g, ''limits'', [0 %g], ''eventtype'', ''%s'', ', ...
+                    '''extractepochs'', ''off''); %% NeuroQC: %g s analysis segments'], contract.segment, contract.segment, ...
+                    neuroqc.eval.Contract.SegmentEvent, contract.segment);
+                [~, root] = evalc('evalWithEEG(root, cmd)');
+                add(cmd);
+            end
             % a trial list left in the dataset by an earlier search (e.g. an
             % adopted candidate) must never restrict this one
             if isfield(root, 'etc') && isstruct(root.etc) && isfield(root.etc, 'neuroqc') && isfield(root.etc.neuroqc, 'eligibleUrevents')

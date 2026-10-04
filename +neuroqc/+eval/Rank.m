@@ -186,6 +186,18 @@ classdef Rank
                     W{c} = zeros(N, B);
                     for b = 1:B, W{c}(randperm(s, N, m), b) = 1; end
                     scale(c) = sqrt(m / N);
+                elseif isfield(ref, 'segmented') && ref.segmented && N >= 8
+                    % Consecutive segments of one recording are dependent (slow
+                    % changes of state and noise), so they are resampled in
+                    % blocks of l = round(N^(1/3)) consecutive segments, the
+                    % moving-block bootstrap (Kunsch, 1989) with the block-length
+                    % order of Hall, Horowitz & Jing (1995). ids are in time order.
+                    l = max(2, round(N ^ (1 / 3))); nb = ceil(N / l);
+                    starts = randi(s, N - l + 1, nb, B);
+                    idx = zeros(nb * l, B);
+                    for j = 1:l, idx(j:l:end, :) = starts + (j - 1); end
+                    idx = idx(1:N, :);
+                    W{c} = full(sparse(idx, repmat(1:B, N, 1), 1, N, B));
                 else
                     idx = randi(s, N, N, B);
                     W{c} = full(sparse(idx, repmat(1:B, N, 1), 1, N, B));

@@ -15,6 +15,17 @@ classdef Contract
     %       Give {'peakLatency','negative'} to set the peak polarity
     %       ('positive' default, 'negative').
     %
+    %   Band power (e.g. resting state)
+    %   c = neuroqc.eval.Contract('analysis', 'bandpower', 'segment', 2, ...
+    %       'bands', {'alpha', [8 12], {'O1','Oz','O2'}});
+    %       continuous data are cut into consecutive 2 s segments (EEGLAB's
+    %       eeg_regepochs on NeuroQC's copy, events 'nqc_seg' with their
+    %       urevents, so a segment is the same segment in every candidate);
+    %       score = log10 of the band power per segment (ROI mean, Hann
+    %       taper), precision = SD / sqrt(number of segments).
+    %   With 'conditions' and 'epoch' instead of 'segment', the band power
+    %   of each epoch is scored (event-related band power).
+    %
     %   trials (optional) restricts which trials count, e.g. to drop a
     %   practice block (the rule is applied once, on the starting dataset):
     %       struct('mode','time_ranges','ranges',[60 Inf])     seconds
@@ -25,11 +36,18 @@ classdef Contract
     %   and are never searched.
 
     properties
+        analysis = 'erp'          % 'erp' | 'bandpower'
+        bands = struct('name', {}, 'freq', {}, 'roi', {})
+        segment = []              % s; band power of continuous data
         conditions = struct('name', {}, 'events', {})
         epoch = []
         baseline = []
         components = struct('name', {}, 'window', {}, 'roi', {}, 'measure', {}, 'polarity', {})
         trials = struct('mode', 'all')
+    end
+
+    properties (Constant)
+        SegmentEvent = 'nqc_seg'  % event type of the segments NeuroQC marks on its copy
     end
 
     methods
@@ -62,6 +80,16 @@ classdef Contract
                         end
                     case {'epoch','baseline'}
                         obj.(name) = double(v(:)');
+                    case 'analysis'
+                        obj.analysis = lower(char(v));
+                        assert(any(strcmp(obj.analysis, {'erp','bandpower'})), 'NeuroQC:Contract', ...
+                            'analysis must be erp or bandpower');
+                    case 'bands'
+                        for r = 1:size(v, 1)
+                            obj.bands(end+1) = struct('name', char(v{r, 1}), 'freq', double(v{r, 2}), 'roi', {cellstr(v{r, 3})});
+                        end
+                    case 'segment'
+                        obj.segment = double(v);
                     case 'trials'
                         assert(isstruct(v) && isfield(v, 'mode'), 'NeuroQC:Contract', 'trials must be a struct with a mode field');
                         obj.trials = v;
@@ -69,6 +97,18 @@ classdef Contract
                         error('NeuroQC:Contract', 'Unknown contract field %s', name);
                 end
             end
+            if obj.isSegmented()
+                % the segments are the trials: one condition, time-locked to
+                % the segment events, window = the segment
+                obj.conditions = struct('name', 'segments', 'events', {{neuroqc.eval.Contract.SegmentEvent}});
+                obj.epoch = [0 obj.segment];
+                obj.baseline = [];
+            end
+        end
+
+        function tf = isSegmented(obj)
+            % band power of consecutive segments of continuous data
+            tf = strcmp(obj.analysis, 'bandpower') && ~isempty(obj.segment);
         end
 
         function ev = allEvents(obj)
@@ -77,6 +117,9 @@ classdef Contract
 
         function units = objectiveUnits(obj)
             units = {};
+            if strcmp(obj.analysis, 'bandpower')
+                units = repmat({'log10(uV^2)'}, 1, numel(obj.bands)); return;
+            end
             for k = 1:numel(obj.components)
                 if strcmp(obj.components(k).measure, 'peakLatency'), units{end+1} = 'ms'; %#ok<AGROW>
                 else, units{end+1} = 'uV'; end %#ok<AGROW>
@@ -84,11 +127,18 @@ classdef Contract
         end
 
         function names = objectiveNames(obj)
+            if strcmp(obj.analysis, 'bandpower')
+                names = arrayfun(@(b) sprintf('%s.logpower', b.name), obj.bands, 'UniformOutput', false); return;
+            end
             names = arrayfun(@(c) sprintf('%s.%s', c.name, c.measure), obj.components, 'UniformOutput', false);
         end
 
         function validate(obj, state)
             % Fail early, with the reason, before anything is run.
+            if strcmp(obj.analysis, 'bandpower')
+                obj.validateBands(nargin > 1 && ~isempty(state), state);
+                return;
+            end
             assert(~isempty(obj.components), 'NeuroQC:Contract', 'Define at least one component (name, window, ROI).');
             assert(~isempty(obj.conditions), 'NeuroQC:Contract', 'Define at least one condition (name + event types).');
             assert(numel(obj.epoch) == 2 && obj.epoch(1) < obj.epoch(2), 'NeuroQC:Contract', ...
@@ -143,8 +193,42 @@ classdef Contract
             end
         end
 
+        function validateBands(obj, haveState, state)
+            assert(~isempty(obj.bands), 'NeuroQC:Contract', 'Define at least one band (name, [f1 f2] Hz, ROI).');
+            for k = 1:numel(obj.bands)
+                f = obj.bands(k).freq;
+                assert(numel(f) == 2 && f(1) > 0 && f(1) < f(2), 'NeuroQC:Contract', ...
+                    'Band %s: [f1 f2] Hz with 0 < f1 < f2.', obj.bands(k).name);
+                assert(~isempty(obj.bands(k).roi), 'NeuroQC:Contract', 'Band %s needs ROI channels.', obj.bands(k).name);
+            end
+            if obj.isSegmented()
+                assert(isscalar(obj.segment) && obj.segment > 0, 'NeuroQC:Contract', 'segment must be a length in s.');
+                % a segment of T s resolves 1/T Hz; two cycles of the lowest band
+                % edge must fit in it for a stable estimate there
+                fmin = min(arrayfun(@(b) b.freq(1), obj.bands));
+                assert(obj.segment >= 2 / fmin, 'NeuroQC:Contract', ['Segments of %g s hold fewer than two cycles ', ...
+                    'of %g Hz; use segment >= %g s.'], obj.segment, fmin, 2 / fmin);
+            else
+                assert(~isempty(obj.conditions) && numel(obj.epoch) == 2 && obj.epoch(1) < obj.epoch(2), ...
+                    'NeuroQC:Contract', 'Band power needs either segment (continuous data) or conditions and epoch.');
+            end
+            obj.validateTrialRule();
+            if ~haveState, return; end
+            fmax = max(arrayfun(@(b) b.freq(2), obj.bands));
+            assert(fmax < state.srate / 2, 'NeuroQC:Contract', 'Band edge %g Hz is at or above Nyquist (%g Hz).', fmax, state.srate / 2);
+            if obj.isSegmented()
+                assert(~state.isEpoched, 'NeuroQC:Contract', ['Segments are cut from continuous data; this dataset is ', ...
+                    'epoched (use conditions and epoch for event-related band power).']);
+            else
+                missing = setdiff([obj.conditions.events], state.eventTypes);
+                assert(isempty(missing), 'NeuroQC:Contract', 'Event type(s) not in the dataset: %s', strjoin(missing, ', '));
+            end
+            absent = setdiff(lower(obj.allRoi()), lower(state.labels));
+            assert(isempty(absent), 'NeuroQC:Contract', 'ROI channel(s) not in the dataset: %s', strjoin(absent, ', '));
+        end
+
         function roi = allRoi(obj)
-            roi = unique([obj.components.roi]);
+            roi = unique([obj.components.roi obj.bands.roi]);
         end
 
         function validateTrialRule(obj)
@@ -166,6 +250,9 @@ classdef Contract
         function s = toStruct(obj)
             s = struct('conditions', {obj.conditions}, 'epoch', obj.epoch, ...
                 'baseline', obj.baseline, 'components', {obj.components}, 'trials', obj.trials);
+            if strcmp(obj.analysis, 'bandpower')   % (ERP contracts keep their earlier identity)
+                s.analysis = obj.analysis; s.bands = obj.bands; s.segment = obj.segment;
+            end
         end
     end
 end

@@ -42,6 +42,9 @@ classdef Measure
             ref.n = cellfun(@numel, ref.ids);
             ref.objectives = contract.objectiveNames();
             ref.units = contract.objectiveUnits();
+            % consecutive segments of one recording are not independent:
+            % Rank resamples them in blocks (moving-block bootstrap)
+            ref.segmented = contract.isSegmented();
         end
 
         function m = candidate(EEG, contract, ref, opts)
@@ -210,6 +213,15 @@ classdef Measure
                 assert(any(bsel), 'NeuroQC:Measure', 'No samples in the baseline window.');
                 data = data - mean(data(:, bsel, :), 2);
             end
+            if strcmp(contract.analysis, 'bandpower')
+                w = times >= win(1) - 1e-9 & times <= win(2) + 1e-9;
+                for b = 1:numel(contract.bands)
+                    band = contract.bands(b);
+                    T.data{b} = bandScores(data(roiIndex(band.roi, labels), w, :), EEG.srate, band.freq);
+                    T.times{b} = [];
+                end
+                return;
+            end
             for j = 1:numel(contract.components)
                 comp = contract.components(j);
                 roi = roiIndex(comp.roi, labels);
@@ -241,12 +253,27 @@ end
 
 function [kind, pol] = objKind(contract, k)
 pol = '';
+if strcmp(contract.analysis, 'bandpower'), kind = 'scalar'; return; end
 comp = contract.components(k);
 pol = comp.polarity;
 switch comp.measure
     case 'mean', kind = 'scalar';
     otherwise, kind = comp.measure;
 end
+end
+
+function s = bandScores(X, fs, band)
+% X: ROI channels x samples x trials. Per trial: log10 of the mean power
+% in the band (Hann taper, one-sided power spectral density, averaged
+% over the band's bins and the ROI channels).
+[~, n, nt] = size(X);
+w = 0.5 - 0.5 * cos(2 * pi * (0:n-1)' / (n - 1));
+F = fft(permute(X, [2 1 3]) .* w, [], 1);              % samples x ROI x trials
+f = (0:n-1) * fs / n;
+sel = f >= band(1) & f <= band(2);
+assert(any(sel), 'NeuroQC:Measure', 'The window is too short to resolve the band [%g %g] Hz.', band);
+P = 2 * abs(F(sel, :, :)) .^ 2 / (fs * sum(w .^ 2));
+s = reshape(log10(mean(mean(P, 1), 2)), nt, 1);
 end
 
 function v = peakOf(avgs, o)

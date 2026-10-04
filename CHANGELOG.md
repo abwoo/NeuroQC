@@ -2,6 +2,16 @@
 
 All notable changes. Versions follow `NeuroQC.Version`; each release has a git tag `vX.Y.Z`.
 
+## Unreleased
+
+**Added**
+- Band power for continuous data (e.g. resting state):
+  `Contract('analysis', 'bandpower', 'segment', T, 'bands', ...)`. Segments are marked with
+  `eeg_regepochs` and paired by urevent. The score is log10 band power (Hann taper), and the
+  signal check uses a sinusoid at the band centre. Dependent segments are compared with a
+  moving-block bootstrap. Event-related band power is available with `conditions` + `epoch`.
+  ERP results are unchanged.
+
 ## 0.7.1 (2026-10-04)
 
 Bug fixes, cleanup and repository standards (plan stages 1–5), plus the evaluation corrections
