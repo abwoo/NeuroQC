@@ -40,7 +40,8 @@ What it does, and nothing more:
 
 ## Install
 
-Copy the PipeCompare folder into `eeglab/plugins/` and start (or restart) EEGLAB: it adds
+Download `PipeCompare<version>.zip` from the repository's Releases and unzip it into
+`eeglab/plugins/` (or copy the PipeCompare folder there), then start (or restart) EEGLAB: it adds
 EEGLAB > Tools > PipeCompare by itself, every time EEGLAB starts. Name the folder `PipeCompare` (or
 `PipeCompare0.8.0`): EEGLAB takes the plugin's name and version from the folder name, so a folder
 called e.g. `111` would show up as a plugin named `111`.

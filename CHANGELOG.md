@@ -25,7 +25,7 @@ release has a git tag `vX.Y.Z`.
   and remove the old `NeuroQC` folder, or both menus appear.
 
 **Added**
-- Simple mode: EEGLAB > Tools > NeuroQC > *Compare pipelines…* (`pop_pipecompare`). It takes three
+- Simple mode: EEGLAB > Tools > PipeCompare > *Compare pipelines…* (`pop_pipecompare`). It takes three
   choices: data type, a measure (ERP CORE component presets or a frequency band), and a recipe
   (filters, standard, full). It shows a live pipeline count, a result window, and an
   EEGLAB-style command in ALLCOM. The panel becomes *Advanced panel…*.
