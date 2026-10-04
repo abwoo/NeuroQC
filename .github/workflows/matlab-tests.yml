@@ -1,9 +1,11 @@
 name: matlab-tests
 
-# The suites that need no window: plan enumeration, history parsing, the
-# panel's text parsing, statistics and invariants. The suites that drive
-# EEGLAB's window or run whole searches (test_eeglab, test_engine,
-# test_signal) run locally (see CONTRIBUTING.md).
+# Two jobs: the suites that need no window (plan enumeration, history
+# parsing, the panel's text parsing, statistics, invariants), and the
+# suites that open windows or run whole searches (EEGLAB integration and
+# the panel, end-to-end searches, signal preservation, simple mode) on a
+# virtual display. Clicking inside EEGLAB's own dialogs is still checked
+# by hand (tests/MANUAL_GUI_CHECK.md).
 
 on:
   push:
@@ -36,4 +38,38 @@ jobs:
             addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
             cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
             r = run_all({'test_history', 'test_plan', 'test_panel_text', 'test_statistics', 'test_invariants'});
+            assert(~any([r.Failed]), 'PipeCompare:CI', '%d test(s) failed', sum([r.Failed]));
+
+  gui-tests:
+    name: MATLAB tests with windows
+    runs-on: ubuntu-latest
+    env:
+      DISPLAY: ":99"
+    steps:
+      - name: Checkout PipeCompare
+        uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+
+      - name: Checkout EEGLAB
+        run: git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+
+      - name: Start a virtual display
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q xvfb
+          Xvfb :99 -screen 0 1920x1080x24 &
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: latest
+
+      - name: Run tests
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
+            cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
+            r = run_all({'test_simple', 'test_eeglab', 'test_signal', 'test_engine'});
             assert(~any([r.Failed]), 'PipeCompare:CI', '%d test(s) failed', sum([r.Failed]));

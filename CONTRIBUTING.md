@@ -28,6 +28,8 @@ data's shape is enough.
 addpath(fullfile(pwd, 'tests')); results = run_all();
 ```
 
-CI runs the suites that need no window (`test_history`, `test_plan`, `test_panel_text`,
-`test_statistics`, `test_invariants`). The others need EEGLAB's window and run locally; panel
-changes are also checked by hand with `tests/MANUAL_GUI_CHECK.md`.
+CI runs every suite: those that need no window (`test_history`, `test_plan`, `test_panel_text`,
+`test_statistics`, `test_invariants`) in one job, and those that open windows or run whole searches
+(`test_simple`, `test_eeglab`, `test_signal`, `test_engine`) in a second job on a virtual display.
+Clicking inside EEGLAB's own dialogs cannot be automated: panel changes are also checked by hand
+with `tests/MANUAL_GUI_CHECK.md`.
