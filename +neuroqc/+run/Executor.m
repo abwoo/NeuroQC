@@ -95,7 +95,7 @@ classdef Executor
             neuroqc.utils.log('Reference trials per condition: %s', ...
                 strjoin(arrayfun(@(c) sprintf('%s=%d', ref.names{c}, ref.n(c)), 1:numel(ref.n), 'UniformOutput', false), ', '));
             env = struct('tree', tree, 'leaves', leaves, 'contract', contract, 'ref', ref, 'opts', opts, ...
-                'nbchan', root.nbchan + numel(fieldOr(root.etc.neuroqc, 'preRemoved', [])), 'done', done, 'checkpoint', opts.checkpoint, 'tStart', tic, ...
+                'nbchan', root.nbchan + numel(neuroqc.utils.fieldOr(root.etc.neuroqc, 'preRemoved', [])), 'done', done, 'checkpoint', opts.checkpoint, 'tStart', tic, ...
                 'truth', [], 'identity', '');
             % signal check: a copy holding only a known signal goes through every
             % candidate with the same operations and decisions as the real data
@@ -477,10 +477,6 @@ classdef Executor
 end
 
 % ---------------------------------------------------------------------
-function v = fieldOr(s, f, d)
-if isfield(s, f), v = s.(f); else, v = d; end
-end
-
 function c = emptyCand()
 % One evaluated pipeline. Every field is set here and only here; the
 % producers and consumers are:

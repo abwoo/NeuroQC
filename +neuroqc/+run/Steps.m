@@ -283,13 +283,13 @@ classdef Steps
             switch type
                 case 'reject_threshold'
                     [EEG, ~, c1] = pop_eegthresh(EEG, 1, chans, -p.uv, p.uv, EEG.xmin, EEG.xmax, 0, 0);
-                    marks = EEG.reject.rejthresh; E = fieldOr(EEG.reject, 'rejthreshE');
+                    marks = EEG.reject.rejthresh; E = neuroqc.utils.fieldOr(EEG.reject, 'rejthreshE');
                 case 'reject_jointprob'
                     [EEG, ~, ~, ~, c1] = pop_jointprob(EEG, 1, chans, p.sd, p.sd, 0, 0, 0, [], 0);
-                    marks = EEG.reject.rejjp; E = fieldOr(EEG.reject, 'rejjpE');
+                    marks = EEG.reject.rejjp; E = neuroqc.utils.fieldOr(EEG.reject, 'rejjpE');
                 case 'reject_kurtosis'
                     [EEG, ~, ~, ~, c1] = pop_rejkurt(EEG, 1, chans, p.sd, p.sd, 0, 0, 0, [], 0);
-                    marks = EEG.reject.rejkurt; E = fieldOr(EEG.reject, 'rejkurtE');
+                    marks = EEG.reject.rejkurt; E = neuroqc.utils.fieldOr(EEG.reject, 'rejkurtE');
             end
             idx = find(marks);
             % which channels drive the rejections (a hint for bad channels)
@@ -433,10 +433,6 @@ try
 catch ME
     neuroqc.utils.log('ASR decisions not recorded (%s); the signal check re-runs ASR.', ME.message);
 end
-end
-
-function v = fieldOr(s, f)
-v = []; if isfield(s, f), v = s.(f); end
 end
 
 function requireLocations(locs, what)

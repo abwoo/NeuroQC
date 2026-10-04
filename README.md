@@ -1,4 +1,4 @@
-# NeuroQC 0.7
+# NeuroQC
 
 <p>
   <img src="https://img.shields.io/badge/version-0.7.0-2f6fed?style=flat-square" alt="version"/>

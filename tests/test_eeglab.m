@@ -675,6 +675,21 @@ r.root.data(3, 100) = r.root.data(3, 100) + 1e-3;
 verifyNotEqual(tc, neuroqc.run.Executor.identity(r), a);
 end
 
+function testScoredTrialsAreTheOutputTrials(tc)
+% The trials that are scored (Measure.trials) and the trials a candidate
+% hands on (Executor.selectEligible) come from one time-locking rule.
+EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30));
+c = neuroqc.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], 'baseline', [-0.2 0], ...
+    'components', {'P3', [0.3 0.5], {'Pz'}}, 'trials', struct('mode', 'time_ranges', 'ranges', [30 Inf]));
+[~, root] = evalc('neuroqc.run.Executor.prepareRoot(EEG, c)');
+[~, E] = evalc('pop_epoch(root, c.allEvents(), c.epoch, ''epochinfo'', ''yes'')');
+T = neuroqc.eval.Measure.trials(E, c, true);
+[~, out] = evalc('neuroqc.run.Executor.selectEligible(E, c)');
+lock = neuroqc.eval.Measure.lockingEvents(out, c.allEvents());
+verifyEqual(tc, sort(arrayfun(@(k) double(out.event(k).urevent), lock)), sort(T.id'));
+verifyLessThan(tc, out.trials, E.trials);                       % the rule did remove trials
+end
+
 function testCaptureReturnsCommandWithoutTouchingData(tc)
 EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
 com = neuroqc.run.Native.captureCall(EEG, '[EEG, LASTCOM] = pop_eegfiltnew(EEG, ''locutoff'', 0.5);');

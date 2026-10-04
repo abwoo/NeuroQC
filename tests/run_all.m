@@ -1,5 +1,5 @@
 function results = run_all(names)
-%RUN_ALL Run the NeuroQC 0.7 test suite and print a summary.
+%RUN_ALL Run the NeuroQC test suite and print a summary.
 %   results = run_all()              all suites
 %   results = run_all({'test_plan'}) selected suites
 %   Needs EEGLAB on the path. Set NEUROQC_REAL_SET to a real .set file
@@ -7,7 +7,7 @@ function results = run_all(names)
 here = fileparts(mfilename('fullpath'));
 addpath(here); addpath(fullfile(here, '..'));
 if nargin < 1
-    names = {'test_history', 'test_plan', 'test_statistics', 'test_signal', 'test_engine', 'test_eeglab', 'test_invariants'};
+    names = {'test_history', 'test_plan', 'test_panel_text', 'test_statistics', 'test_signal', 'test_engine', 'test_eeglab', 'test_invariants'};
 end
 results = [];
 for k = 1:numel(names)

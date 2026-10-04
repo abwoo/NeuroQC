@@ -201,17 +201,13 @@ function [full, labels] = montage(root)
 % channel labels and positions: the data's channels, then the restorable
 % channels removed before NeuroQC
 f = {'labels', 'X', 'Y', 'Z'};
-pick = @(c) cell2struct(cellfun(@(n) fieldOrEmpty(c, n), f, 'UniformOutput', false), f, 2);
+pick = @(c) cell2struct(cellfun(@(n) neuroqc.utils.fieldOr(c, n), f, 'UniformOutput', false), f, 2);
 full = arrayfun(pick, root.chanlocs);
 if isfield(root, 'etc') && isstruct(root.etc) && isfield(root.etc, 'neuroqc') && isfield(root.etc.neuroqc, 'preRemoved')
     full = [full(:); arrayfun(pick, root.etc.neuroqc.preRemoved(:))]';
 end
 full = full(:)';
 labels = {full.labels};
-end
-
-function v = fieldOrEmpty(c, n)
-if isfield(c, n), v = c.(n); else, v = []; end
 end
 
 function w = topography(EEG, roi)

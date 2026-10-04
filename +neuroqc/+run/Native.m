@@ -177,7 +177,7 @@ classdef Native
             switch type
                 case {'highpass','lowpass','linenoise'}
                     assert(strcmp(fn, 'pop_eegfiltnew'), 'NeuroQC:Native', 'Expected pop_eegfiltnew, got %s', fn);
-                    lo = getOr(nv, 'locutoff', []); hi = getOr(nv, 'hicutoff', []); rev = getOr(nv, 'revfilt', 0);
+                    lo = neuroqc.utils.fieldOr(nv, 'locutoff', []); hi = neuroqc.utils.fieldOr(nv, 'hicutoff', []); rev = neuroqc.utils.fieldOr(nv, 'revfilt', 0);
                     switch type
                         case 'highpass'
                             assert(~isempty(lo) && lo > 0 && ~rev, 'NeuroQC:Native', 'The dialog did not set a high-pass edge (lower edge).');
@@ -199,7 +199,7 @@ classdef Native
                     end
                     chk({});
                 case 'asr'
-                    vals.cutoff = getOr(nv, 'BurstCriterion', 20);
+                    vals.cutoff = neuroqc.utils.fieldOr(nv, 'BurstCriterion', 20);
                     off = {'FlatlineCriterion','ChannelCriterion','LineNoiseCriterion','Highpass','WindowCriterion'};
                     on = off(cellfun(@(f) isfield(nv, f) && ~(ischar(nv.(f)) && strcmpi(nv.(f), 'off')), off));
                     if ~isempty(on), notes{end+1} = sprintf('the asr step only corrects bursts; %s not used', strjoin(on, ', ')); end
@@ -211,8 +211,8 @@ classdef Native
                         'BurstCriterionRefMaxBadChns','BurstCriterionRefTolerances','WindowCriterionTolerances', ...
                         'ChannelCriterionMaxBadTime','NoLocsChannelCriterion','NoLocsChannelCriterionExcluded', 'fusechanrej'}]);
                 case 'badchannels'
-                    vals.measure = getOr(nv, 'measure', 'kurt'); vals.threshold = getOr(nv, 'threshold', 5);
-                    elec = getOr(nv, 'elec', 1:numel(labs));
+                    vals.measure = neuroqc.utils.fieldOr(nv, 'measure', 'kurt'); vals.threshold = neuroqc.utils.fieldOr(nv, 'threshold', 5);
+                    elec = neuroqc.utils.fieldOr(nv, 'elec', 1:numel(labs));
                     if numel(elec) < numel(labs), vals.exclude = labs(setdiff(1:numel(labs), elec)); end
                     if numel(vals.threshold) > 1, notes{end+1} = 'only the upper threshold is used'; vals.threshold = max(vals.threshold); end
                     differs('norm', 'on', '''on'' (z-scored measure)');
@@ -253,7 +253,7 @@ classdef Native
                         end
                     end
                 case 'ica'
-                    vals.extended = getOr(nv, 'extended', 1);
+                    vals.extended = neuroqc.utils.fieldOr(nv, 'extended', 1);
                     differs('icatype', 'runica', 'runica');
                     differs('rndreset', 'no', '''no'' (reproducible)');
                     if isfield(nv, 'pca') && ~isempty(nv.pca), notes{end+1} = sprintf('pca = %s: the ica step does not reduce the dimension (EEGLAB limits it to the data rank)', valueCode(nv.pca)); end
@@ -443,10 +443,6 @@ for i = numel(a)-1:-2:1
 end
 pos = a(1:kv-1); nv = struct();
 for i = kv:2:numel(a), nv.(a{i}) = a{i+1}; end
-end
-
-function v = getOr(s, f, d)
-if isfield(s, f), v = s.(f); else, v = d; end
 end
 
 function L = asLabels(x, labs)
