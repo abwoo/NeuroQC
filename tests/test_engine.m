@@ -835,3 +835,36 @@ for i = 1:numel(cs)
     verifyEqual(tc, [m.objectives.agg], [r.cands(1).m.objectives.agg], 'RelTol', 1e-6);
 end
 end
+
+function testLongHighPassRunsInTheFrequencyDomain(tc)
+% A 0.1 Hz high-pass (an 8251-point FIR at 250 Hz) uses firfilt's fftfilt
+% option when the Signal Processing Toolbox is there: the same filter, so
+% the same data as EEGLAB's default time-domain filtering.
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10));
+in = struct('type', 'highpass', 'params', struct('cutoff', 0.1));
+[~, E, coms] = evalc('pipecompare.run.Steps.run(in, EEG, struct())');
+[~, D] = evalc('pop_eegfiltnew(EEG, ''locutoff'', 0.1, ''plotfreqz'', 0)');
+verifyEqual(tc, double(E.data), double(D.data), 'AbsTol', 1e-3);   % uV, single-precision data
+verifyEqual(tc, contains(coms{1}, 'usefftfilt'), exist('fftfilt', 'file') == 2);
+% a short FIR (1 Hz: 826 points) stays in the time domain
+in.params.cutoff = 1;
+[~, ~, coms] = evalc('pipecompare.run.Steps.run(in, EEG, struct())');
+verifyFalse(tc, contains(coms{1}, 'usefftfilt'));
+end
+
+function testCheckpointWithAProgressWindowCanBeResumed(tc)
+% The panel passes its progress window's callback with a checkpoint
+% folder: it is not stored and not part of the search identity.
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 12));
+nqc_setBase(EEG);
+p = pipecompare.plan.Plan();
+p = p.add('highpass', 'cutoff', {0.5, 1}); p = p.add('epoch'); p = p.add('baseline');
+d = tempname; cleanup = onCleanup(@() rmdir(d, 's')); %#ok<NASGU>
+w = pipecompare.gui.Progress(2, false); c2 = onCleanup(@() delete(w)); %#ok<NASGU>
+verifyError(tc, @() pipecompare.PipeCompare.optimize(p, nqc_c(), struct('checkpoint', d, 'stopAfter', 1, ...
+    'progress', @(n) w.step(n))), 'PipeCompare:Interrupted');
+M = load(fullfile(d, 'manifest.mat'));
+verifyEmpty(tc, M.result.options.progress);
+res = pipecompare.PipeCompare.resume(d);
+verifyTrue(tc, all(strcmp({res.cands.status}, 'ok')));
+end

@@ -187,7 +187,10 @@ classdef Panel < handle
                 'ButtonPushedFcn', @(~, ~) obj.inspect());
             uibutton(ag, 'Text', 'Adopt selected', 'ButtonPushedFcn', @(~, ~) obj.adopt());
             uibutton(ag, 'Text', 'Print script', 'ButtonPushedFcn', @(~, ~) obj.printScript());
-            resP = uipanel(g, 'Title', 'Results (select a row, then Inspect / Adopt / Print script)');
+            uibutton(ag, 'Text', 'Save script...', 'Tooltip', ...
+                'Save the selected pipeline as a MATLAB function that runs its steps on any recording', ...
+                'ButtonPushedFcn', @(~, ~) obj.saveScript());
+            resP = uipanel(g, 'Title', 'Results (select a row, then Inspect / Adopt / Print or Save script)');
             resP.Layout.Row = 3; resP.Layout.Column = 1;
             rgl = uigridlayout(resP, [2 1]); rgl.RowHeight = {'1x', 96};
             obj.ResultTable = uitable(rgl, 'RowName', {}, 'ColumnName', ...
@@ -1140,6 +1143,15 @@ classdef Panel < handle
                 obj.StatusLabel.Text = 'Running... progress in the Command Window'; drawnow;
                 stop(obj.Timer);
                 cleanup = onCleanup(@() restartTimer(obj.Timer));
+                prog = pipecompare.gui.Progress.empty;
+                if ~dry
+                    % the progress window with Stop, as in the simple mode
+                    s = pipecompare.live.DataState.fromEEG(pipecompare.live.Session.current());
+                    n = numel(obj.Plan.enumerate(s, c, struct('maxLeaves', opts.maxLeaves)));
+                    prog = pipecompare.gui.Progress(n, any(strcmp({obj.Plan.Slots.id}, 'ica')));
+                    opts.progress = @(k) prog.step(k);
+                end
+                closeProg = onCleanup(@() delete(prog)); %#ok<NASGU>   % also on an error
                 r = pipecompare.PipeCompare.optimize(obj.Plan, c, opts);
                 if ~isvalid(obj) || ~isvalid(obj.Fig)      % the window was closed during the search
                     if ~dry, assignin('base', 'pipecompare_result', r); end
@@ -1259,6 +1271,23 @@ classdef Panel < handle
             k = obj.selectedResult(); if isempty(k), return; end
             pipecompare.utils.log('EEGLAB commands of candidate %d:', k);
             pipecompare.PipeCompare.script(obj.Result, k);
+        end
+
+        function saveScript(obj, file)
+            % The selected candidate as a function for any recording (as the
+            % simple mode's Save script...); Print script shows the exact
+            % commands of this dataset instead.
+            k = obj.selectedResult(); if isempty(k), return; end
+            try
+                if nargin < 2
+                    [f, p] = uiputfile('*.m', 'Save the pipeline as an EEGLAB function', sprintf('pipeline%d.m', k));
+                    if isequal(f, 0), return; end
+                    file = fullfile(p, f);
+                end
+                pipecompare.PipeCompare.writeScript(obj.Result, k, file);
+            catch ME
+                uialert(obj.Fig, ME.message, 'PipeCompare');
+            end
         end
     end
 end

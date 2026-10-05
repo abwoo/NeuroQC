@@ -5,6 +5,16 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- The panel's *Run search* shows the same progress window as the dialog, with *Stop* (the
+  pipelines already finished are ranked); before, a panel search could only be interrupted from the
+  Command Window. The panel also has *Save script…*, which writes the selected pipeline as a
+  function for any recording (*Print script* prints this dataset's exact commands).
+- In the dialog's result window, *Use this pipeline* on a pipeline that did not pass the checks
+  asks for confirmation and says why it did not pass, instead of an error that named a command.
+- A high-pass with a long FIR (above order 2000, e.g. 0.1 or 0.3 Hz at 250 Hz) runs in the frequency
+  domain (`pop_eegfiltnew` option `usefftfilt`) when the Signal Processing Toolbox is installed:
+  the same filter, much faster. This also applies to the 1 Hz copies used for bad-channel detection
+  and ICA when their FIR is that long.
 - *Standard* finds bad channels by kurtosis or joint probability (either above z = 5), not by
   kurtosis alone. On a raw recording kurtosis missed two noisy channels, which then made the
   epoch threshold reject most epochs in every pipeline. The

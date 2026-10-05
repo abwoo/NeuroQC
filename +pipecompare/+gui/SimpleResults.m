@@ -134,20 +134,32 @@ classdef SimpleResults < handle
             if ~isempty(sel), k = str2double(strrep(obj.Table.Data{sel(1, 1), 1}, '*', '')); end
         end
 
-        function adopt(obj)
+        function adopt(obj, answer)
             % Rebuild the pipeline (its steps run again; the ICA decomposition
             % comes from the comparison) and store it in EEGLAB; it is in
-            % memory only until saved.
+            % memory only until saved. A pipeline that did not pass the
+            % checks is used only after a confirmation that says why it did
+            % not pass (answer: the button to press instead, for scripts).
             dlg = [];
             try
                 k = pipecompare.run.Executor.pickCandidate(obj.Result, obj.chosen());
+                T = obj.Result.ranking.table;
+                force = ~strcmp(T.status{k}, 'feasible');
+                if force
+                    q = sprintf('Pipeline %d did not pass the checks: %s. Use it anyway?', k, char(T.reason{k}));
+                    if nargin < 2
+                        answer = uiconfirm(obj.Fig, q, 'PipeCompare', 'Options', {'Use anyway', 'Cancel'}, ...
+                            'DefaultOption', 2, 'CancelOption', 2, 'Icon', 'warning');
+                    end
+                    if ~strcmp(answer, 'Use anyway'), return; end
+                end
                 msg = sprintf('Building pipeline %d from the start (every step runs again)...', k);
                 if any(cellfun(@(e) strcmp(e.type, 'ica'), obj.Result.leaves(k).path))
                     msg = sprintf(['Building pipeline %d from the start; every step runs again except ICA, ', ...
                         'whose decomposition comes from the comparison...'], k);
                 end
                 dlg = uiprogressdlg(obj.Fig, 'Title', 'Use this pipeline', 'Message', msg, 'Indeterminate', 'on');
-                pipecompare.PipeCompare.adopt(obj.Result, k);
+                pipecompare.PipeCompare.adopt(obj.Result, k, force);
                 close(dlg);
                 uialert(obj.Fig, sprintf(['Pipeline %d is now the current EEGLAB dataset. It is not saved yet: ', ...
                     'use File > Save current dataset as.'], k), 'Done', 'Icon', 'success');
