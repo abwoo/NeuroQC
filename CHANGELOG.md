@@ -5,6 +5,17 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Datasets imported with `pop_biosig` (e.g. EDF files) keep their channels as a column, and the
+  simple mode stopped at once with an index error; channel lists are now read in either shape.
+- When every pipeline that passed the checks has exactly the same noise, the result says that the
+  settings compared make no difference on these data, instead of recommending the first one as if
+  it were better.
+- *Standard* no longer fits ICA again when the dataset's history shows that ICA was run and
+  components were removed; this is named under *Left out*.
+- `pop_pipecompare` says why before any search when band power is asked of epoched data (it
+  needs continuous recordings) and when a recipe gives only one pipeline (e.g. *Filters only* on
+  epoched data). When every pipeline was excluded because a condition has fewer than 10 trials,
+  the summary suggests `'pool', true` if the event types together have enough.
 - The ICA step's line in `EEG.history` lacked the `pop_runica` call (EEGLAB returns that command
   only from its dialog), so the history of an adopted dataset did not refit ICA when run again.
   The line now holds the call. Reading such a history also took the high-passed copy that ICA is

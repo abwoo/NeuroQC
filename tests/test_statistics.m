@@ -295,3 +295,14 @@ end
 fprintf('AR(1) segments: false "worse" rate block %.3f, i.i.d. %.3f\n', fa / sims);
 verifyLessThanOrEqual(tc, fa(1) / sims, 0.07);
 end
+
+function testSameScoresAreRecognised(tc)
+% Pipelines that pass the checks with exactly the same score: the choices
+% compared make no difference (e.g. no epoch over any rejection threshold).
+R.table = table({'feasible'; 'feasible'; 'rejected'}, [0.44437; 0.44437; 0.3], 'VariableNames', {'status', 'objective'});
+verifyTrue(tc, pipecompare.eval.Rank.sameScores(R));
+R.table.objective(2) = 0.45;
+verifyFalse(tc, pipecompare.eval.Rank.sameScores(R));
+R.table.status(2) = {'rejected'};
+verifyFalse(tc, pipecompare.eval.Rank.sameScores(R));   % one pipeline: nothing compared
+end

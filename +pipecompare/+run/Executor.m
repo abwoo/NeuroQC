@@ -270,6 +270,7 @@ classdef Executor
             % PipeCompare's own copy of the live dataset; the original is untouched.
             if nargin < 3, opts = struct('dataUnit', 'uV'); end
             root = EEG; coms = {};
+            if ~isempty(root.chanlocs), root.chanlocs = root.chanlocs(:)'; end   % a column after some importers (pop_biosig)
             function add(c), root = eeg_hist(root, c); coms{end+1} = c; end
             if isfield(opts, 'dataUnit') && strcmp(opts.dataUnit, 'V')
                 % the script line does exactly what is done here (ICA weights

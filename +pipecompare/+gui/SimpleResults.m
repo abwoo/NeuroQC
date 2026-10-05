@@ -55,7 +55,10 @@ classdef SimpleResults < handle
             else
                 k = R.recommended; b = R.byStratum;
                 kept = pipecompare.gui.PanelText.pctText(T.minRetention(k));
-                if k == b.best
+                if pipecompare.eval.Rank.sameScores(R)
+                    t = sprintf(['%sUse pipeline %d: %s. All pipelines that passed the checks have exactly the same ', ...
+                        'noise: on these data the settings compared make no difference.'], t, k, obj.name(k));
+                elseif k == b.best
                     t = sprintf('%sUse pipeline %d: %s. It has the least noise and keeps at least %s of the trials.', ...
                         t, k, obj.name(k), kept);
                 else

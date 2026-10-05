@@ -68,6 +68,9 @@ cur = pipecompare.live.Session.current();
 assert(~isempty(cur) && strcmp(pipecompare.live.Session.fingerprint(cur), pipecompare.live.Session.fingerprint(EEG)), ...
     'PipeCompare:Simple', 'pop_pipecompare works on the current EEGLAB dataset; make this dataset current first.');
 state = pipecompare.live.DataState.fromEEG(EEG);
+assert(~(state.isEpoched && pipecompare.simple.Presets.isBand(opts.measure)), 'PipeCompare:Simple', ['Band power is ', ...
+    'compared on continuous recordings (e.g. resting state); this dataset is already cut into epochs. Choose an ERP ', ...
+    'measure, or use the continuous data.']);
 events = opts.events;
 if pipecompare.simple.Presets.isLateral(opts.measure), events = struct('left', {opts.left}, 'right', {opts.right}); end
 c = pipecompare.simple.Presets.contract(EEG, opts.measure, events, opts.segment, opts.pool, ...
@@ -75,13 +78,15 @@ c = pipecompare.simple.Presets.contract(EEG, opts.measure, events, opts.segment,
 [plan, notes] = pipecompare.simple.Presets.recipe(opts.recipe, state, c, opts.reference, ...
     pipecompare.simple.Presets.nonEegChannels(EEG));
 for k = 1:numel(notes), pipecompare.utils.log('Recipe %s: %s.', opts.recipe, notes{k}); end
+nTotal = numel(plan.enumerate(state, c, struct('maxLeaves', Inf)));
+assert(nTotal > 1, 'PipeCompare:Simple', 'On these data the recipe ''%s'' gives %d pipeline, so there is nothing to compare%s.', ...
+    opts.recipe, nTotal, pipecompare.utils.ternary(isempty(notes), '', [': ' strjoin(notes, '; ')]));
 % the unit judged from the amplitude scale, as in the panel: rejection
 % thresholds in uV would remove nothing from data stored in V
 runOpts = struct('dataUnit', state.unitGuess);
 if strcmp(state.unitGuess, 'V'), pipecompare.utils.log('The data are in volts (judged from the amplitude scale); they are compared in uV.'); end
-fig = gobjects(0); dlg = []; nDone = 0; nTotal = 0; t1 = []; stopping = false;
+fig = gobjects(0); dlg = []; nDone = 0; t1 = []; stopping = false;
 if ~strcmp(opts.show, 'off')
-    nTotal = numel(plan.enumerate(state, c, struct('maxLeaves', Inf)));
     first = 'the first one runs every step from the start';
     if any(strcmp({plan.Slots.id}, 'ica')), first = 'ICA is fitted first (once; the slow part)'; end
     fig = uifigure('Name', 'PipeCompare', 'Position', [300 300 460 150]);
@@ -106,6 +111,16 @@ T = result.ranking.table;
 pipecompare.utils.log('%d pipelines compared on %s in %s; %d passed the checks%s.', height(T), state.setname, ...
     timeText(toc(t0)), sum(strcmp(T.status, 'feasible')), pipecompare.utils.ternary(isempty(result.ranking.recommended), ...
     '', sprintf('; recommended: pipeline %d', result.ranking.recommended)));
+if pipecompare.eval.Rank.sameScores(result.ranking)
+    pipecompare.utils.log('All pipelines that passed have the same noise: the settings compared make no difference on these data.');
+end
+n = result.ref.n; d = pipecompare.eval.Rank.defaults();
+if isempty(result.ranking.recommended) && ~opts.pool && ~pipecompare.simple.Presets.isLateral(opts.measure) && ...
+        numel(n) > 1 && any(n < d.minTrials) && sum(n) >= d.minTrials
+    pipecompare.utils.log(['Each condition needs at least %d trials (here %s). If these event types are one condition ', ...
+        '(e.g. one code per block), add ''pool'', true.'], d.minTrials, strjoin(arrayfun(@(k) sprintf('%s: %d', ...
+        result.ref.names{k}, n(k)), 1:numel(n), 'UniformOutput', false), ', '));
+end
 if fid > 0, pipecompare.utils.log('Full log (every EEGLAB command): %s', logFile); end
 assignin('base', 'pipecompare_result', result);
 args = {'measure', opts.measure};

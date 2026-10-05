@@ -183,7 +183,7 @@ classdef Presets
             roi = labels;
             keep = cellfun(@isempty, regexpi(labels, '^([VH]?EOG|ECG|EKG|EMG)', 'once'));
             if isfield(EEG.chanlocs, 'type')
-                ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), EEG.chanlocs, 'UniformOutput', false);
+                ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), EEG.chanlocs(:)', 'UniformOutput', false);
                 keep = keep & ~ismember(ty, {'EOG', 'HEOG', 'VEOG', 'ECG', 'EKG', 'EMG', 'MISC', 'TRIG', 'STIM'});
             end
             if any(keep), roi = labels(keep); end
@@ -217,7 +217,11 @@ classdef Presets
                     plan = plan.add('badchannels', 'measure', 'kurt', 'threshold', 5, ...
                         'detectHighpass', double(continuous), exclusion{:});
                     plan = addReference(plan, reference, exclude);
-                    if exist('pop_iclabel', 'file') ~= 2
+                    steps = {state.process.step};
+                    icaAt = find(strcmp(steps, 'ica'), 1, 'last');
+                    if ~isempty(icaAt) && any(strcmp(steps(icaAt+1:end), 'icremove'))
+                        notes{end+1} = 'ICA was already run and components removed (history), so they are not compared again';
+                    elseif exist('pop_iclabel', 'file') ~= 2
                         notes{end+1} = 'ICLabel is not installed: ICA and IC removal left out';
                     else
                         plan = plan.add('ica'); ica = true;
