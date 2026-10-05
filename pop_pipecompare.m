@@ -121,6 +121,8 @@ if isempty(result.ranking.recommended) && ~opts.pool && ~pipecompare.simple.Pres
         '(e.g. one code per block), add ''pool'', true.'], d.minTrials, strjoin(arrayfun(@(k) sprintf('%s: %d', ...
         result.ref.names{k}, n(k)), 1:numel(n), 'UniformOutput', false), ', '));
 end
+hint = pipecompare.simple.Presets.nextStep(result);
+if ~isempty(hint), pipecompare.utils.log('%s', hint); end
 if fid > 0, pipecompare.utils.log('Full log (every EEGLAB command): %s', logFile); end
 assignin('base', 'pipecompare_result', result);
 args = {'measure', opts.measure};

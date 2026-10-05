@@ -17,7 +17,9 @@ release has a git tag `vX.Y.Z`.
 - `pop_pipecompare` says why before any search when band power is asked of epoched data (it
   needs continuous recordings) and when a recipe gives only one pipeline (e.g. *Filters only* on
   epoched data). When every pipeline was excluded because a condition has fewer than 10 trials,
-  the summary suggests `'pool', true` if the event types together have enough.
+  the summary suggests `'pool', true` if the event types together have enough. When most pipelines
+  were excluded for losing too many epochs and the data keep their recorded reference, the result
+  suggests the average reference.
 - The ICA step's line in `EEG.history` lacked the `pop_runica` call (EEGLAB returns that command
   only from its dialog), so the history of an adopted dataset did not refit ICA when run again.
   The line now holds the call. Reading such a history also took the high-passed copy that ICA is

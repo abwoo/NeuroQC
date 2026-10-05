@@ -152,6 +152,20 @@ C.chanlocs(1).labels = 'POL EYEL';   % an EDF export's eye channel
 verifyTrue(tc, ismember('POL EYEL', pipecompare.simple.Presets.nonEegChannels(C)));
 end
 
+function testNextStepWhenRejectionRemovesTooMuch(tc)
+% Every pipeline lost too many epochs and the data keep their recorded
+% reference: the average reference is suggested.
+r.ranking = struct('byStratum', [], 'whyList', {{{'retention 0% (every epoch would be rejected)'}; {'retention 3% (< 50%)'}}});
+r.leaves = struct('path', {{struct('type', 'highpass')}});
+r.state = struct('reference', 'common');
+verifyTrue(tc, contains(pipecompare.simple.Presets.nextStep(r), 'average reference'));
+r.leaves = struct('path', {{struct('type', 'reref'), struct('type', 'highpass')}});
+verifyEmpty(tc, pipecompare.simple.Presets.nextStep(r));        % already re-referenced
+r.leaves = struct('path', {{struct('type', 'highpass')}});
+r.ranking.whyList = {{'signal: amplitude changed by 17%'}; {'signal: amplitude changed by 20%'}};
+verifyEmpty(tc, pipecompare.simple.Presets.nextStep(r));        % excluded for another reason
+end
+
 function testRecipesAdaptToTheData(tc)
 EEG = tc.TestData.EEG;
 c = pipecompare.simple.Presets.contract(EEG, 'P3', {'11'});

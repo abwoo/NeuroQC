@@ -48,6 +48,8 @@ classdef SimpleResults < handle
                 % the reason with its numbers, from one pipeline
                 k = find(~strcmp(T.status, 'feasible') & ~cellfun(@isempty, R.whyList(:)), 1);
                 if ~isempty(k), t = sprintf('%s For example, pipeline %d: %s.', t, k, strjoin(R.whyList{k}, '; ')); end
+                hint = pipecompare.simple.Presets.nextStep(obj.Result);
+                if ~isempty(hint), t = sprintf('%s %s', t, hint); end
             elseif numel(R.byStratum) > 1
                 t = sprintf(['%sThese pipelines use different references, which measure different things, so there is ', ...
                     'one recommendation per reference: pipelines %s. Use the one that matches your analysis.'], ...

@@ -190,6 +190,20 @@ classdef Presets
             if any(keep), roi = labels(keep); end
         end
 
+        function t = nextStep(result)
+            % What to try when no pipeline passed because most lost too many
+            % epochs to rejection: the average reference when the data keep
+            % a recorded reference ('' when that is not the case)
+            t = '';
+            why = [result.ranking.whyList{:}];
+            if ~isempty(result.ranking.byStratum) || isempty(why) || mean(startsWith(why, 'retention')) < 0.5, return; end
+            reref = any(cellfun(@(e) strcmp(e.type, 'reref'), result.leaves(1).path));
+            if reref || strcmpi(result.state.reference, 'average'), return; end
+            t = ['Most pipelines lost too many epochs to the rejection thresholds, and the data keep their recorded ', ...
+                'reference, which often makes amplitudes large. Try the average reference (Reference: average reference; ', ...
+                'pop_pipecompare(..., ''reference'', ''average'')).'];
+        end
+
         function [plan, notes] = recipe(name, state, contract, reference, exclude)
             % The plan of a recipe for these data, and why a step was left
             % out. reference: 'asis' (default) or 'average'; exclude: the
