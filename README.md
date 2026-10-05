@@ -3,7 +3,7 @@
 **Data-driven comparison of EEG preprocessing pipelines in EEGLAB.**
 
 [![MATLAB tests](https://github.com/abwoo/PipeCompare/actions/workflows/matlab-tests.yml/badge.svg)](https://github.com/abwoo/PipeCompare/actions/workflows/matlab-tests.yml)
-![Version](https://img.shields.io/badge/version-0.9.0-2f6fed)
+![Version](https://img.shields.io/badge/version-0.9.1-2f6fed)
 ![MATLAB](https://img.shields.io/badge/MATLAB-R2026a-orange)
 ![EEGLAB](https://img.shields.io/badge/EEGLAB-2026.0.0-blueviolet)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -140,7 +140,12 @@ pipecompare_setup                         % run from the PipeCompare folder
    Start from the raw continuous data. If your analysis uses the average reference, choose it under
    **Reference** rather than re-referencing beforehand: it is then applied in every pipeline after
    the bad channels are interpolated and before ICA. (Data already average-referenced are averaged
-   again after the interpolation.)
+   again after the interpolation.) Steps already applied to the data are read from `EEG.history`
+   and listed in the dialog; they are not compared again. A filter the data already have is kept
+   as one of the choices (e.g. *low-pass as in the data (30 Hz)*), and the result warns when such
+   a filter alone already distorts the measured signal. With the average reference, EEG channels
+   removed before PipeCompare are interpolated back first, so the average covers the whole
+   montage.
 4. Press **Run**. A progress window shows how many pipelines are done and the time left; **Stop**
    ends the search and keeps the pipelines already finished. The Command Window gets a short
    summary; the full log goes to `pipecompare_last_run.log` in MATLAB's `tempdir`.
@@ -149,7 +154,9 @@ pipecompare_setup                         % run from the PipeCompare folder
    EEGLAB dataset; **Save script…** writes it as a MATLAB function that you can run on your other
    recordings; **Show all pipelines** lists every pipeline with the reason it was excluded.
    **Use this pipeline** runs the steps again, except ICA, whose decomposition comes from the
-   comparison; save the new dataset afterwards with File > Save current dataset as.
+   comparison; save the new dataset afterwards with File > Save current dataset as. The new
+   dataset is cut into epochs (segments for band power) and cleaned, ready to average into ERPs
+   or to compute band power; do not filter, re-reference or reject epochs again.
 
 For any EEGLAB step, order search, several components or different constraints, open
 **Advanced…** in the dialog, or **Tools > PipeCompare > Advanced panel…**. The panel defines the
@@ -277,6 +284,9 @@ descriptive and not used in the ranking. The full derivations are in
   the known signal rather than replayed; this includes ASR added as an EEGLAB command. The built-in
   `asr` step replays the reconstructions ASR chose and is re-run only when they cannot be
   reproduced exactly. The result flags every re-run step.
+- **Reference.** The dialog offers the recorded reference or the average reference. For another
+  reference (e.g. linked mastoids), add a re-reference step with those channels in the panel or a
+  script.
 - **Channel locations are needed** for spherical interpolation and ICLabel. Without them those
   steps are excluded before the search, with the reason.
 - **Peak latency is a weak criterion.** Its precision is hard to estimate with few trials, so it
@@ -329,7 +339,7 @@ If you use PipeCompare in published work, please cite it:
   author  = {abwoo},
   title   = {PipeCompare: data-driven comparison of EEG preprocessing pipelines in EEGLAB},
   year    = {2026},
-  version = {0.9.0},
+  version = {0.9.1},
   url     = {https://github.com/abwoo/PipeCompare}
 }
 ```

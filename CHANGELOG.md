@@ -3,7 +3,14 @@
 All notable changes. Versions follow `PipeCompare.Version` (`NeuroQC.Version` up to 0.7.1); each
 release has a git tag `vX.Y.Z`.
 
-## Unreleased
+## 0.9.1 (2026-10-06)
+
+In short: PipeCompare now takes into account what was done to the data before it (filters,
+re-reference, removed channels, ICA) and fixes the order of steps around the average reference
+in the cases 0.9.0 still got wrong. *Standard* catches noisy bad channels it used to miss. The advanced
+panel can now do everything the simple dialog does (band power, N2pc/LRP, progress window with
+*Stop*, *Save script…*). Results can differ from 0.9.0 on data that were already filtered or
+re-referenced, or that have noisy channels.
 
 - Simple mode, step order with the average reference: *Filters only* with *Average reference*
   averaged before any bad-channel check, so a bad channel spread into every channel (the order
