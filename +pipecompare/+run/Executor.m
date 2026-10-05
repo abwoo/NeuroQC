@@ -546,7 +546,9 @@ classdef Executor
             root = result.root; %#ok<NASGU>
             save(fullfile(d, 'root.mat'), 'root', 'identity', '-v7.3');
             result.root = [];          % read back on demand (Executor.rootOf)
-            save(fullfile(d, 'manifest.mat'), 'result', 'identity', '-v7.3');
+            M = struct('result', result, 'identity', identity);   % without the caller's progress window
+            if isfield(M.result.options, 'progress'), M.result.options.progress = []; end
+            save(fullfile(d, 'manifest.mat'), '-struct', 'M', '-v7.3');
             pipecompare.utils.log('Checkpoint folder: %s (resume with pipecompare.PipeCompare.resume).', d);
         end
 
@@ -803,7 +805,7 @@ function id = searchIdentity(result)
 % analysis contract, the enumerated pipelines and the options that change
 % results. A checkpoint folder belongs to exactly one identity.
 o = result.options;
-o = rmfield(o, intersect(fieldnames(o), {'checkpoint','stopAfter','parallel','verbose','dryRun'}));
+o = rmfield(o, intersect(fieldnames(o), {'checkpoint','stopAfter','parallel','verbose','dryRun','progress'}));
 md = java.security.MessageDigest.getInstance('SHA-256');
 root = result.root;
 % the data in blocks: the same bytes as double(root.data(:)), without a

@@ -36,7 +36,8 @@ classdef Steps
                         coms{end+1} = sprintf('EEG.srate = %g; EEG = eeg_checkset(EEG); %% PipeCompare: exact rate after resampling', p.fs);
                     end
                 case 'highpass'
-                    [EEG, com] = pop_eegfiltnew(EEG, 'locutoff', p.cutoff, 'plotfreqz', 0);
+                    fa = fftArgs(EEG, p.cutoff);
+                    [EEG, com] = pop_eegfiltnew(EEG, 'locutoff', p.cutoff, 'plotfreqz', 0, fa{:});
                     coms = {com};
                 case 'lowpass'
                     [EEG, com] = pop_eegfiltnew(EEG, 'hicutoff', p.cutoff, 'plotfreqz', 0);
@@ -194,7 +195,8 @@ classdef Steps
             copy = hp > 0 && hp > applied;
             src = EEG; on = '';
             if copy
-                src = pop_eegfiltnew(EEG, 'locutoff', hp, 'plotfreqz', 0);
+                fa = fftArgs(EEG, hp);
+                src = pop_eegfiltnew(EEG, 'locutoff', hp, 'plotfreqz', 0, fa{:});
                 on = sprintf(' on a %g Hz high-passed copy', hp);
             end
             bad = [];
@@ -266,17 +268,19 @@ classdef Steps
             if p.fitHighpass > 0 && p.fitHighpass > applied
                 % Fit on a high-passed copy (stable decomposition), apply
                 % the weights to the data as they are (ERP signal kept).
-                [tmp, ~] = pop_eegfiltnew(EEG, 'locutoff', p.fitHighpass, 'plotfreqz', 0);
+                fa = fftArgs(EEG, p.fitHighpass);
+                [tmp, ~] = pop_eegfiltnew(EEG, 'locutoff', p.fitHighpass, 'plotfreqz', 0, fa{:});
                 tmp = pop_runica(tmp, opts{:});
                 EEG.icaweights = tmp.icaweights; EEG.icasphere = tmp.icasphere;
                 EEG.icachansind = tmp.icachansind; EEG.icawinv = []; EEG.icaact = [];
                 EEG = eeg_checkset(EEG);
                 c2 = sprintf('EEGica = pop_runica(EEGica, %s);', args);
-                coms = {sprintf(['EEGica = pop_eegfiltnew(EEG, ''locutoff'', %g, ''plotfreqz'', 0); %s ', ...
+                fftTxt = ''; if ~isempty(fa), fftTxt = ', ''usefftfilt'', 1'; end
+                coms = {sprintf(['EEGica = pop_eegfiltnew(EEG, ''locutoff'', %g, ''plotfreqz'', 0%s); %s ', ...
                     'EEG.icaweights = EEGica.icaweights; EEG.icasphere = EEGica.icasphere; ', ...
                     'EEG.icachansind = EEGica.icachansind; EEG.icawinv = []; EEG.icaact = []; ', ...
                     'EEG = eeg_checkset(EEG); clear EEGica; %% PipeCompare: ICA fitted on a %g Hz high-passed copy'], ...
-                    p.fitHighpass, c2, p.fitHighpass)};
+                    p.fitHighpass, fftTxt, c2, p.fitHighpass)};
             else
                 EEG = pop_runica(EEG, opts{:});
                 coms = {sprintf('EEG = pop_runica(EEG, %s);', args)};
@@ -474,6 +478,16 @@ try
 catch ME
     pipecompare.utils.log('ASR decisions not recorded (%s); the signal check re-runs ASR.', ME.message);
 end
+end
+
+function a = fftArgs(EEG, edge)
+% A high-pass with a long FIR (above order 2000, as EEGLAB's dialog
+% advises; e.g. 0.1 or 0.3 Hz at 250 Hz) runs in the frequency domain
+% (firfilt's fftfilt option): the same filter, much faster. It needs
+% fftfilt (Signal Processing Toolbox); without it the filter runs as before.
+a = {};
+df = min(max(edge * 0.25, 2), edge);              % pop_eegfiltnew's default transition band (high-pass)
+if exist('fftfilt', 'file') == 2 && 3.3 * EEG.srate / df > 2000, a = {'usefftfilt', 1}; end
 end
 
 function requireLocations(locs, what)

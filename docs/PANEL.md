@@ -64,7 +64,8 @@ sentence which pipeline to use and why, naming pipelines by the settings compare
 signal change, settings) above one line with the steps every pipeline shares. *Show all
 pipelines* lists every pipeline with the reason it was excluded. *Use this pipeline* builds the
 pipeline again (with the ICA decomposition of the comparison) as a new EEGLAB dataset, which is in memory
-until saved; *Save script…* writes a function that runs the steps on any recording.
+until saved; a pipeline that did not pass the checks is used only after a confirmation that says
+why. *Save script…* writes a function that runs the steps on any recording.
 
 ## Panel (*Advanced panel…*)
 
@@ -102,10 +103,14 @@ runs on its own copy.
   control alternatives and order.
 - **Apply now in EEGLAB.** Runs the step on the current dataset through EEGLAB's own menu code path
   (`EEG.history`, `ALLCOM`, new dataset), so the plan starts after it.
-- **Run search / Options… / Resume…** Every command and score is printed in the Command Window and
-  the result is stored in `pipecompare_result`. Options: data unit, checkpoint folder, parallel.
+- **Run search / Options… / Resume…** A progress window shows the pipelines done and the time left;
+  *Stop* (or closing it) stops after the current step and ranks the pipelines already finished.
+  Every command and score is printed in the Command Window and the result is stored in
+  `pipecompare_result`. Options: data unit, checkpoint folder, parallel.
 - **Results.** Selecting a row shows its full pipeline, reason, measures and commands below the
   table. *Inspect selected* opens a rebuilt candidate (not adopted) or the source in EEGLAB's
   viewers; *Adopt* stores a candidate as a new EEGLAB dataset whose `EEG.history` reproduces it.
+  *Print script* prints the exact EEGLAB commands on this dataset; *Save script…* writes a function
+  that runs the steps on any recording (as in the dialog's result window).
 
 What the evaluation and ranking compute is described in [METHODS.md](METHODS.md).

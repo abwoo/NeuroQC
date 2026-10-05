@@ -444,6 +444,36 @@ w = pipecompare.gui.SimpleResults(r); cw = onCleanup(@() delete(w.Fig)); %#ok<NA
 verifyTrue(tc, startsWith(w.Headline.Text, 'Stopped after 3 of 12 pipelines'));
 end
 
+function testProgressWindowStopsWhenClosed(tc)
+p = pipecompare.gui.Progress(10, false); c = onCleanup(@() delete(p)); %#ok<NASGU>
+verifyFalse(tc, p.step(0));
+verifyFalse(tc, p.step(3));
+verifyEqual(tc, p.Dlg.Value, 0.3, 'AbsTol', 1e-12);
+delete(p.Fig);                                                  % closing the window stops the search
+verifyTrue(tc, p.step(1));
+end
+
+function testExcludedPipelineIsUsedOnlyAfterConfirmation(tc)
+EEG = tc.TestData.EEG;
+nqc_setBase(EEG);
+[~, ~, r] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'recipe', 'filters', 'show', 'off');
+k = find(~strcmp(r.ranking.table.status, 'feasible'), 1);
+if isempty(k)                                                   % every pipeline passed here: exclude one
+    k = find(r.ranking.order ~= r.ranking.recommended, 1);
+    k = r.ranking.order(k);
+    r.ranking.table.status{k} = 'rejected'; r.ranking.table.reason{k} = 'for this test';
+end
+w = pipecompare.gui.SimpleResults(r); c = onCleanup(@() delete(w.Fig)); %#ok<NASGU>
+w.AllBox.Value = true; w.showRows();
+w.Table.Selection = [find(strcmp(strrep(w.Table.Data(:, 1), '*', ''), sprintf('%d', k))) 1];
+n0 = evalin('base', 'numel(ALLEEG)');
+w.adopt('Cancel');
+verifyEqual(tc, evalin('base', 'numel(ALLEEG)'), n0);           % nothing stored
+w.adopt('Use anyway');
+verifyEqual(tc, evalin('base', 'EEG.setname'), sprintf('%s PipeCompare#%d', EEG.setname, k));
+nqc_setBase(EEG);
+end
+
 function stop = countTo(m, n, limit)
 m('n') = m('n') + n;
 stop = m('n') >= limit;

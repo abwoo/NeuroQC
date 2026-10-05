@@ -85,20 +85,16 @@ assert(nTotal > 1, 'PipeCompare:Simple', 'On these data the recipe ''%s'' gives 
 % thresholds in uV would remove nothing from data stored in V
 runOpts = struct('dataUnit', state.unitGuess);
 if strcmp(state.unitGuess, 'V'), pipecompare.utils.log('The data are in volts (judged from the amplitude scale); they are compared in uV.'); end
-fig = gobjects(0); dlg = []; nDone = 0; t1 = []; stopping = false;
+prog = pipecompare.gui.Progress.empty;
 if ~strcmp(opts.show, 'off')
-    first = 'the first one runs every step from the start';
-    if any(strcmp({plan.Slots.id}, 'ica')), first = 'ICA is fitted first (once; the slow part)'; end
-    fig = uifigure('Name', 'PipeCompare', 'Position', [300 300 460 150]);
-    dlg = uiprogressdlg(fig, 'Title', 'Comparing pipelines', 'Cancelable', 'on', 'CancelText', 'Stop', ...
-        'Message', sprintf('Running %d pipelines; %s.', nTotal, first));
-    runOpts.progress = @progress;
+    prog = pipecompare.gui.Progress(nTotal, any(strcmp({plan.Slots.id}, 'ica')));
+    runOpts.progress = @(n) prog.step(n);
 end
-closeFig = onCleanup(@() delete(fig(isvalid(fig)))); %#ok<NASGU>   % also on an error
+closeProg = onCleanup(@() delete(prog)); %#ok<NASGU>   % also on an error
 % the full log goes to a file; the Command Window gets the summary
 t0 = tic; err = []; searchFcn = @runSearch;   % (evalc here may only assign existing variables)
 logText = evalc('[result, err] = searchFcn(plan, c, runOpts);');
-delete(fig(isvalid(fig)));
+delete(prog);
 logFile = fullfile(tempdir, 'pipecompare_last_run.log');
 fid = fopen(logFile, 'w');
 if fid > 0, fprintf(fid, '%s', logText); fclose(fid); end
@@ -109,7 +105,7 @@ if ~isempty(err)
 end
 T = result.ranking.table;
 pipecompare.utils.log('%d pipelines compared on %s in %s; %d passed the checks%s.', height(T), state.setname, ...
-    timeText(toc(t0)), sum(strcmp(T.status, 'feasible')), pipecompare.utils.ternary(isempty(result.ranking.recommended), ...
+    pipecompare.gui.Progress.timeText(toc(t0)), sum(strcmp(T.status, 'feasible')), pipecompare.utils.ternary(isempty(result.ranking.recommended), ...
     '', sprintf('; recommended: pipeline %d', result.ranking.recommended)));
 if pipecompare.eval.Rank.sameScores(result.ranking)
     pipecompare.utils.log('All pipelines that passed have the same noise: the settings compared make no difference on these data.');
@@ -140,29 +136,6 @@ args = [args {'recipe', opts.recipe}];
 if strcmp(opts.reference, 'average'), args = [args {'reference', 'average'}]; end
 com = sprintf('EEG = pop_pipecompare(EEG, %s);', vararg2str(args));
 if ~strcmp(opts.show, 'off'), pipecompare.gui.SimpleResults(result); end
-
-    function stop = progress(n)
-        % the Executor's progress callback: n more pipelines are finished
-        if ~isvalid(dlg), stop = true; return; end   % the window was closed: stop as well
-        nDone = nDone + n;
-        if n > 0 && ~stopping
-            % the time after the first pipeline: it alone runs the shared
-            % steps (ICA included), so it would inflate the estimate
-            if isempty(t1), t1 = tic; end
-            dlg.Value = min(1, nDone / nTotal);
-            if nDone >= nTotal
-                dlg.Message = 'All pipelines done; ranking them...';
-            elseif nDone < 3
-                dlg.Message = sprintf('%d of %d pipelines done; estimating the time left...', nDone, nTotal);
-            else
-                dlg.Message = sprintf('%d of %d pipelines done, about %s left. Stop keeps the finished ones.', ...
-                    nDone, nTotal, timeText(toc(t1) / (nDone - 1) * (nTotal - nDone)));
-            end
-        end
-        drawnow;
-        stop = dlg.CancelRequested;
-        if stop && ~stopping, stopping = true; dlg.Message = 'Stopping after the current step...'; drawnow; end
-    end
 end
 
 function [result, err] = runSearch(plan, c, runOpts)
@@ -173,11 +146,4 @@ try
     result = pipecompare.PipeCompare.optimize(plan, c, runOpts);
 catch err
 end
-end
-
-function t = timeText(sec)
-% 'about 40 s', '12 min', '2 h 10 min'
-if sec < 90, t = sprintf('%.0f s', sec);
-elseif sec < 3600, t = sprintf('%.0f min', sec / 60);
-else, t = sprintf('%d h %d min', floor(sec / 3600), round(mod(sec, 3600) / 60)); end
 end
