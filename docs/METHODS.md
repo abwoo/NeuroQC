@@ -129,7 +129,7 @@ So the objective is SME/*g*. Since *a* is common to the candidates of a stratum,
 is maximizing the signal-to-noise ratio *g*·*a*/SME.
 
 **Invariance.** If P′ = *c*·P with *c* > 0, then *g*′ = *c*·*g* and SME′ = *c*·SME, so
-SME′/*g*′ = SME/*g*: an overall rescaling can no longer win. (Test:
+SME′/*g*′ = SME/*g*: an overall rescaling cannot win. (Test:
 `test_statistics/testScalingTheDataDoesNotChangeTheObjective`.)
 
 **Measuring g.** The matched-decision injection already processes a copy that holds only a known
@@ -178,12 +178,12 @@ through the number of replicates beyond *c*. That number is binomial(*B*, α), w
 
 | *B* | replicates beyond *c* (mean ± SD) | relative SD |
 |---|---|---|
-| 200 (previous, peak measures) | 4 ± 1.98 | 49 % |
-| 999 (now, peak measures) | 20 ± 4.43 | 22 % |
-| 1999 (now, mean measures) | 40 ± 6.26 | 16 % |
+| 200 | 4 ± 1.98 | 49 % |
+| 999 (default, peak measures) | 20 ± 4.43 | 22 % |
+| 1999 (default, mean measures) | 40 ± 6.26 | 16 % |
 
 With *B* = 200 the verdict for a borderline candidate could change with the random seed. The
-defaults are now *B* = 1999 and, for the nested peak bootstrap, *B* = 999. [`pipecompare.eval.Rank`]
+defaults are therefore *B* = 1999 and, for the nested peak bootstrap, *B* = 999. [`pipecompare.eval.Rank`]
 
 **Half-samples for peak measures.** A peak measure already carries an inner bootstrap. Resampling
 with replacement around it overstates how much its bSME varies. Each outer draw therefore takes a
@@ -211,7 +211,7 @@ changes a realistic N170 (σ ≈ 20 ms) by about 0.1 % (simulation of EEGLAB's `
 scalp it is a Gaussian in the angle θ between a channel's unit position vector and the ROI
 centroid, w(θ) = exp(−θ²/(2·0.5²)), normalized to mean 1 over the ROI. Channels without coordinates
 (often EOG/ECG) have no defined scalp position: they get no field outside the ROI and the ROI's
-mean field inside it. Their presence no longer reduces the whole field to a box over the ROI. A box
+mean field inside it, so their presence does not reduce the whole field to a box over the ROI. A box
 is used only when no ROI channel has a position. [`pipecompare.eval.Injection`]
 
 ## 5. Preconditions checked before anything runs
