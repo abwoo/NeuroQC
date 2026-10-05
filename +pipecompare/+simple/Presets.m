@@ -37,8 +37,13 @@ classdef Presets
     %   Reference: kept as recorded, or the average reference as a fixed
     %   step in every pipeline, after the bad channels are interpolated (a
     %   bad channel would otherwise spread into every channel) and before
-    %   ICA. It is not searched: the reference changes the measured
-    %   quantity, so it is chosen for the analysis, not by noise.
+    %   ICA, in either recipe. Data already average-referenced are averaged
+    %   again after the interpolation. It is not searched: the reference
+    %   changes the measured quantity, so it is chosen for the analysis,
+    %   not by noise.
+    %
+    %   Filters the data already have: a stricter edge is compared with
+    %   keeping the data's own filter (no further filter).
 
     methods (Static)
         function names = componentNames()
@@ -242,19 +247,30 @@ classdef Presets
             ica = false;
             exclusion = {};
             if ~isempty(exclude), exclusion = {'exclude', cellstr(exclude)}; end
-            if standard
-                if state.nLocated == 0
-                    notes{end+1} = 'no channel locations: bad-channel interpolation and ICLabel are left out';
-                else
-                    % fixed: a searched step before ICA would multiply the
-                    % decompositions; kurtosis flags spiky channels, joint
-                    % probability noisy ones (e.g. poor contact), so either
-                    % marks a channel bad; on continuous data detected on a
-                    % 1 Hz high-passed copy (slow drifts distort both), as
-                    % ICA is fitted
-                    plan = plan.add('badchannels', 'measure', 'kurt+prob', 'threshold', 5, ...
-                        'detectHighpass', double(continuous), exclusion{:});
-                    plan = addReference(plan, reference, exclude);
+            % An average reference (chosen, or already in the data) comes
+            % after the bad channels are interpolated, in either recipe: a
+            % bad channel in the average spreads into every channel. Data
+            % already average-referenced are averaged again after the
+            % interpolation, which removes the bad channels' share.
+            averaged = any(strcmpi(pipecompare.utils.fieldOr(state, 'reference', ''), {'average', 'averef'}));
+            if averaged && state.nLocated > 0, reference = 'average'; end
+            if (standard || strcmp(reference, 'average')) && state.nLocated == 0
+                if standard, notes{end+1} = 'no channel locations: bad-channel interpolation and ICLabel are left out'; end
+                if strcmp(reference, 'average')
+                    notes{end+1} = ['no channel locations: bad channels cannot be interpolated before the average ', ...
+                        'reference, so a bad channel spreads into every channel'];
+                end
+            elseif standard || strcmp(reference, 'average')
+                % fixed: a searched step before ICA would multiply the
+                % decompositions; kurtosis flags spiky channels, joint
+                % probability noisy ones (e.g. poor contact), so either
+                % marks a channel bad; on continuous data detected on a
+                % 1 Hz high-passed copy (slow drifts distort both), as
+                % ICA is fitted
+                plan = plan.add('badchannels', 'measure', 'kurt+prob', 'threshold', 5, ...
+                    'detectHighpass', double(continuous), exclusion{:});
+                plan = addReference(plan, reference, exclude);
+                if standard
                     steps = {state.process.step};
                     icaAt = find(strcmp(steps, 'ica'), 1, 'last');
                     if ~isempty(icaAt) && any(strcmp(steps(icaAt+1:end), 'icremove'))
@@ -344,8 +360,9 @@ end
 function [plan, notes] = addFilter(plan, notes, type, earlier, keep, edge, outside, bandEdge, fix)
 % Add a filter step searched over the catalog's values that still change
 % the data, given the edges in the dataset's history, and (band power)
-% that stay outside the bands. fix: one value only, the edge nearest the
-% band (band power, Standard).
+% that stay outside the bands; with an edge in the history, also no
+% further filter. fix: one value only, the edge nearest the band (band
+% power, Standard).
 d = pipecompare.plan.Catalog.get(type);
 vals = [d.params.suggest{:}];
 name = strrep(type, 'pass', '-pass');
@@ -370,4 +387,6 @@ if fix && numel(vals) > 1
     vals = v;
 end
 if ~isempty(vals), plan = plan.add(type, 'cutoff', num2cell(vals)); end
+% the data's own filter is one of the choices (no further filter)
+if ~isempty(vals) && ~isempty(earlier) && ~fix, plan = plan.setSkippable(type, true); end
 end

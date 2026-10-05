@@ -41,11 +41,14 @@ Two choices (what to measure; for ERP, the event types); the recipe is preselect
    of pipelines (and of ICA decompositions) is shown live. Steps the data or the installation
    cannot support are left out, with the reason: no channel locations, no ICLabel, or data that
    are already epoched. Filter edges the data already have (read from the history) are not
-   compared: they would leave the data unchanged but still filter the known signal. Above the search limit (500) *Run* stays off; use *Advanced…* to fix
+   compared: they would leave the data unchanged but still filter the known signal; instead,
+   keeping the data's own filter (no further filter) is compared with the stricter edges. Above the search limit (500) *Run* stays off; use *Advanced…* to fix
    some values.
 4. **Reference**: *as recorded* (default) or *average reference*, a fixed step of every pipeline
    placed after the bad channels are interpolated (otherwise a bad channel spreads into every
-   channel) and before ICA; the same non-EEG channels are left out of the average. It is not
+   channel) and before ICA, in *Filters only* too; the same non-EEG channels are left out of the
+   average. Data that are already average-referenced are averaged again after the interpolation,
+   which removes the bad channels' share of the earlier average. It is not
    searched: the reference changes what is measured, so it is chosen for your analysis, not by
    noise. Filtering and re-referencing are both linear, so their order does not matter.
 

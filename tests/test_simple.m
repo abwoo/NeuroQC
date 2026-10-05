@@ -194,12 +194,23 @@ verifyEqual(tc, p.Slots(1).alternatives{1}.params.exclude, {'VEOG'});   % nor te
 verifyEqual(tc, p.Slots(end).alternatives{1}.params.exclude, {'VEOG'}); % nor for the epoch threshold
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.detectHighpass, 1);  % bad channels found on a 1 Hz high-passed copy
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.measure, 'kurt+prob');  % spiky or noisy
+% in Filters only too: the bad channels are interpolated before the average
 p = pipecompare.simple.Presets.recipe('filters', st, c, 'average');
-verifyEqual(tc, ids(p), {'reref', 'highpass', 'lowpass', 'epoch', 'baseline'});
+verifyEqual(tc, ids(p), {'badchannels', 'reref', 'highpass', 'lowpass', 'epoch', 'baseline'});
+% data already average-referenced: averaged again after the interpolation,
+% which removes a bad channel's share of the earlier average
+avg = st; avg.reference = 'average';
+verifyEqual(tc, ids(pipecompare.simple.Presets.recipe('standard', avg, c)), ...
+    {'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
+verifyEqual(tc, ids(pipecompare.simple.Presets.recipe('filters', avg, c)), ...
+    {'badchannels', 'reref', 'highpass', 'lowpass', 'epoch', 'baseline'});
 noloc = st; noloc.nLocated = 0;
 [p, notes] = pipecompare.simple.Presets.recipe('standard', noloc, c);
 verifyFalse(tc, any(ismember({'badchannels', 'ica', 'icremove'}, ids(p))));
 verifyTrue(tc, any(contains(notes, 'no channel locations')));
+[p, notes] = pipecompare.simple.Presets.recipe('filters', noloc, c, 'average');
+verifyEqual(tc, ids(p), {'reref', 'highpass', 'lowpass', 'epoch', 'baseline'});
+verifyTrue(tc, any(contains(notes, 'a bad channel spreads into every channel')));
 [~, Ep] = evalc('pop_epoch(EEG, {''11''}, [-0.2 0.8])');
 [p, notes] = pipecompare.simple.Presets.recipe('standard', pipecompare.live.DataState.fromEEG(Ep), c);
 verifyFalse(tc, any(ismember({'highpass', 'lowpass', 'epoch'}, ids(p))));
@@ -212,10 +223,13 @@ done = st; done.process = struct('step', {'highpass', 'ica', 'icremove'});
 verifyFalse(tc, any(ismember({'ica', 'icremove'}, ids(p))));
 verifyTrue(tc, any(contains(notes, 'ICA was already run')));
 % filter edges the data already have are not compared: they would leave
-% the data unchanged but filter the known signal
+% the data unchanged but filter the known signal; keeping the data's own
+% filter (no further filter) is compared with the stricter edges
 H = EEG; H.history = sprintf('%s\nEEG = pop_eegfiltnew(EEG, ''locutoff'',0.5,''plotfreqz'',0);', EEG.history);
 [p, notes] = pipecompare.simple.Presets.recipe('filters', pipecompare.live.DataState.fromEEG(H), c);
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.cutoff, {1});
+verifyEqual(tc, p.Slots(1).alternatives{2}.type, 'none');
+verifyEqual(tc, numel(p.Slots(2).alternatives), 1);                  % no low-pass in the data: one is always applied
 verifyTrue(tc, any(contains(notes, 'high-pass 0.1, 0.3, 0.5 Hz (the data are already high-pass-filtered at 0.5 Hz)')));
 end
 

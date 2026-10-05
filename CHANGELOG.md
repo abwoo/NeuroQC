@@ -5,6 +5,16 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Simple mode, step order with the average reference: *Filters only* with *Average reference*
+  averaged before any bad-channel check, so a bad channel spread into every channel (the order
+  fixed for *Standard* in 0.9.0). Both recipes now interpolate bad channels before the average.
+  Data that are already average-referenced (re-referenced before PipeCompare) are averaged again
+  after the interpolation, which removes the bad channels' share of the earlier average; before,
+  that share stayed in every channel.
+- Simple mode, data already filtered: the filter edges the data have were left out, and only
+  stricter ones compared, so every pipeline added a filter (data already low-passed at 30 Hz got
+  low-pass 20 Hz in every pipeline). Keeping the data's own filter is now one of the choices,
+  shown as e.g. *low-pass as in the data (30 Hz)*.
 - The panel's *Run search* shows the same progress window as the dialog, with *Stop* (the
   pipelines already finished are ranked); before, a panel search could only be interrupted from the
   Command Window. The panel also has *Save script…*, which writes the selected pipeline as a

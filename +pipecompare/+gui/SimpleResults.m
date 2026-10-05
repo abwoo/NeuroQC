@@ -109,7 +109,7 @@ classdef SimpleResults < handle
             parts = {};
             for e = obj.Result.leaves(k).path
                 i = e{1};
-                if strcmp(i.type, 'none'), parts{end+1} = sprintf('no %s', i.slot); continue; end %#ok<AGROW>
+                if strcmp(i.type, 'none'), parts{end+1} = noneText(i.slot, obj.Result.state); continue; end %#ok<AGROW>
                 for f = i.searched, parts{end+1} = settingText(i.type, f{1}, i.params.(f{1})); end %#ok<AGROW>
             end
             if isempty(parts), t = obj.Result.labels{k}; else, t = strjoin(parts, ', '); end
@@ -209,6 +209,14 @@ switch [type '.' param]
     case 'asr.cutoff', t = sprintf('ASR %s SD', x);
     otherwise, t = sprintf('%s %s %s', type, param, x);
 end
+end
+
+function t = noneText(slot, state)
+% A skipped step in words; a filter the data already had is kept.
+t = sprintf('no %s', slot);
+if ~any(strcmp(slot, {'highpass', 'lowpass'})) || ~isfield(state, 'filters') || isempty(state.filters.(slot)), return; end
+edge = pipecompare.utils.ternary(strcmp(slot, 'highpass'), max(state.filters.(slot)), min(state.filters.(slot)));
+t = sprintf('%s as in the data (%g Hz)', strrep(slot, 'pass', '-pass'), edge);
 end
 
 function t = stepText(type)
