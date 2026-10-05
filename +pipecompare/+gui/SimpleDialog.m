@@ -186,13 +186,6 @@ classdef SimpleDialog < handle
             obj.EventList.Enable = pipecompare.utils.ternary(erp, 'on', 'off');
             obj.RightList.Enable = obj.EventList.Enable;
             obj.PoolBox.Enable = pipecompare.utils.ternary(erp && ~lateral, 'on', 'off');   % one condition per side
-            % the panel scores each condition at the electrodes (not
-            % contralateral minus ipsilateral)
-            obj.AdvancedButton.Enable = pipecompare.utils.ternary(~lateral, 'on', 'off');
-            obj.AdvancedButton.Tooltip = '';
-            if lateral
-                obj.AdvancedButton.Tooltip = 'The panel scores each condition at the electrodes; contralateral minus ipsilateral is set up from a script.';
-            end
             obj.update();
         end
 
@@ -355,8 +348,9 @@ classdef SimpleDialog < handle
                 else
                     for k = 1:numel(c.conditions), app.addCondition(c.conditions(k).name, c.conditions(k).events); end
                     app.EpochField.Value = sprintf('%g %g', c.epoch); app.BaseField.Value = sprintf('%g %g', c.baseline);
-                    comp = c.components(1);
-                    app.addComponent(comp.name, comp.window, comp.roi, comp.measure, comp.polarity);
+                    comp = c.components(1); contra = {};
+                    if c.isLateral(1), contra = comp.contra; end
+                    app.addComponent(comp.name, comp.window, comp.roi, comp.measure, comp.polarity, contra);
                 end
                 app.settingsChanged();
                 for k = 1:numel(notes), pipecompare.utils.log('Recipe %s: %s.', o.recipe, notes{k}); end

@@ -21,10 +21,20 @@ end
 function testComponentsRoundTrip(tc)
 T = pipecompare.gui.PanelText;
 c = T.parseComponents('P3: 0.3 0.6 @ Pz CPz; N1: 0.08 0.14 @ Cz # peakAmplitude negative');
-verifyEqual(tc, c(1, :), {'P3', [0.3 0.6], {'Pz', 'CPz'}, {'mean'}});
-verifyEqual(tc, c(2, :), {'N1', [0.08 0.14], {'Cz'}, {'peakAmplitude', 'negative'}});
+verifyEqual(tc, c(1, :), {'P3', [0.3 0.6], {'Pz', 'CPz'}, {'mean'}, {}});
+verifyEqual(tc, c(2, :), {'N1', [0.08 0.14], {'Cz'}, {'peakAmplitude', 'negative'}, {}});
 verifyEqual(tc, T.parseComponents(T.componentsText(c)), c);
 verifyError(tc, @() T.parseComponents('P3: 0.3 @ Pz'), 'PipeCompare:Contract');
+% contralateral minus ipsilateral: the electrode contralateral to each condition
+l = T.parseComponents('N2pc: 0.2 0.275 @ PO7 PO8 # contra PO8 PO7');
+verifyEqual(tc, l(1, :), {'N2pc', [0.2 0.275], {'PO7', 'PO8'}, {'mean'}, {'PO8', 'PO7'}});
+verifyEqual(tc, T.componentsText(l), 'N2pc: 0.2 0.275 @ PO7 PO8 # contra PO8 PO7');
+l = T.parseComponents('LRP: -0.1 0 @ C3 C4 # peakAmplitude negative contra C4 C3');
+verifyEqual(tc, l(1, 4:5), {{'peakAmplitude', 'negative'}, {'C4', 'C3'}});
+verifyEqual(tc, T.parseComponents(T.componentsText(l)), l);
+k = pipecompare.eval.Contract('conditions', {'left', {'1'}; 'right', {'2'}}, 'components', l);
+verifyTrue(tc, k.isLateral(1));
+verifyError(tc, @() T.parseComponents('N2pc: 0.2 0.275 @ PO7 PO8 # contra'), 'PipeCompare:Contract');
 end
 
 function testBandsRoundTrip(tc)

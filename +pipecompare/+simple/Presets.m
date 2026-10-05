@@ -242,12 +242,14 @@ classdef Presets
             lines = [lines w(:)'];
         end
 
-        function t = nextStep(result)
+        function t = nextStep(result, how)
             % What to try when no pipeline passed because most lost too many
             % epochs to rejection: the channels that were most often over the
             % limit (likely bad channels the detection missed), and the
             % average reference when the data keep a recorded reference
-            % ('' when neither applies)
+            % ('' when neither applies). how: how to choose the average
+            % reference (default: in the dialog or pop_pipecompare).
+            if nargin < 2, how = 'Reference: average reference; pop_pipecompare(..., ''reference'', ''average'')'; end
             t = '';
             why = [result.ranking.whyList{:}];
             if ~isempty(result.ranking.byStratum) || isempty(why) || mean(startsWith(why, 'retention')) < 0.5, return; end
@@ -273,8 +275,7 @@ classdef Presets
             reref = any(cellfun(@(e) strcmp(e.type, 'reref'), result.leaves(1).path));
             if reref || strcmpi(result.state.reference, 'average'), return; end
             t = strtrim([t ' Most pipelines lost too many epochs to the rejection thresholds, and the data keep their ', ...
-                'recorded reference, which often makes amplitudes large. Try the average reference (Reference: average ', ...
-                'reference; pop_pipecompare(..., ''reference'', ''average'')).']);
+                'recorded reference, which often makes amplitudes large. Try the average reference (', how, ').']);
         end
 
         function t = priorFilterText(result)

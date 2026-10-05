@@ -21,6 +21,10 @@ amplitude over the ROI channels and the window after baseline correction.
 2. **Legal pipelines.**
    - The plan expands into all combinations of searched values, alternatives and orders. Each is
      checked against the simulated data state; excluded combinations are counted with their reason.
+   - Channels interpolated or removed after an average reference (of the plan, or of the data
+     before PipeCompare) leave their share of that average in every channel unless the data are
+     averaged again: such a pipeline is not legal. An order search never tries it, and a fixed
+     order is refused with this reason.
    - Every legal pipeline is run; above `maxLeaves` (500 by default) the search is refused with its
      size, never sampled or truncated. To bring a large search within reach: fix the values you
      are already sure of, pin steps or add `before()` rules instead of searching every order, or

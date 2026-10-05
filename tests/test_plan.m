@@ -272,6 +272,39 @@ catch ME
 end
 end
 
+function testAverageReferenceComesAfterTheBadChannels(tc)
+% Channels interpolated after an average reference leave their share of
+% that average in every channel unless the data are averaged again: an
+% order search never tries it, a fixed order is refused with the reason,
+% and data already average-referenced are averaged again after them.
+st = nqc_fakeState(false, 250); st.nLocated = 30;
+c = nqc_contract();
+p = pipecompare.plan.Plan();
+p = p.add('reref', 'mode', 'average'); p = p.add('badchannels', 'measure', 'kurt', 'threshold', 5);
+try
+    p.enumerate(st, c); verifyFail(tc, 'average reference before the bad channels must be refused');
+catch ME
+    verifyEqual(tc, ME.identifier, 'PipeCompare:NoLegalPipeline');
+    verifyTrue(tc, contains(ME.message, 'after the average reference'));
+end
+p.OrderMode = 'search';
+leaves = p.enumerate(st, c);
+verifyNumElements(tc, leaves, 1);                                  % only bad channels first
+verifyEqual(tc, leaves(1).path{1}.type, 'badchannels');
+q = p; q.OrderMode = 'fixed'; q = q.add('reref', 'mode', 'average');   % averaged again: fine
+verifyNumElements(tc, q.enumerate(st, c), 1);
+r = pipecompare.plan.Plan(); r = r.add('reref', 'mode', 'average');
+r = r.add('channels', 'labels', {{'O1'}}, 'action', 'remove');
+verifyError(tc, @() r.enumerate(st, c), 'PipeCompare:NoLegalPipeline');   % removed after it: also
+% data already average-referenced before PipeCompare
+avg = st; avg.reference = 'average';
+b = pipecompare.plan.Plan(); b = b.add('badchannels', 'measure', 'kurt', 'threshold', 5);
+verifyNumElements(tc, b.enumerate(st, c), 1);
+verifyError(tc, @() b.enumerate(avg, c), 'PipeCompare:NoLegalPipeline');
+b = b.add('reref', 'mode', 'average');
+verifyNumElements(tc, b.enumerate(avg, c), 1);
+end
+
 function testDifferentFixedArgumentsAreDifferentPipelines(tc)
 % Two configurations that differ only in a fixed argument (high-pass 0.1
 % vs 0.5, both searching the low-pass) are four pipelines, none dropped.

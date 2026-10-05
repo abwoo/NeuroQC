@@ -909,6 +909,40 @@ verifyEqual(tc, app.CompField.Value, 'P3: 0.3 0.5 @ Pz');
 verifyEqual(tc, char(app.CondField.Enable), 'on');
 end
 
+function testPanelStepsAndComponentsAsInTheSimpleMode(tc)
+% Added steps leave non-EEG channels out and find bad channels by the
+% simple mode's rule; ERP CORE components (N2pc contralateral minus
+% ipsilateral); too few trials are said before the run.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+nqc_setBase(EEG);
+app = pipecompare.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.TypeDrop.Value = 'badchannels'; app.addStep();
+p = app.Plan.Slots(1).alternatives{1}.params;
+verifyEqual(tc, p.measure, 'kurt+prob'); verifyEqual(tc, p.threshold, 5); verifyEqual(tc, p.detectHighpass, 1);
+verifyEqual(tc, p.exclude, {'EOG1', 'EOG2'});
+app.TypeDrop.Value = 'reref'; app.addStep();
+verifyEqual(tc, app.Plan.Slots(2).alternatives{1}.params.exclude, {'EOG1', 'EOG2'});
+app.TypeDrop.Value = 'highpass'; app.addStep();
+verifyFalse(tc, isfield(app.Plan.Slots(3).alternatives{1}.params, 'exclude'));
+% ERP CORE components; P3 fills the empty epoch and baseline
+app.addCondition('left', {'11'}); app.addCondition('right', {'31'});
+app.addPreset('P3');
+verifyEqual(tc, app.CompField.Value, 'P3: 0.3 0.6 @ Pz');
+verifyEqual(tc, str2num(app.EpochField.Value), [-0.2 0.8]); %#ok<ST2NM>
+verifyEqual(tc, str2num(app.BaseField.Value), [-0.2 0]); %#ok<ST2NM>
+app.CompField.Value = '';
+app.addPreset('N2pc', 1);                                         % condition 1 has the target on the left
+verifyEqual(tc, app.CompField.Value, 'N2pc: 0.2 0.275 @ PO7 PO8 # contra PO8 PO7');
+c = app.contract(); verifyTrue(tc, c.isLateral(1));
+% too few trials: said before Run, which then does not search
+app.LimitFields.minTrials.Value = 25; app.settingsChanged();
+verifyTrue(tc, contains(app.SummaryLabel.Text, 'too few trials in left (min trials 25)'));
+app.TypeDrop.Value = 'epoch'; app.addStep(); app.TypeDrop.Value = 'baseline'; app.addStep();
+app.run(false);
+verifyEmpty(tc, app.Result);
+verifyTrue(tc, contains(app.StatusLabel.Text, 'too few trials'));
+end
+
 % ------------------------------------------------------------- real data
 function testRealDatasetStateOnWorkingCopy(tc)
 % Reads the real dataset's history and state; the file on disk must not change.

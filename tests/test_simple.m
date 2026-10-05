@@ -385,7 +385,13 @@ EEG = tc.TestData.EEG;
 nqc_setBase(EEG);
 d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>
 d.MeasureDrop.Value = 'N2pc'; d.measureChanged();
-verifyEqual(tc, char(d.AdvancedButton.Enable), 'off');          % the panel scores no contra minus ipsi
+d.EventList.Value = {'11'}; d.RightList.Value = {'31'};
+appL = d.advanced(); cl = onCleanup(@() delete(appL)); %#ok<NASGU>
+verifyTrue(tc, endsWith(appL.CompField.Value, '# contra PO8 PO7'));   % contralateral minus ipsilateral
+k = appL.contract();
+verifyEqual(tc, {k.conditions.name}, {'left target', 'right target'});
+verifyTrue(tc, k.isLateral(1));
+d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>
 d.MeasureDrop.Value = 'alpha'; d.measureChanged();
 verifyEqual(tc, char(d.AdvancedButton.Enable), 'on');           % band power: the panel takes it
 appB = d.advanced(); cb = onCleanup(@() delete(appB)); %#ok<NASGU>

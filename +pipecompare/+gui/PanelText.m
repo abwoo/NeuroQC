@@ -38,28 +38,38 @@ classdef PanelText
         end
 
         function comps = parseComponents(txt)
-            % 'P3: 0.3 0.6 @ Pz CPz # peakLatency negative' -> rows {name, win, roi, measure}
-            comps = cell(0, 4);
+            % 'P3: 0.3 0.6 @ Pz CPz # peakLatency negative' -> rows {name, win, roi, measure, contra}
+            % '... # contra PO8 PO7': contralateral minus ipsilateral, for
+            % each condition (in their order) the electrode contralateral to it
+            comps = cell(0, 5);
             for part = strsplit(strtrim(char(txt)), ';')
                 p = strtrim(part{1}); if isempty(p), continue; end
                 tok = regexp(p, '^([^:]+):\s*([-\d\.eE]+)\s+([-\d\.eE]+)\s*@\s*([^#]+)(.*)$', 'tokens', 'once');
-                assert(~isempty(tok), 'PipeCompare:Contract', 'Components: name: start end @ ch1 ch2 [# measure polarity]; ...');
-                meas = strsplit(strtrim(strrep(tok{5}, '#', '')));
+                assert(~isempty(tok), 'PipeCompare:Contract', 'Components: name: start end @ ch1 ch2 [# measure polarity] [contra ch ch]; ...');
+                rest = strtrim(strrep(tok{5}, '#', '')); contra = {};
+                [a, b] = regexpi(rest, '(^|\s)contra(\s|$)', 'start', 'end', 'once');
+                if ~isempty(a)
+                    contra = pipecompare.gui.PanelText.tokens(rest(b+1:end)); rest = rest(1:a-1);
+                    assert(~isempty(contra), 'PipeCompare:Contract', 'Component %s: after contra, the electrode contralateral to each condition.', strtrim(tok{1}));
+                end
+                meas = strsplit(strtrim(rest));
                 meas = meas(~cellfun(@isempty, meas)); if isempty(meas), meas = {'mean'}; end
-                comps(end+1, :) = {strtrim(tok{1}), [str2double(tok{2}) str2double(tok{3})], pipecompare.gui.PanelText.tokens(tok{4}), meas}; %#ok<AGROW>
+                comps(end+1, :) = {strtrim(tok{1}), [str2double(tok{2}) str2double(tok{3})], pipecompare.gui.PanelText.tokens(tok{4}), meas, contra}; %#ok<AGROW>
             end
         end
 
         function t = componentsText(comps)
             parts = cell(1, size(comps, 1));
+            q = @(c) strjoin(cellfun(@pipecompare.gui.PanelText.quoteItem, cellstr(c), 'UniformOutput', false), ' ');
             for k = 1:size(comps, 1)
                 m = cellstr(comps{k, 4});
                 tail = '';
                 if ~(isscalar(m) && strcmp(m{1}, 'mean')) && ~(numel(m) == 2 && strcmp(m{1}, 'mean'))
-                    tail = [' # ' strjoin(m, ' ')];
+                    tail = strjoin(m, ' ');
                 end
-                parts{k} = sprintf('%s: %g %g @ %s%s', comps{k, 1}, comps{k, 2}, ...
-                    strjoin(cellfun(@pipecompare.gui.PanelText.quoteItem, comps{k, 3}, 'UniformOutput', false), ' '), tail);
+                if size(comps, 2) >= 5 && ~isempty(comps{k, 5}), tail = strtrim([tail ' contra ' q(comps{k, 5})]); end
+                if ~isempty(tail), tail = [' # ' tail]; end
+                parts{k} = sprintf('%s: %g %g @ %s%s', comps{k, 1}, comps{k, 2}, q(comps{k, 3}), tail);
             end
             t = strjoin(parts, '; ');
         end

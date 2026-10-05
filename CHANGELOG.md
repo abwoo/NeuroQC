@@ -36,6 +36,22 @@ release has a git tag `vX.Y.Z`.
 - The panel defines band power too (*Measure: Band power*): bands with their electrodes and the
   segment length, as the simple mode does; before, it defined ERP components only, and *Advanced…*
   was off for band power. *Advanced…* now takes a band choice over to the panel.
+- Plans (panel and scripts): channels interpolated or removed after an average reference, with no
+  average reference after them, leave the bad channels' share of that average in every channel.
+  Such a pipeline is no longer legal: an order search never tries it (before, it compared it), and
+  a fixed order is refused with the reason. This includes data already average-referenced before
+  PipeCompare.
+- Panel, as in the simple mode: an added bad-channel, re-reference or epoch-rejection step leaves
+  the non-EEG channels (EOG, ECG, ...) out (before, an EOG channel was part of the average, could be
+  interpolated as a bad channel, and its blinks rejected epochs), and an added bad-channel step uses
+  kurtosis or joint probability (z = 5) on a 1 Hz high-passed copy (before: the catalog's search
+  lists on the data as they are). Both are shown and can be changed.
+- Panel: *Add component…* offers the ERP CORE components; N2pc and LRP are scored contralateral
+  minus ipsilateral (`# contra`), and *Advanced…* now takes them over too. A condition with fewer
+  trials than *min trials* is flagged before *Run search*, which then does not search. After a
+  search the panel says what the dialog's result window says (settings that make no difference,
+  what to try when no pipeline passed, filters applied before PipeCompare), and *Adopt* says the
+  data are to be averaged and measured as they are.
 - The panel's *Run search* shows the same progress window as the dialog, with *Stop* (the
   pipelines already finished are ranked); before, a panel search could only be interrupted from the
   Command Window. The panel also has *Save script…*, which writes the selected pipeline as a

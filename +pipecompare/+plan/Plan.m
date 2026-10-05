@@ -188,7 +188,10 @@ classdef Plan
             function walk(mask, order, path, st)
                 pos = numel(order) + 1;
                 if pos > n
-                    addLeaf(order, path);
+                    why = pipecompare.plan.Catalog.finish(st);
+                    if isempty(why), addLeaf(order, path);
+                    elseif isKey(reasons, why), reasons(why) = reasons(why) + 1;
+                    else, reasons(why) = 1; end
                     return;
                 end
                 for s = nextOf(mask, pos)
@@ -556,7 +559,9 @@ hp = 0; if ~isempty(s.filters.highpass), hp = max(s.filters.highpass); end
 st = struct('epoched', s.isEpoched, 'srate', s.srate, 'hasICA', s.ica.present, ...
     'icRemoved', s.ica.present && pruned, 'removed', isfield(s, 'restorableChannels') && ~isempty(s.restorableChannels), ...
     'highpass', hp, ...   % removed: channels removed before PipeCompare can be restored by the plan
-    'anyLocations', ~isfield(s, 'nLocated') || s.nLocated > 0);
+    'anyLocations', ~isfield(s, 'nLocated') || s.nLocated > 0, ...
+    'averaged', any(strcmpi(pipecompare.utils.fieldOr(s, 'reference', ''), {'average', 'averef'})), ...
+    'unbalanced', false);   % averaged: the data hold an average reference; unbalanced: channels changed since
 end
 
 function nodes = buildTree(leaves)

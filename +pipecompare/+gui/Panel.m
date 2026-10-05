@@ -151,7 +151,7 @@ classdef Panel < handle
                 'ButtonPushedFcn', @(~, ~) obj.baselineFromEEGLAB());
             uilabel(cg, 'Text', '');
             obj.CompLabel = uilabel(cg, 'Text', 'Components');
-            obj.CompField = uieditfield(cg, 'Placeholder', 'none yet - use Add component... (format: name: start end @ channels [# measure polarity])');
+            obj.CompField = uieditfield(cg, 'Placeholder', 'none yet - use Add component... (format: name: start end @ channels [# measure polarity] [contra channels])');
             % the bands take the components' place when the measure is band power
             obj.BandField = uieditfield(cg, 'Placeholder', 'none yet - use Add band... (format: name: low high @ channels, in Hz)', 'Visible', 'off');
             obj.BandField.Layout.Row = 6; obj.BandField.Layout.Column = 2;
@@ -341,7 +341,23 @@ classdef Panel < handle
         end
 
         function addStep(obj)
-            obj.Plan = obj.Plan.add(obj.TypeDrop.Value);
+            % As in the simple mode: non-EEG channels (EOG, ECG, ...) are
+            % left out of bad-channel detection, the average and epoch
+            % rejection, and bad channels are kurtosis or joint probability
+            % (z = 5), detected on a 1 Hz high-passed copy of continuous
+            % data. Shown in the table; Edit values... changes them.
+            type = obj.TypeDrop.Value; args = {};
+            EEG = pipecompare.live.Session.current();
+            if ~isempty(EEG)
+                ex = pipecompare.simple.Presets.nonEegChannels(EEG);
+                if ~isempty(ex) && any(strcmp(type, {'badchannels', 'reref', 'reject_threshold', 'reject_jointprob', 'reject_kurtosis'}))
+                    args = {'exclude', ex};
+                end
+                if strcmp(type, 'badchannels')
+                    args = [{'measure', 'kurt+prob', 'threshold', 5, 'detectHighpass', double(EEG.trials == 1)} args];
+                end
+            end
+            obj.Plan = obj.Plan.add(type, args{:});
             obj.invalidate('Plan changed');
             obj.showPlan();
             pipecompare.utils.log('Added %s: %s', obj.Plan.Slots(end).id, pipecompare.gui.PanelValues.settingsText(obj.Plan.Slots(end)));
@@ -992,8 +1008,18 @@ classdef Panel < handle
             pipecompare.utils.log('Baseline from EEGLAB: [%g %g] ms -> [%s] s', ms, obj.BaseField.Value);
         end
 
-        function addComponent(obj, name, win, roi, measure, polarity)
+        function addComponent(obj, name, win, roi, measure, polarity, contra)
+            % contra: for contralateral minus ipsilateral (two ROI
+            % electrodes), the one contralateral to each condition
+            if nargin < 7, contra = {}; end
             if nargin < 2
+                % an ERP CORE component (as in the simple mode) or your own
+                names = pipecompare.simple.Presets.componentNames();
+                items = cellfun(@(n) presetText(pipecompare.simple.Presets.component(n)), names, 'UniformOutput', false);
+                [k, ok] = listdlg('ListString', [items {'your own component...'}], 'SelectionMode', 'single', ...
+                    'Name', 'Component', 'ListSize', [340 150]);
+                if ~ok, return; end
+                if k <= numel(names), obj.addPreset(names{k}); return; end
                 a = inputdlg({'Component name', 'Window start (s)', 'Window end (s)'}, 'PipeCompare component', 1, ...
                     {'', '', ''});
                 if isempty(a), return; end
@@ -1010,8 +1036,46 @@ classdef Panel < handle
                 if isempty(roi), return; end
             end
             comps = pipecompare.gui.PanelText.parseComponents(obj.CompField.Value);
-            comps(end+1, :) = {name, win, cellstr(roi), {measure, polarity}};
+            comps(end+1, :) = {name, win, cellstr(roi), {measure, polarity}, cellstr(contra)};
             obj.setField(obj.CompField, pipecompare.gui.PanelText.componentsText(comps));
+        end
+
+        function addPreset(obj, name, left)
+            % An ERP CORE component: window and electrodes (the dataset's
+            % spelling), and its epoch and baseline when those are empty.
+            % N2pc and LRP are contralateral minus ipsilateral: left lists
+            % the conditions on the left side (target, response hand); the
+            % others are on the right.
+            P = pipecompare.simple.Presets;
+            p = P.component(name);
+            EEG = pipecompare.live.Session.current();
+            if isempty(EEG), uialert(obj.Fig, 'No dataset in EEGLAB.', 'PipeCompare'); return; end
+            try
+                sites = P.channels({EEG.chanlocs.labels}, p.sites);
+            catch ME
+                uialert(obj.Fig, sprintf('%s is measured at %s (ERP CORE). %s Choose your own component instead.', ...
+                    p.name, strjoin(p.sites, '/'), ME.message), 'PipeCompare'); return;
+            end
+            contra = {};
+            if ~isempty(p.contra)
+                conds = pipecompare.gui.PanelText.parseConditions(obj.CondField.Value);
+                if isempty(conds)
+                    uialert(obj.Fig, sprintf(['%s is scored contralateral minus ipsilateral: define the conditions ', ...
+                        'first, the %s on the left and on the right.'], p.name, p.side), 'PipeCompare'); return;
+                end
+                if nargin < 3
+                    prompt = pipecompare.utils.ternary(strcmp(p.side, 'hand'), 'Conditions of left-hand responses (the others: right hand)', ...
+                        'Conditions with the target on the left (the others: on the right)');
+                    [left, ok] = listdlg('ListString', conds(:, 1), 'SelectionMode', 'multiple', 'Name', p.name, ...
+                        'PromptString', prompt, 'ListSize', [300 120]);
+                    if ~ok, return; end
+                end
+                contra = repmat(sites(strcmpi(p.sites, p.contra{2})), 1, size(conds, 1));   % right side
+                contra(left) = sites(strcmpi(p.sites, p.contra{1}));
+            end
+            if isempty(strtrim(obj.EpochField.Value)), obj.EpochField.Value = sprintf('%g %g', p.epoch); end
+            if isempty(strtrim(obj.BaseField.Value)), obj.BaseField.Value = sprintf('%g %g', p.baseline); end
+            obj.addComponent(p.name, p.window, sites, 'mean', p.polarity, contra);
         end
 
         function addMeasure(obj)
@@ -1196,25 +1260,21 @@ classdef Panel < handle
                     return;
                 end
                 if isempty(c.conditions), obj.SummaryLabel.Text = ''; return; end
-                [elig, E] = pipecompare.run.Executor.eligibleUrevents(EEG, c);
+                [ne, n] = trialCounts(EEG, c);
                 parts = cell(1, numel(c.conditions));
                 for k = 1:numel(c.conditions)
-                    if E.trials == 1
-                        ty = arrayfun(@(e) strtrim(char(string(e.type))), E.event, 'UniformOutput', false);
-                        isC = ismember(ty, c.conditions(k).events);
-                        n = sum(isC);
-                        ne = n; if ~isempty(elig), ne = sum(ismember(arrayfun(@(e) double(e.urevent), E.event(isC)), elig)); end
-                    else
-                        if ~isempty(elig), E.etc.pipecompare.eligibleUrevents = elig; end
-                        T = pipecompare.eval.Measure.trials(E, c);
-                        n = NaN; ne = sum(T.cond == k);
-                    end
-                    if isempty(elig) || isnan(n), parts{k} = sprintf('%s %d', c.conditions(k).name, ne);
-                    else, parts{k} = sprintf('%s %d of %d', c.conditions(k).name, ne, n); end
+                    if isnan(n(k)), parts{k} = sprintf('%s %d', c.conditions(k).name, ne(k));
+                    else, parts{k} = sprintf('%s %d of %d', c.conditions(k).name, ne(k), n(k)); end
                 end
                 roi = ''; if ~isempty(c.components), roi = sprintf(' | ROI channels: %d', numel(c.allRoi())); end
                 obj.SummaryLabel.Text = ['Trials: ' strjoin(parts, ', ') roi];
                 obj.SummaryLabel.FontColor = [0 0.3 0.1];
+                need = obj.LimitFields.minTrials.Value; few = find(ne < need, 1);
+                if ~isempty(few)   % every pipeline would be excluded: said before Run
+                    obj.SummaryLabel.Text = sprintf('%s | too few trials in %s (min trials %d)', obj.SummaryLabel.Text, ...
+                        c.conditions(few).name, need);
+                    obj.SummaryLabel.FontColor = [0.7 0.2 0];
+                end
             catch ME
                 obj.SummaryLabel.Text = ME.message;
                 obj.SummaryLabel.FontColor = [0.7 0.2 0];
@@ -1224,6 +1284,19 @@ classdef Panel < handle
         function run(obj, dry)
             try
                 c = obj.contract();
+                if ~dry && ~c.isSegmented() && ~isempty(c.conditions)
+                    % as the dialog: a condition with fewer trials than the
+                    % search requires would exclude every pipeline, after the run
+                    EEG = pipecompare.live.Session.current();
+                    ne = trialCounts(EEG, c); need = obj.LimitFields.minTrials.Value; few = find(ne < need, 1);
+                    if ~isempty(few)
+                        obj.StatusLabel.Text = 'Not run: too few trials in a condition.';
+                        uialert(obj.Fig, sprintf(['%s has %d trials; each condition needs at least %d (min trials), so ', ...
+                            'every pipeline would be excluded. Lower min trials, or join event types into one condition ', ...
+                            '(name: code code).'], c.conditions(few).name, ne(few), need), 'PipeCompare');
+                        return;
+                    end
+                end
                 opts = struct('dryRun', dry);
                 ob = strtrim(obj.ObjectiveField.Value);
                 opts.objective = ob;
@@ -1260,10 +1333,23 @@ classdef Panel < handle
                     obj.StatusLabel.Text = sprintf('%d pipelines, %d step runs (shared prefixes)', r.report.nLeaves, r.report.nNodes);
                     return;
                 end
+                % filters applied before PipeCompare are outside the pipelines' signal check
+                try
+                    r.priorFilters = pipecompare.eval.Injection.priorFilters(r.root, c, r.state, r.options);
+                catch ME
+                    r.priorFilters = [];
+                    pipecompare.utils.log('The filters applied before PipeCompare were not checked (%s).', ME.message);
+                end
                 obj.Result = r;
                 assignin('base', 'pipecompare_result', r);
                 obj.showResults();
+                notes = resultNotes(r);
+                for k = 1:numel(notes), pipecompare.utils.log('%s', notes{k}); end
                 obj.StatusLabel.Text = 'Done. Result in variable pipecompare_result.';
+                if ~isempty(notes)
+                    obj.StatusLabel.Text = 'Done; notes below the results. Result in variable pipecompare_result.';
+                    obj.DetailArea.Value = notes(:);
+                end
                 pipecompare.utils.log('Result stored in the base variable pipecompare_result.');
             catch ME
                 pipecompare.utils.log('ERROR: %s', ME.message);
@@ -1361,8 +1447,15 @@ classdef Panel < handle
                 end
                 choice = uiconfirm(obj.Fig, ME.message, 'PipeCompare: adopt anyway?', ...
                     'Options', {'Adopt anyway', 'Cancel'}, 'DefaultOption', 2, 'CancelOption', 2, 'Icon', 'warning');
-                if strcmp(choice, 'Adopt anyway'), pipecompare.PipeCompare.adopt(obj.Result, k, true); end
+                if ~strcmp(choice, 'Adopt anyway'), return; end
+                pipecompare.PipeCompare.adopt(obj.Result, k, true);
             end
+            % what comes next, as in the dialog's result window
+            obj.StatusLabel.Text = sprintf('Candidate %d adopted as the current EEGLAB dataset.', k);
+            uialert(obj.Fig, sprintf(['Candidate %d is now the current EEGLAB dataset. It is not saved yet: use ', ...
+                'File > Save current dataset as. These are the data that were compared: average them (or compute the ', ...
+                'band power) and measure. Filtering, re-referencing or rejecting epochs again would change what was ', ...
+                'compared.'], k), 'Done', 'Icon', 'success');
         end
 
         function printScript(obj)
@@ -1399,6 +1492,46 @@ ev = []; if isfield(EEG, 'urevent') && ~isempty(EEG.urevent), ev = EEG.urevent; 
 lat = 0; n = numel(ev);
 if n > 0 && isfield(ev, 'latency'), lat = sum(double([ev.latency]) .* (1:n)); end
 id = sprintf('%s|%d|%.12g', f, n, lat);
+end
+
+function [ne, n] = trialCounts(EEG, c)
+% Trials per condition under the trial rule (ne) and without it (n; NaN
+% when there is no rule, or on epoched data, where only the kept ones count).
+[elig, E] = pipecompare.run.Executor.eligibleUrevents(EEG, c);
+ne = zeros(1, numel(c.conditions)); n = NaN(1, numel(c.conditions));
+if E.trials == 1
+    ty = arrayfun(@(e) strtrim(char(string(e.type))), E.event, 'UniformOutput', false);
+    for k = 1:numel(c.conditions)
+        isC = ismember(ty, c.conditions(k).events);
+        ne(k) = sum(isC);
+        if ~isempty(elig), n(k) = ne(k); ne(k) = sum(ismember(arrayfun(@(e) double(e.urevent), E.event(isC)), elig)); end
+    end
+else
+    if ~isempty(elig), E.etc.pipecompare.eligibleUrevents = elig; end
+    T = pipecompare.eval.Measure.trials(E, c);
+    for k = 1:numel(c.conditions), ne(k) = sum(T.cond == k); end
+end
+end
+
+function lines = resultNotes(r)
+% What the dialog's result window also says: the settings compared make
+% no difference, what to try when no pipeline passed, and filters applied
+% before PipeCompare that already change the signal.
+lines = {};
+if pipecompare.eval.Rank.sameScores(r.ranking)
+    lines{end+1} = 'All pipelines that passed have the same noise: the settings compared make no difference on these data.';
+end
+hint = pipecompare.simple.Presets.nextStep(r, 'add a reref step, mode average, after the bad channels');
+if ~isempty(hint), lines{end+1} = hint; end
+prior = pipecompare.simple.Presets.priorFilterText(r);
+if ~isempty(prior), lines{end+1} = prior; end
+end
+
+function t = presetText(p)
+% an ERP CORE component in the Add component... list
+t = sprintf('%s (%s, %g-%g ms%s)', p.name, strjoin(p.sites, '/'), 1000 * p.window, ...
+    pipecompare.utils.ternary(strcmp(p.lockedTo, 'response'), ', response-locked', ''));
+if ~isempty(p.contra), t = [t(1:end-1) ', contralateral minus ipsilateral)']; end
 end
 
 function fitLayout(g, pos)
