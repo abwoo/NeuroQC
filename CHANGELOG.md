@@ -5,6 +5,53 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Simple mode, step order with the average reference: *Filters only* with *Average reference*
+  averaged before any bad-channel check, so a bad channel spread into every channel (the order
+  fixed for *Standard* in 0.9.0). Both recipes now interpolate bad channels before the average.
+  Data that are already average-referenced (re-referenced before PipeCompare) are averaged again
+  after the interpolation, which removes the bad channels' share of the earlier average; before,
+  that share stayed in every channel.
+- Simple mode, data already filtered: the filter edges the data have were left out, and only
+  stricter ones compared, so every pipeline added a filter (data already low-passed at 30 Hz got
+  low-pass 20 Hz in every pipeline). Keeping the data's own filter is now one of the choices,
+  shown as e.g. *low-pass as in the data (30 Hz)*.
+- Simple mode: filters applied before PipeCompare (read from the history) are outside the
+  pipelines' signal check, which starts from the data as they are. The same known signal is now
+  filtered at those edges; when that alone changes it beyond a pipeline's limit (e.g. a 1 Hz
+  high-pass on a P3), the result window and the Command Window say so and suggest starting from
+  the unfiltered data. Continuous data only (epoched data no longer hold what was filtered).
+- Simple mode: with the average reference, EEG channels removed before PipeCompare (with a
+  location) are interpolated back first, so the average covers the whole montage. Non-EEG channels
+  (EOG, ECG, ...) are no longer offered for restoring anywhere: the scalp cannot predict them.
+- The history gives the edges of filters other than `pop_eegfiltnew` (ERPLAB's `pop_basicfilter`,
+  `pop_firws`, `pop_firpm`, `pop_eegfilt`, `pop_iirfilt`) and of clean_rawdata's own high-pass
+  (the end of its transition band). Before, such data counted as unfiltered, so the simple mode
+  compared filters they already had and could not check them.
+- The dialog says where PipeCompare starts (the raw continuous data with channel locations), which
+  steps were already done to the data (they are not compared), that *Standard* fits an ICA in the
+  data again (and does not use the components marked in it), and the inconsistencies between the
+  data and their history that only the panel showed before. The Command Window gets the same
+  lines. After *Use this pipeline*, the message says the data are ready to average and should not
+  be filtered, re-referenced or rejected again.
+- The panel defines band power too (*Measure: Band power*): bands with their electrodes and the
+  segment length, as the simple mode does; before, it defined ERP components only, and *Advanced…*
+  was off for band power. *Advanced…* now takes a band choice over to the panel.
+- Plans (panel and scripts): channels interpolated or removed after an average reference, with no
+  average reference after them, leave the bad channels' share of that average in every channel.
+  Such a pipeline is no longer legal: an order search never tries it (before, it compared it), and
+  a fixed order is refused with the reason. This includes data already average-referenced before
+  PipeCompare.
+- Panel, as in the simple mode: an added bad-channel, re-reference or epoch-rejection step leaves
+  the non-EEG channels (EOG, ECG, ...) out (before, an EOG channel was part of the average, could be
+  interpolated as a bad channel, and its blinks rejected epochs), and an added bad-channel step uses
+  kurtosis or joint probability (z = 5) on a 1 Hz high-passed copy (before: the catalog's search
+  lists on the data as they are). Both are shown and can be changed.
+- Panel: *Add component…* offers the ERP CORE components; N2pc and LRP are scored contralateral
+  minus ipsilateral (`# contra`), and *Advanced…* now takes them over too. A condition with fewer
+  trials than *min trials* is flagged before *Run search*, which then does not search. After a
+  search the panel says what the dialog's result window says (settings that make no difference,
+  what to try when no pipeline passed, filters applied before PipeCompare), and *Adopt* says the
+  data are to be averaged and measured as they are.
 - The panel's *Run search* shows the same progress window as the dialog, with *Stop* (the
   pipelines already finished are ranked); before, a panel search could only be interrupted from the
   Command Window. The panel also has *Save script…*, which writes the selected pipeline as a

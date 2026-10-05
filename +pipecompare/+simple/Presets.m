@@ -37,8 +37,15 @@ classdef Presets
     %   Reference: kept as recorded, or the average reference as a fixed
     %   step in every pipeline, after the bad channels are interpolated (a
     %   bad channel would otherwise spread into every channel) and before
-    %   ICA. It is not searched: the reference changes the measured
-    %   quantity, so it is chosen for the analysis, not by noise.
+    %   ICA, in either recipe. Data already average-referenced are averaged
+    %   again after the interpolation. EEG channels removed before
+    %   PipeCompare are interpolated back before the average (when they
+    %   have locations). It is not searched: the reference
+    %   changes the measured quantity, so it is chosen for the analysis,
+    %   not by noise.
+    %
+    %   Filters the data already have: a stricter edge is compared with
+    %   keeping the data's own filter (no further filter).
 
     methods (Static)
         function names = componentNames()
@@ -177,25 +184,72 @@ classdef Presets
         end
 
         function roi = eegChannels(EEG)
-            % all channels except non-EEG ones (EOG, ECG, EMG, ...), by
-            % type or, when the type is not set, by name (VEOG, HEOG, ECG1,
-            % EYEL; with the POL prefix of some EDF exports: POL EYEL)
+            % all channels except non-EEG ones (EOG, ECG, EMG, ...)
             labels = {EEG.chanlocs.labels};
             roi = labels;
-            keep = cellfun(@isempty, regexpi(labels, '^(POL\s+)?([VH]?EOG|ECG|EKG|EMG|EYE)', 'once'));
-            if isfield(EEG.chanlocs, 'type')
-                ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), EEG.chanlocs(:)', 'UniformOutput', false);
-                keep = keep & ~ismember(ty, {'EOG', 'HEOG', 'VEOG', 'ECG', 'EKG', 'EMG', 'MISC', 'TRIG', 'STIM'});
-            end
+            keep = ~pipecompare.simple.Presets.isNonEeg(EEG.chanlocs);
             if any(keep), roi = labels(keep); end
         end
 
-        function t = nextStep(result)
+        function tf = isNonEeg(chanlocs)
+            % non-EEG channels (EOG, ECG, EMG, ...), by type or, when the
+            % type is not set, by name (VEOG, HEOG, ECG1, EYEL; with the
+            % POL prefix of some EDF exports: POL EYEL)
+            labels = {chanlocs.labels};
+            tf = ~cellfun(@isempty, regexpi(labels, '^(POL\s+)?([VH]?EOG|ECG|EKG|EMG|EYE)', 'once'));
+            if isfield(chanlocs, 'type')
+                ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), chanlocs(:)', 'UniformOutput', false);
+                tf = tf | ismember(ty, {'EOG', 'HEOG', 'VEOG', 'ECG', 'EKG', 'EMG', 'MISC', 'TRIG', 'STIM'});
+            end
+        end
+
+        function lines = dataAdvice(state)
+            % What to know about the data before comparing, in words: where
+            % PipeCompare starts (the raw continuous data), the steps done
+            % before it (not compared), an ICA in the data that Standard
+            % fits again, and the inconsistencies found between the data
+            % and their history.
+            lines = {};
+            steps = {state.process.step};
+            words = {'highpass', 'filtered'; 'lowpass', 'filtered'; 'bandpass', 'filtered'; 'filter_other', 'filtered';
+                'clean_rawdata', 'cleaned with clean_rawdata'; 'badchannels', 'bad channels handled';
+                'interpolate', 'bad channels handled'; 'reref', 're-referenced'; 'ica', 'ICA';
+                'icremove', 'ICA components removed'; 'epoch', 'epoched'};
+            done = unique(words(ismember(words(:, 1), steps), 2), 'stable');
+            if state.isEpoched && ~ismember('epoched', done), done{end+1} = 'epoched'; end
+            if isempty(done)
+                lines{end+1} = ['Start from the raw continuous data (channel locations added): each pipeline ', ...
+                    'filters, references, runs ICA and epochs it.'];
+            else
+                lines{end+1} = sprintf(['Already done to these data: %s. Those steps are not compared; to compare ', ...
+                    'them, start from the raw continuous data (channel locations added).'], strjoin(done, ', '));
+            end
+            icaAt = find(strcmp(steps, 'ica'), 1, 'last');
+            removed = ~isempty(icaAt) && any(strcmp(steps(icaAt+1:end), 'icremove'));
+            if state.ica.present && ~removed
+                t = 'Standard fits ICA again (after the bad channels), so the ICA in these data is not used';
+                if ~isempty(state.ica.flagged)
+                    t = sprintf('%s, nor the %d component(s) marked in it', t, numel(state.ica.flagged));
+                end
+                if isempty(icaAt)
+                    t = [t '. The history does not show where it came from: if components were already ', ...
+                        'removed, choose Filters only'];
+                end
+                lines{end+1} = [t '.'];
+            end
+            % PipeCompare handles these itself on its copy
+            w = state.warnings(~contains(state.warnings, {'urevent', 'EEG.srate'}));
+            lines = [lines w(:)'];
+        end
+
+        function t = nextStep(result, how)
             % What to try when no pipeline passed because most lost too many
             % epochs to rejection: the channels that were most often over the
             % limit (likely bad channels the detection missed), and the
             % average reference when the data keep a recorded reference
-            % ('' when neither applies)
+            % ('' when neither applies). how: how to choose the average
+            % reference (default: in the dialog or pop_pipecompare).
+            if nargin < 2, how = 'Reference: average reference; pop_pipecompare(..., ''reference'', ''average'')'; end
             t = '';
             why = [result.ranking.whyList{:}];
             if ~isempty(result.ranking.byStratum) || isempty(why) || mean(startsWith(why, 'retention')) < 0.5, return; end
@@ -221,8 +275,33 @@ classdef Presets
             reref = any(cellfun(@(e) strcmp(e.type, 'reref'), result.leaves(1).path));
             if reref || strcmpi(result.state.reference, 'average'), return; end
             t = strtrim([t ' Most pipelines lost too many epochs to the rejection thresholds, and the data keep their ', ...
-                'recorded reference, which often makes amplitudes large. Try the average reference (Reference: average ', ...
-                'reference; pop_pipecompare(..., ''reference'', ''average'')).']);
+                'recorded reference, which often makes amplitudes large. Try the average reference (', how, ').']);
+        end
+
+        function t = priorFilterText(result)
+            % A warning when the filters the data had before PipeCompare
+            % (result.priorFilters, pipecompare.eval.Injection.priorFilters)
+            % already change the known signal beyond the limit a pipeline
+            % must meet ('' otherwise): the comparison cannot undo them.
+            t = '';
+            if ~isfield(result, 'priorFilters') || isempty(result.priorFilters), return; end
+            p = result.priorFilters; sg = p.signal;
+            lim = pipecompare.utils.withDefaults(result.options, pipecompare.eval.Rank.defaults());
+            what = {};
+            if sg.amplitudeError > lim.maxAmplitudeError
+                what{end+1} = sprintf('change the size of the known signal by %.0f%% (a pipeline may change it by at most %.0f%%)', ...
+                    100 * sg.amplitudeError, 100 * lim.maxAmplitudeError);
+            end
+            if ~ismember('latencyShiftMs', sg.notApplicable) && sg.latencyShiftMs > lim.maxLatencyShiftMs
+                what{end+1} = sprintf('move its peak by %.0f ms (at most %g ms)', sg.latencyShiftMs, lim.maxLatencyShiftMs);
+            end
+            if isempty(what), return; end
+            edges = {};
+            if ~isempty(p.highpass), edges{end+1} = sprintf('high-pass %g Hz', p.highpass); end
+            if ~isempty(p.lowpass), edges{end+1} = sprintf('low-pass %g Hz', p.lowpass); end
+            t = sprintf(['The filters applied before PipeCompare (%s) already %s. The comparison cannot undo ', ...
+                'that: to compare filters without it, start from the unfiltered data.'], strjoin(edges, ', '), ...
+                strjoin(what, ' and '));
         end
 
         function [plan, notes] = recipe(name, state, contract, reference, exclude)
@@ -242,19 +321,36 @@ classdef Presets
             ica = false;
             exclusion = {};
             if ~isempty(exclude), exclusion = {'exclude', cellstr(exclude)}; end
-            if standard
-                if state.nLocated == 0
-                    notes{end+1} = 'no channel locations: bad-channel interpolation and ICLabel are left out';
-                else
-                    % fixed: a searched step before ICA would multiply the
-                    % decompositions; kurtosis flags spiky channels, joint
-                    % probability noisy ones (e.g. poor contact), so either
-                    % marks a channel bad; on continuous data detected on a
-                    % 1 Hz high-passed copy (slow drifts distort both), as
-                    % ICA is fitted
-                    plan = plan.add('badchannels', 'measure', 'kurt+prob', 'threshold', 5, ...
-                        'detectHighpass', double(continuous), exclusion{:});
-                    plan = addReference(plan, reference, exclude);
+            % An average reference (chosen, or already in the data) comes
+            % after the bad channels are interpolated, in either recipe: a
+            % bad channel in the average spreads into every channel. Data
+            % already average-referenced are averaged again after the
+            % interpolation, which removes the bad channels' share.
+            averaged = any(strcmpi(pipecompare.utils.fieldOr(state, 'reference', ''), {'average', 'averef'}));
+            if averaged && state.nLocated > 0, reference = 'average'; end
+            if (standard || strcmp(reference, 'average')) && state.nLocated == 0
+                if standard, notes{end+1} = 'no channel locations: bad-channel interpolation and ICLabel are left out'; end
+                if strcmp(reference, 'average')
+                    notes{end+1} = ['no channel locations: bad channels cannot be interpolated before the average ', ...
+                        'reference, so a bad channel spreads into every channel'];
+                end
+            elseif standard || strcmp(reference, 'average')
+                % channels removed before PipeCompare (EEG data channels with
+                % a location) are interpolated back before an average: an
+                % average over fewer channels is a different reference
+                if strcmp(reference, 'average') && ~isempty(pipecompare.utils.fieldOr(state, 'restorableChannels', []))
+                    plan = plan.add('restore');
+                end
+                % fixed: a searched step before ICA would multiply the
+                % decompositions; kurtosis flags spiky channels, joint
+                % probability noisy ones (e.g. poor contact), so either
+                % marks a channel bad; on continuous data detected on a
+                % 1 Hz high-passed copy (slow drifts distort both), as
+                % ICA is fitted
+                plan = plan.add('badchannels', 'measure', 'kurt+prob', 'threshold', 5, ...
+                    'detectHighpass', double(continuous), exclusion{:});
+                plan = addReference(plan, reference, exclude);
+                if standard
                     steps = {state.process.step};
                     icaAt = find(strcmp(steps, 'ica'), 1, 'last');
                     if ~isempty(icaAt) && any(strcmp(steps(icaAt+1:end), 'icremove'))
@@ -344,8 +440,9 @@ end
 function [plan, notes] = addFilter(plan, notes, type, earlier, keep, edge, outside, bandEdge, fix)
 % Add a filter step searched over the catalog's values that still change
 % the data, given the edges in the dataset's history, and (band power)
-% that stay outside the bands. fix: one value only, the edge nearest the
-% band (band power, Standard).
+% that stay outside the bands; with an edge in the history, also no
+% further filter. fix: one value only, the edge nearest the band (band
+% power, Standard).
 d = pipecompare.plan.Catalog.get(type);
 vals = [d.params.suggest{:}];
 name = strrep(type, 'pass', '-pass');
@@ -370,4 +467,6 @@ if fix && numel(vals) > 1
     vals = v;
 end
 if ~isempty(vals), plan = plan.add(type, 'cutoff', num2cell(vals)); end
+% the data's own filter is one of the choices (no further filter)
+if ~isempty(vals) && ~isempty(earlier) && ~fix, plan = plan.setSkippable(type, true); end
 end

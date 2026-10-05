@@ -68,6 +68,10 @@ cur = pipecompare.live.Session.current();
 assert(~isempty(cur) && strcmp(pipecompare.live.Session.fingerprint(cur), pipecompare.live.Session.fingerprint(EEG)), ...
     'PipeCompare:Simple', 'pop_pipecompare works on the current EEGLAB dataset; make this dataset current first.');
 state = pipecompare.live.DataState.fromEEG(EEG);
+% what was done to the data before (the hint for raw data is the dialog's)
+advice = pipecompare.simple.Presets.dataAdvice(state);
+advice = advice(~startsWith(advice, 'Start from the raw'));
+for k = 1:numel(advice), pipecompare.utils.log('%s', advice{k}); end
 assert(~(state.isEpoched && pipecompare.simple.Presets.isBand(opts.measure)), 'PipeCompare:Simple', ['Band power is ', ...
     'compared on continuous recordings (e.g. resting state); this dataset is already cut into epochs. Choose an ERP ', ...
     'measure, or use the continuous data.']);
@@ -119,6 +123,15 @@ if isempty(result.ranking.recommended) && ~opts.pool && ~pipecompare.simple.Pres
 end
 hint = pipecompare.simple.Presets.nextStep(result);
 if ~isempty(hint), pipecompare.utils.log('%s', hint); end
+% filters applied before PipeCompare are outside the pipelines' signal check
+try
+    result.priorFilters = pipecompare.eval.Injection.priorFilters(result.root, c, state, result.options);
+catch ME
+    result.priorFilters = [];
+    pipecompare.utils.log('The filters applied before PipeCompare were not checked (%s).', ME.message);
+end
+prior = pipecompare.simple.Presets.priorFilterText(result);
+if ~isempty(prior), pipecompare.utils.log('%s', prior); end
 if fid > 0, pipecompare.utils.log('Full log (every EEGLAB command): %s', logFile); end
 assignin('base', 'pipecompare_result', result);
 args = {'measure', opts.measure};

@@ -194,12 +194,23 @@ verifyEqual(tc, p.Slots(1).alternatives{1}.params.exclude, {'VEOG'});   % nor te
 verifyEqual(tc, p.Slots(end).alternatives{1}.params.exclude, {'VEOG'}); % nor for the epoch threshold
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.detectHighpass, 1);  % bad channels found on a 1 Hz high-passed copy
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.measure, 'kurt+prob');  % spiky or noisy
+% in Filters only too: the bad channels are interpolated before the average
 p = pipecompare.simple.Presets.recipe('filters', st, c, 'average');
-verifyEqual(tc, ids(p), {'reref', 'highpass', 'lowpass', 'epoch', 'baseline'});
+verifyEqual(tc, ids(p), {'badchannels', 'reref', 'highpass', 'lowpass', 'epoch', 'baseline'});
+% data already average-referenced: averaged again after the interpolation,
+% which removes a bad channel's share of the earlier average
+avg = st; avg.reference = 'average';
+verifyEqual(tc, ids(pipecompare.simple.Presets.recipe('standard', avg, c)), ...
+    {'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
+verifyEqual(tc, ids(pipecompare.simple.Presets.recipe('filters', avg, c)), ...
+    {'badchannels', 'reref', 'highpass', 'lowpass', 'epoch', 'baseline'});
 noloc = st; noloc.nLocated = 0;
 [p, notes] = pipecompare.simple.Presets.recipe('standard', noloc, c);
 verifyFalse(tc, any(ismember({'badchannels', 'ica', 'icremove'}, ids(p))));
 verifyTrue(tc, any(contains(notes, 'no channel locations')));
+[p, notes] = pipecompare.simple.Presets.recipe('filters', noloc, c, 'average');
+verifyEqual(tc, ids(p), {'reref', 'highpass', 'lowpass', 'epoch', 'baseline'});
+verifyTrue(tc, any(contains(notes, 'a bad channel spreads into every channel')));
 [~, Ep] = evalc('pop_epoch(EEG, {''11''}, [-0.2 0.8])');
 [p, notes] = pipecompare.simple.Presets.recipe('standard', pipecompare.live.DataState.fromEEG(Ep), c);
 verifyFalse(tc, any(ismember({'highpass', 'lowpass', 'epoch'}, ids(p))));
@@ -212,11 +223,68 @@ done = st; done.process = struct('step', {'highpass', 'ica', 'icremove'});
 verifyFalse(tc, any(ismember({'ica', 'icremove'}, ids(p))));
 verifyTrue(tc, any(contains(notes, 'ICA was already run')));
 % filter edges the data already have are not compared: they would leave
-% the data unchanged but filter the known signal
+% the data unchanged but filter the known signal; keeping the data's own
+% filter (no further filter) is compared with the stricter edges
 H = EEG; H.history = sprintf('%s\nEEG = pop_eegfiltnew(EEG, ''locutoff'',0.5,''plotfreqz'',0);', EEG.history);
 [p, notes] = pipecompare.simple.Presets.recipe('filters', pipecompare.live.DataState.fromEEG(H), c);
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.cutoff, {1});
+verifyEqual(tc, p.Slots(1).alternatives{2}.type, 'none');
+verifyEqual(tc, numel(p.Slots(2).alternatives), 1);                  % no low-pass in the data: one is always applied
 verifyTrue(tc, any(contains(notes, 'high-pass 0.1, 0.3, 0.5 Hz (the data are already high-pass-filtered at 0.5 Hz)')));
+end
+
+function testChannelsRemovedBeforeAreRestoredForTheAverage(tc)
+% EEG channels removed before PipeCompare are interpolated back before an
+% average reference (an average over fewer channels is another reference);
+% non-EEG channels (e.g. VEOG) are never interpolated from the scalp.
+EEG = tc.TestData.EEG;
+c = pipecompare.simple.Presets.contract(EEG, 'P3', {'11'});
+ids = @(p) {p.Slots.id};
+R = pop_select(EEG, 'rmchannel', {'O1', 'O2'});
+st = pipecompare.live.DataState.fromEEG(R);
+verifyTrue(tc, all(ismember({'O1', 'O2'}, st.removedChannels(st.restorableChannels))));
+verifyEqual(tc, ids(pipecompare.simple.Presets.recipe('standard', st, c, 'average')), ...
+    {'restore', 'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
+verifyFalse(tc, ismember('restore', ids(pipecompare.simple.Presets.recipe('standard', st, c))));   % as recorded
+V = EEG; V.chanlocs(1).labels = 'VEOG';
+V = pop_select(V, 'rmchannel', {'VEOG'});
+verifyEmpty(tc, pipecompare.live.DataState.fromEEG(V).restorableChannels);
+end
+
+function testDataAdviceSaysWhereToStart(tc)
+% The dialog says where PipeCompare starts, what was done before it, and
+% that Standard fits an ICA in the data again.
+EEG = tc.TestData.EEG;
+a = pipecompare.simple.Presets.dataAdvice(pipecompare.live.DataState.fromEEG(EEG));
+verifyTrue(tc, startsWith(a{1}, 'Start from the raw continuous data'), a{1});
+H = EEG; H.history = sprintf(['%s\nEEG = pop_eegfiltnew(EEG, ''locutoff'',0.5,''plotfreqz'',0);', ...
+    '\nEEG = pop_reref(EEG, []);'], EEG.history);
+a = pipecompare.simple.Presets.dataAdvice(pipecompare.live.DataState.fromEEG(H));
+verifyTrue(tc, contains(a{1}, 'Already done to these data: filtered, re-referenced'), a{1});
+st = pipecompare.live.DataState.fromEEG(EEG);
+st.ica.present = true; st.ica.flagged = [1 2];
+a = strjoin(pipecompare.simple.Presets.dataAdvice(st), ' ');
+verifyTrue(tc, contains(a, 'Standard fits ICA again') && contains(a, 'the 2 component(s) marked') && ...
+    contains(a, 'choose Filters only'), a);
+end
+
+function testFiltersBeforePipeCompareAreChecked(tc)
+% Filters applied before PipeCompare are outside the pipelines' signal
+% check; the same known signal is filtered at the history's edges and a
+% loss beyond a pipeline's limit is said.
+EEG = tc.TestData.EEG;
+c = pipecompare.simple.Presets.contract(EEG, 'P3', {'11'});
+verifyEmpty(tc, pipecompare.eval.Injection.priorFilters(EEG, c, pipecompare.live.DataState.fromEEG(EEG)));
+H = EEG; H.history = sprintf('%s\nEEG = pop_eegfiltnew(EEG, ''locutoff'',2,''plotfreqz'',0);', EEG.history);
+r = pipecompare.eval.Injection.priorFilters(H, c, pipecompare.live.DataState.fromEEG(H));
+verifyEqual(tc, r.highpass, 2); verifyEmpty(tc, r.lowpass);
+verifyGreaterThan(tc, r.signal.amplitudeError, 0.1);            % a 2 Hz high-pass shrinks a P3
+t = pipecompare.simple.Presets.priorFilterText(struct('priorFilters', r, 'options', struct()));
+verifyTrue(tc, contains(t, 'high-pass 2 Hz') && contains(t, 'start from the unfiltered data'), t);
+L = EEG; L.history = sprintf('%s\nEEG = pop_eegfiltnew(EEG, ''hicutoff'',30,''plotfreqz'',0);', EEG.history);
+r = pipecompare.eval.Injection.priorFilters(L, c, pipecompare.live.DataState.fromEEG(L));
+verifyLessThan(tc, r.signal.amplitudeError, 0.1);               % a 30 Hz low-pass leaves it
+verifyEmpty(tc, pipecompare.simple.Presets.priorFilterText(struct('priorFilters', r, 'options', struct())));
 end
 
 function testPooledEventTypesAreOneCondition(tc)
@@ -316,8 +384,24 @@ function testAdvancedTakesTheChoicesOrSaysWhyNot(tc)
 EEG = tc.TestData.EEG;
 nqc_setBase(EEG);
 d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>
+d.MeasureDrop.Value = 'N2pc'; d.measureChanged();
+d.EventList.Value = {'11'}; d.RightList.Value = {'31'};
+appL = d.advanced(); cl = onCleanup(@() delete(appL)); %#ok<NASGU>
+verifyTrue(tc, endsWith(appL.CompField.Value, '# contra PO8 PO7'));   % contralateral minus ipsilateral
+k = appL.contract();
+verifyEqual(tc, {k.conditions.name}, {'left target', 'right target'});
+verifyTrue(tc, k.isLateral(1));
+d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>
 d.MeasureDrop.Value = 'alpha'; d.measureChanged();
-verifyEqual(tc, char(d.AdvancedButton.Enable), 'off');          % the panel defines ERP measures only
+verifyEqual(tc, char(d.AdvancedButton.Enable), 'on');           % band power: the panel takes it
+appB = d.advanced(); cb = onCleanup(@() delete(appB)); %#ok<NASGU>
+verifyEqual(tc, appB.AnalysisDrop.Value, 'bandpower');
+verifyTrue(tc, startsWith(appB.BandField.Value, 'alpha: 8 13 @ '));
+k = appB.contract();
+verifyTrue(tc, k.isSegmented()); verifyEqual(tc, k.segment, 2);
+verifyEqual(tc, k.bands.roi, pipecompare.simple.Presets.eegChannels(EEG));
+verifyTrue(tc, ismember('epoch', {appB.Plan.Slots.id}));
+d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>   % (advanced closed the first)
 d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
 verifyEqual(tc, char(d.AdvancedButton.Enable), 'on');
 app = d.advanced(); ca = onCleanup(@() delete(app)); %#ok<NASGU>

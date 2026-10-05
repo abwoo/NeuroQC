@@ -31,12 +31,15 @@ classdef PanelValues
                     elseif ~isempty(q.suggest), kv{end+1} = sprintf('%s = %s (default search)', q.name, pipecompare.gui.PanelValues.valText(q.suggest)); %#ok<AGROW>
                     else, kv{end+1} = sprintf('%s = %s (default)', q.name, pipecompare.gui.PanelValues.valText(q.default)); end %#ok<AGROW>
                 end
+                band = isfield(ctxt, 'segment');   % band power: the segments are the epochs
                 if strcmp(alt.type, 'epoch')
-                    if isempty(strtrim(ctxt.epoch)), kv{end+1} = 'window: not set yet (required, analysis contract)'; %#ok<AGROW>
+                    if band, kv{end+1} = sprintf('consecutive %g s segments (band power, from the analysis contract)', ctxt.segment); %#ok<AGROW>
+                    elseif isempty(strtrim(ctxt.epoch)), kv{end+1} = 'window: not set yet (required, analysis contract)'; %#ok<AGROW>
                     else, kv{end+1} = sprintf('window [%s] s, condition events (from the analysis contract)', ctxt.epoch); end %#ok<AGROW>
                 end
                 if strcmp(alt.type, 'baseline')
-                    if isempty(strtrim(ctxt.baseline)), kv{end+1} = 'pre-stimulus [epoch start 0] s (default; from the analysis contract)'; %#ok<AGROW>
+                    if band, kv{end+1} = 'not used for band power: remove this step'; %#ok<AGROW>
+                    elseif isempty(strtrim(ctxt.baseline)), kv{end+1} = 'pre-stimulus [epoch start 0] s (default; from the analysis contract)'; %#ok<AGROW>
                     else, kv{end+1} = sprintf('[%s] s (from the analysis contract)', ctxt.baseline); end %#ok<AGROW>
                 end
                 if strcmp(alt.type, 'restore'), kv{end+1} = 'starting montage + channels removed before PipeCompare'; end %#ok<AGROW>

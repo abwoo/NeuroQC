@@ -66,7 +66,7 @@ classdef SimpleDialog < handle
             obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', [200 200 620 470], ...
                 'CloseRequestFcn', @(~, ~) obj.close());
             g = uigridlayout(obj.Fig, [10 2]); obj.Grid = g;
-            g.RowHeight = {22, 22, 0, '1x', 22, 22, 22, 22, 44, 30};
+            g.RowHeight = {'fit', 22, 0, '1x', 22, 22, 22, 22, 44, 30};
             g.ColumnWidth = {150, '1x'};
             uilabel(g, 'Text', '1. Data', 'FontWeight', 'bold');
             obj.TypeWhy = uilabel(g, 'Text', obj.typeReason(), 'FontColor', [0.3 0.3 0.3], 'WordWrap', 'on');
@@ -129,6 +129,8 @@ classdef SimpleDialog < handle
             else
                 t = 'Continuous data without events: band power.';
             end
+            % where PipeCompare starts, and what was done before it
+            t = strjoin([{t} pipecompare.simple.Presets.dataAdvice(s)], ' ');
         end
 
         function [items, data] = measures(obj)
@@ -184,15 +186,6 @@ classdef SimpleDialog < handle
             obj.EventList.Enable = pipecompare.utils.ternary(erp, 'on', 'off');
             obj.RightList.Enable = obj.EventList.Enable;
             obj.PoolBox.Enable = pipecompare.utils.ternary(erp && ~lateral, 'on', 'off');   % one condition per side
-            % the panel defines ERP measures only, each condition at the
-            % electrodes (not contralateral minus ipsilateral)
-            obj.AdvancedButton.Enable = pipecompare.utils.ternary(erp && ~lateral, 'on', 'off');
-            obj.AdvancedButton.Tooltip = '';
-            if ~erp
-                obj.AdvancedButton.Tooltip = 'The panel defines ERP measures; band power with other steps is set up from a script.';
-            elseif lateral
-                obj.AdvancedButton.Tooltip = 'The panel scores each condition at the electrodes; contralateral minus ipsilateral is set up from a script.';
-            end
             obj.update();
         end
 
@@ -344,14 +337,21 @@ classdef SimpleDialog < handle
                 end
             end
             app = pipecompare.gui.Panel();
-            if ~isempty(c) && strcmp(c.analysis, 'erp')
+            if ~isempty(c)
                 [plan, notes] = pipecompare.simple.Presets.recipe(o.recipe, obj.State, c, o.reference, ...
                     pipecompare.simple.Presets.nonEegChannels(obj.EEG));
                 app.Plan = plan; app.showPlan();
-                for k = 1:numel(c.conditions), app.addCondition(c.conditions(k).name, c.conditions(k).events); end
-                app.EpochField.Value = sprintf('%g %g', c.epoch); app.BaseField.Value = sprintf('%g %g', c.baseline);
-                comp = c.components(1);
-                app.addComponent(comp.name, comp.window, comp.roi, comp.measure, comp.polarity);
+                if strcmp(c.analysis, 'bandpower')
+                    app.AnalysisDrop.Value = 'bandpower'; app.SegField.Value = c.segment; app.analysisChanged();
+                    b = c.bands(1);
+                    app.addBand(b.name, b.freq, b.roi);
+                else
+                    for k = 1:numel(c.conditions), app.addCondition(c.conditions(k).name, c.conditions(k).events); end
+                    app.EpochField.Value = sprintf('%g %g', c.epoch); app.BaseField.Value = sprintf('%g %g', c.baseline);
+                    comp = c.components(1); contra = {};
+                    if c.isLateral(1), contra = comp.contra; end
+                    app.addComponent(comp.name, comp.window, comp.roi, comp.measure, comp.polarity, contra);
+                end
                 app.settingsChanged();
                 for k = 1:numel(notes), pipecompare.utils.log('Recipe %s: %s.', o.recipe, notes{k}); end
             end

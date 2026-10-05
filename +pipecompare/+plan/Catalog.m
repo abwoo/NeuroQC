@@ -129,6 +129,7 @@ classdef Catalog
                     elseif ~strcmp(p.action, 'interpolate')
                         reason = 'badchannels action must be interpolate or remove'; return;
                     end
+                    st = channelsChanged(st);
                 case 'channels'
                     if isempty(p.labels), reason = 'channels step needs labels'; return; end
                     if strcmp(p.action, 'interpolate') && ~st.anyLocations
@@ -142,15 +143,18 @@ classdef Catalog
                     elseif ~strcmp(p.action, 'interpolate')
                         reason = 'channels action must be remove or interpolate'; return;
                     end
+                    st = channelsChanged(st);
                 case 'restore'
                     if ~st.anyLocations, reason = ['restoring channels' ' needs channel locations (Edit > Channel locations): spherical interpolation (Perrin et al., 1989) works on electrode positions, and the dataset has none']; return; end
                     if ~st.removed, reason = 'restore needs channels removed earlier in the plan or before PipeCompare (EEG.chaninfo.removedchans)'; return; end
                     st.removed = false;
+                    st = channelsChanged(st);
                 case 'reref'
                     if ~any(strcmp(p.mode, {'average','channels'})), reason = 'reref mode must be average or channels'; return; end
                     if strcmp(p.mode, 'channels') && (~isfield(p, 'channels') || isempty(p.channels))
                         reason = 'reref mode channels needs the reference channels'; return;
                     end
+                    st.averaged = strcmp(p.mode, 'average'); st.unbalanced = false;
                 case 'ica'
                     st.hasICA = true; st.icRemoved = false;
                 case 'icremove'
@@ -186,6 +190,10 @@ classdef Catalog
                                 bc = pipecompare.utils.fieldOr(e.params, 'BurstCriterion', 5);   % clean_artifacts' default: ASR on
                                 if ~(ischar(bc) && strcmpi(bc, 'off')), reason = asrFilter(st.srate); if ~isempty(reason), return; end; end
                             case 'ica', st.hasICA = true; st.icRemoved = false;
+                            case 'reref'
+                                if isfield(e.params, 'mode'), st.averaged = strcmp(e.params.mode, 'average'); st.unbalanced = false; end
+                            case {'badchannels', 'interpolate'}
+                                st = channelsChanged(st);
                             case {'ic_flags','icremove'}
                                 if ~st.hasICA, reason = sprintf('native %s needs ICA earlier in the plan or in the dataset', e.fn); return; end
                                 if strcmp(e.step, 'icremove'), st.icRemoved = true; end
@@ -200,7 +208,26 @@ classdef Catalog
                     end
             end
         end
+
+        function reason = finish(st)
+            % What only the whole pipeline shows ('' when fine): channels
+            % interpolated or removed after an average reference (of the
+            % plan or of the data) that is not redone after them.
+            reason = '';
+            if isfield(st, 'unbalanced') && st.unbalanced
+                reason = ['channels are interpolated or removed after the average reference and the data are not ', ...
+                    'averaged again: the bad channels'' share of that average stays in every channel (detect bad ', ...
+                    'channels before the average reference, or add an average reference after them)'];
+            end
+        end
     end
+end
+
+function st = channelsChanged(st)
+% Channels interpolated or removed after an average reference: the
+% average still holds what they were, in every channel, until the data
+% are averaged again (or referenced to channels).
+if isfield(st, 'averaged') && st.averaged, st.unbalanced = true; end
 end
 
 function reason = missingPlugin(fn)

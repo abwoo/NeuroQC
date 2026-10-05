@@ -21,7 +21,7 @@ classdef SimpleResults < handle
         function obj = SimpleResults(result)
             obj.Result = result;
             obj.Fig = uifigure('Name', 'Pipeline comparison', 'Position', [220 220 900 380]);
-            g = uigridlayout(obj.Fig, [4 1]); g.RowHeight = {66, '1x', 22, 30};
+            g = uigridlayout(obj.Fig, [4 1]); g.RowHeight = {'fit', '1x', 22, 30};
             obj.Headline = uilabel(g, 'Text', obj.headline(), 'WordWrap', 'on', 'FontWeight', 'bold', ...
                 'VerticalAlignment', 'top');
             obj.Table = uitable(g, 'RowName', {});
@@ -70,6 +70,8 @@ classdef SimpleResults < handle
                 end
                 t = sprintf('%s %d of %d pipelines passed the checks.', t, nFeas, height(T));
             end
+            prior = pipecompare.simple.Presets.priorFilterText(obj.Result);
+            if ~isempty(prior), t = sprintf('%s %s', t, prior); end
         end
 
         function showRows(obj)
@@ -109,7 +111,7 @@ classdef SimpleResults < handle
             parts = {};
             for e = obj.Result.leaves(k).path
                 i = e{1};
-                if strcmp(i.type, 'none'), parts{end+1} = sprintf('no %s', i.slot); continue; end %#ok<AGROW>
+                if strcmp(i.type, 'none'), parts{end+1} = noneText(i.slot, obj.Result.state); continue; end %#ok<AGROW>
                 for f = i.searched, parts{end+1} = settingText(i.type, f{1}, i.params.(f{1})); end %#ok<AGROW>
             end
             if isempty(parts), t = obj.Result.labels{k}; else, t = strjoin(parts, ', '); end
@@ -162,7 +164,9 @@ classdef SimpleResults < handle
                 pipecompare.PipeCompare.adopt(obj.Result, k, force);
                 close(dlg);
                 uialert(obj.Fig, sprintf(['Pipeline %d is now the current EEGLAB dataset. It is not saved yet: ', ...
-                    'use File > Save current dataset as.'], k), 'Done', 'Icon', 'success');
+                    'use File > Save current dataset as. Its preprocessing is complete: average it (or compute the ', ...
+                    'band power) and measure. Filtering, re-referencing or rejecting epochs again would change ', ...
+                    'what was compared.'], k), 'Done', 'Icon', 'success');
             catch ME
                 if ~isempty(dlg) && isvalid(dlg), close(dlg); end
                 uialert(obj.Fig, ME.message, 'PipeCompare');
@@ -209,6 +213,14 @@ switch [type '.' param]
     case 'asr.cutoff', t = sprintf('ASR %s SD', x);
     otherwise, t = sprintf('%s %s %s', type, param, x);
 end
+end
+
+function t = noneText(slot, state)
+% A skipped step in words; a filter the data already had is kept.
+t = sprintf('no %s', slot);
+if ~any(strcmp(slot, {'highpass', 'lowpass'})) || ~isfield(state, 'filters') || isempty(state.filters.(slot)), return; end
+edge = pipecompare.utils.ternary(strcmp(slot, 'highpass'), max(state.filters.(slot)), min(state.filters.(slot)));
+t = sprintf('%s as in the data (%g Hz)', strrep(slot, 'pass', '-pass'), edge);
 end
 
 function t = stepText(type)

@@ -298,11 +298,18 @@ classdef History
                     end
                 case {'pop_eegfilt','pop_firws','pop_basicfilter','pop_iirfilt','pop_firpm','pop_firma'}
                     e.kind = 'process'; e.step = 'filter_other';
-                    e.note = 'filter call not parsed for cutoffs; see raw text';
+                    e.params = pipecompare.live.History.otherFilterParams(fn, args, nv);
+                    if ~isfinite(e.params.locutoff) && ~isfinite(e.params.hicutoff)
+                        e.note = 'filter call not parsed for cutoffs; see raw text';
+                    end
                 case {'pop_cleanline','pop_zapline_plus','clean_zapline'}
                     e.kind = 'process'; e.step = 'linenoise';
                 case {'pop_clean_rawdata','clean_artifacts','clean_rawdata'}
                     e.kind = 'process'; e.step = 'clean_rawdata'; e.params = nv;
+                    % clean_rawdata(EEG, flatline, highpass, ...) takes it by position
+                    if strcmp(fn, 'clean_rawdata') && ~isfield(nv, 'Highpass') && numel(args) >= 3
+                        e.params.Highpass = literal(args{3});
+                    end
                     e.note = 'may high-pass filter, remove channels and correct/remove bursts depending on options';
                 case 'pop_rejchan'
                     e.kind = 'process'; e.step = 'badchannels'; e.params = nv;
@@ -384,6 +391,40 @@ classdef History
                 if numel(args) >= 3, p.hicutoff = toNum(args{3}); end
                 if numel(args) >= 5, p.revfilt = isTrue(args{5}); end
             end
+        end
+
+        function p = otherFilterParams(fn, args, nv)
+            % The edges of filter calls other than pop_eegfiltnew, as
+            % locutoff / hicutoff (NaN when absent) and revfilt (a notch or
+            % band-stop). pop_firws, pop_firpm and ERPLAB's pop_basicfilter
+            % give the cutoff (-6 dB, or half amplitude), pop_eegfilt and
+            % pop_iirfilt the edges, by position. pop_firma (moving average)
+            % has no edge.
+            p = struct('locutoff', NaN, 'hicutoff', NaN, 'revfilt', false);
+            num = @(v) pipecompare.utils.ternary(isnumeric(v) && ~isempty(v), double(v), NaN);
+            switch fn
+                case {'pop_eegfilt', 'pop_iirfilt'}
+                    % (EEG, locutoff, hicutoff, order or transition, revfilt, ...)
+                    if numel(args) >= 2, p.locutoff = toNum(args{2}); end
+                    if numel(args) >= 3, p.hicutoff = toNum(args{3}); end
+                    if numel(args) >= 5, p.revfilt = isTrue(literal(args{5})); end
+                case {'pop_firws', 'pop_firpm', 'pop_basicfilter'}
+                    if strcmp(fn, 'pop_basicfilter')
+                        c = num(pipecompare.utils.fieldOr(nv, 'Cutoff', [])); ty = lower(char(pipecompare.utils.fieldOr(nv, 'Filter', '')));
+                    else
+                        c = num(pipecompare.utils.fieldOr(nv, 'fcutoff', [])); ty = lower(char(pipecompare.utils.fieldOr(nv, 'ftype', '')));
+                    end
+                    switch ty
+                        case 'highpass', p.locutoff = c(1);
+                        case 'lowpass', p.hicutoff = c(1);
+                        case {'bandpass', 'bandstop', 'pmnotch'}
+                            if numel(c) >= 2, p.locutoff = c(1); p.hicutoff = c(2); end
+                            p.revfilt = ~strcmp(ty, 'bandpass');
+                    end
+            end
+            % 0 (or less) means no edge on that side
+            if p.locutoff <= 0, p.locutoff = NaN; end
+            if p.hicutoff <= 0, p.hicutoff = NaN; end
         end
 
         function nv = nameValues(args)

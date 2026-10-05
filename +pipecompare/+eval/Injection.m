@@ -115,6 +115,31 @@ classdef Injection
                 'onsets', onsets, 'urevents', urs);
         end
 
+        function r = priorFilters(root, contract, state, opts)
+            % What the filters in the dataset's history did to the known
+            % signal. They ran before PipeCompare, so the signal check of
+            % the pipelines (injected into the data as they are) cannot see
+            % them. The same injected copy is filtered at the history's
+            % edges, with EEGLAB's default filter design, and compared with
+            % the signal as injected. [] when the history has no high-pass
+            % or low-pass edge, or the data are epoched (their filters ran
+            % on the continuous recording, which is gone).
+            r = [];
+            if nargin < 4, opts = struct(); end
+            f = state.filters;
+            if state.isEpoched || (isempty(f.highpass) && isempty(f.lowpass)), return; end
+            [S, truth] = pipecompare.eval.Injection.prepare(root, contract, [], opts);
+            r = struct('highpass', [], 'lowpass', [], 'signal', []);
+            if ~isempty(f.highpass), r.highpass = max(f.highpass); end
+            if ~isempty(f.lowpass), r.lowpass = min(f.lowpass); end
+            for t = {'highpass', 'lowpass'}
+                if isempty(r.(t{1})), continue; end
+                inst = struct('type', t{1}, 'params', struct('cutoff', r.(t{1})));
+                [~, S] = evalc('pipecompare.run.Steps.run(inst, S, struct())');
+            end
+            r.signal = pipecompare.eval.Injection.compare(S, contract, truth, {});
+        end
+
         function S = noteReference(S, inst)
             % Record the channel set a re-reference step is about to use
             % (called on the injected copy before the step runs).

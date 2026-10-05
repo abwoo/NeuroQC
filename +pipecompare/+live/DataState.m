@@ -132,15 +132,17 @@ names = names(:)';
 end
 
 function idx = restorableIdx(EEG)
-% Removed data channels with a location: they can be restored by spherical
-% interpolation (fiducials and unlocated channels cannot).
+% Removed EEG channels with a location: they can be restored by spherical
+% interpolation (fiducials, unlocated channels and non-EEG channels such
+% as EOG or ECG, which the scalp cannot predict, cannot).
 idx = [];
 if ~isfield(EEG, 'chaninfo') || ~isfield(EEG.chaninfo, 'removedchans') || isempty(EEG.chaninfo.removedchans), return; end
 rc = EEG.chaninfo.removedchans;
 if ~isfield(rc, 'X') || ~isfield(rc, 'labels'), return; end
+nonEeg = pipecompare.simple.Presets.isNonEeg(rc);
 for k = 1:numel(rc)
     ty = ''; if isfield(rc, 'type') && ~isempty(rc(k).type), ty = char(string(rc(k).type)); end
-    if ~isempty(rc(k).X) && ~strcmpi(ty, 'FID'), idx(end+1) = k; end %#ok<AGROW>
+    if ~isempty(rc(k).X) && ~strcmpi(ty, 'FID') && ~nonEeg(k), idx(end+1) = k; end %#ok<AGROW>
 end
 end
 
@@ -225,8 +227,26 @@ for k = 1:numel(h)
             else
                 parts{end+1} = sprintf('line-noise removal (%s)', e.fn); %#ok<AGROW>
             end
-        case {'filter_other','clean_rawdata'}
-            f.other = f.other + 1; parts{end+1} = sprintf('%s (not parsed)', e.fn); %#ok<AGROW>
+        case 'filter_other'
+            % edges read from the call (as cutoffs, which these functions take)
+            lo = e.params.locutoff; hi = e.params.hicutoff;
+            if e.params.revfilt && isfinite(lo) && isfinite(hi)
+                f.notch(end+1) = mean([lo hi]); parts{end+1} = sprintf('notch %g-%g Hz (%s)', lo, hi, e.fn); %#ok<AGROW>
+            elseif isfinite(lo) || isfinite(hi)
+                if isfinite(lo), f.highpass(end+1) = lo; parts{end+1} = sprintf('HP %g Hz (%s)', lo, e.fn); end %#ok<AGROW>
+                if isfinite(hi), f.lowpass(end+1) = hi; parts{end+1} = sprintf('LP %g Hz (%s)', hi, e.fn); end %#ok<AGROW>
+            else
+                f.other = f.other + 1; parts{end+1} = sprintf('%s (not parsed)', e.fn); %#ok<AGROW>
+            end
+        case 'clean_rawdata'
+            % its own high-pass: a transition band [start end] whose end is
+            % the pass-band edge ('off' when not used)
+            hp = pipecompare.utils.fieldOr(e.params, 'Highpass', []);
+            if isnumeric(hp) && numel(hp) == 2 && all(isfinite(hp)) && hp(2) > 0
+                f.highpass(end+1) = hp(2); parts{end+1} = sprintf('HP %g Hz (%s)', hp(2), e.fn); %#ok<AGROW>
+            else
+                f.other = f.other + 1; parts{end+1} = sprintf('%s (not parsed)', e.fn); %#ok<AGROW>
+            end
     end
 end
 f.text = strjoin(parts, ' > ');

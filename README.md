@@ -139,7 +139,8 @@ pipecompare_setup                         % run from the PipeCompare folder
 
    Start from the raw continuous data. If your analysis uses the average reference, choose it under
    **Reference** rather than re-referencing beforehand: it is then applied in every pipeline after
-   the bad channels are interpolated and before ICA.
+   the bad channels are interpolated and before ICA. (Data already average-referenced are averaged
+   again after the interpolation.)
 4. Press **Run**. A progress window shows how many pipelines are done and the time left; **Stop**
    ends the search and keeps the pipelines already finished. The Command Window gets a short
    summary; the full log goes to `pipecompare_last_run.log` in MATLAB's `tempdir`.
@@ -151,10 +152,9 @@ pipecompare_setup                         % run from the PipeCompare folder
    comparison; save the new dataset afterwards with File > Save current dataset as.
 
 For any EEGLAB step, order search, several components or different constraints, open
-**Advanced…** in the dialog, or **Tools > PipeCompare > Advanced panel…**. The panel defines ERP
-measures only; band power with other steps is set up from a script (see
-[Scripting interface](#scripting-interface)). See [docs/PANEL.md](docs/PANEL.md) for a
-description of every control.
+**Advanced…** in the dialog, or **Tools > PipeCompare > Advanced panel…**. The panel defines the
+same measures as the dialog (ERP components, N2pc and LRP contralateral minus ipsilateral, band
+power). See [docs/PANEL.md](docs/PANEL.md) for a description of every control.
 
 ### From the command line
 
