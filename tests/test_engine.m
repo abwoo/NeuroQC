@@ -476,6 +476,7 @@ p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('ic
 r = pipecompare.PipeCompare.optimize(p, nqc_c());
 d = r.cands(1).ica;
 verifyNumElements(tc, d, 1);
+verifyTrue(tc, contains(d{1}.coms{1}, 'EEGica = pop_runica(EEGica, ''icatype'''));
 W = d{1}.icaweights([2 1 3:end], :);   % not what runica gives: proves it is applied, not refitted
 r.cands(1).ica{1}.icaweights = W;
 E = pipecompare.run.Executor.replay(r, 1);
