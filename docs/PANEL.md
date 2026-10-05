@@ -26,9 +26,11 @@ Two choices (what to measure; for ERP, the event types); the recipe is preselect
 3. **Compare**: *standard* (preselected) or *filters only* (high-pass × low-pass edges; with fewer
    than two pipelines, as on epoched data, *Run* stays off). *Standard* adds the ICLabel threshold
    and epoch rejection; each searches the catalog's default lists. *Standard* detects bad channels
-   once (kurtosis, z = 5) and fits ICA once, before the filters, so every filter choice shares
+   once (kurtosis, z = 5, on a 1 Hz high-passed copy; the channels are interpolated in the data as
+   they are) and fits ICA once, before the filters, so every filter choice shares
    one decomposition (fitted on a 1 Hz high-passed copy; filtering and unmixing are linear, so
-   their order does not change the data). ASR is compared from the panel or a script. The number
+   their order does not change the data). Non-EEG channels (typed EOG, ECG, … or named so, such
+   as VEOG, HEOG, ECG1) are not tested as bad channels and are ignored by epoch rejection. ASR is compared from the panel or a script. The number
    of pipelines (and of ICA decompositions) is shown live. Steps the data or the installation
    cannot support are left out, with the reason: no channel locations, no ICLabel, or data that
    are already epoched. Filter edges the data already have (read from the history) are not
@@ -36,7 +38,7 @@ Two choices (what to measure; for ERP, the event types); the recipe is preselect
    some values.
 4. **Reference**: *as recorded* (default) or *average reference*, a fixed step of every pipeline
    placed after the bad channels are interpolated (otherwise a bad channel spreads into every
-   channel) and before ICA; channels typed EOG, ECG, … are left out of the average. It is not
+   channel) and before ICA; the same non-EEG channels are left out of the average. It is not
    searched: the reference changes what is measured, so it is chosen for your analysis, not by
    noise. Filtering and re-referencing are both linear, so their order does not matter.
 

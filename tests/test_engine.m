@@ -552,6 +552,28 @@ verifyEqual(tc, r.cands(1).status, 'failed');
 verifyTrue(tc, contains(r.cands(1).message, 'not in the dataset: EOGX'));
 end
 
+function testBadChannelsDetectedOnAHighPassedCopy(tc)
+% detectHighpass: pop_rejchan runs on a high-passed copy (slow drifts
+% distort kurtosis and probability); the channels are interpolated or
+% removed in the data as they are, whose other channels stay unfiltered.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+rng(1); k = find(strcmp({EEG.chanlocs.labels}, 'PO8'));
+EEG.data(k, :) = EEG.data(k, :) + 2000 * (rand(1, EEG.pnts) > 0.999);   % one spiky channel
+pz = @(E) double(E.data(strcmp({E.chanlocs.labels}, 'Pz'), :));
+for action = {'interpolate', 'remove'}
+    p = struct('measure', 'prob', 'threshold', 5, 'exclude', {{'EOG1', 'EOG2'}}, ...
+        'detectHighpass', 1, 'action', action{1});
+    [E, coms, info] = pipecompare.run.Steps.badChannels(EEG, p, struct('highpass', 0));
+    verifyTrue(tc, ismember('PO8', info.badChannels));
+    verifyFalse(tc, any(ismember({'EOG1', 'EOG2'}, info.badChannels)));
+    verifyTrue(tc, contains(coms{1}, 'on a 1 Hz high-passed copy'));
+    verifyEqual(tc, pz(E), pz(EEG));                                   % not filtered
+    verifyEqual(tc, any(strcmp({E.chanlocs.labels}, 'PO8')), strcmp(action{1}, 'interpolate'));
+end
+[~, coms] = pipecompare.run.Steps.badChannels(EEG, p, struct('highpass', 1));   % already high-passed: no copy
+verifyFalse(tc, any(contains(coms, 'copy')));
+end
+
 function testFixedEeglabCommandsAreDecisionMatched(tc)
 % A fixed EEGLAB transform re-run on the injected copy is the same
 % operation (not flagged); a data-driven one (pop_rejchan) is flagged.

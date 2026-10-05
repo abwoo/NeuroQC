@@ -60,6 +60,16 @@ own.band = [8 EEG.srate];
 verifyError(tc, @() pipecompare.simple.Presets.contract(EEG, 'band', {}, 2, false, own), 'PipeCompare:Simple');
 end
 
+function testNonEegChannelsByTypeOrName(tc)
+% Channels such as VEOG are often named but not typed: both count.
+EEG = tc.TestData.EEG;
+verifyEqual(tc, pipecompare.simple.Presets.nonEegChannels(EEG), {'EOG1', 'EOG2'});   % no type set
+E = EEG; E.chanlocs(strcmp({E.chanlocs.labels}, 'Fz')).type = 'ECG';
+E.chanlocs(strcmp({E.chanlocs.labels}, 'F3')).labels = 'heog';
+verifyEqual(tc, sort(pipecompare.simple.Presets.nonEegChannels(E)), sort({'Fz', 'heog', 'EOG1', 'EOG2'}));
+verifyFalse(tc, any(ismember({'EOG1', 'EOG2'}, pipecompare.simple.Presets.eegChannels(EEG))));
+end
+
 function testRecipesAdaptToTheData(tc)
 EEG = tc.TestData.EEG;
 c = pipecompare.simple.Presets.contract(EEG, 'P3', {'11'});
@@ -75,6 +85,9 @@ verifyEmpty(tc, notes);                                          % ICA first: on
 p = pipecompare.simple.Presets.recipe('standard', st, c, 'average', {'VEOG'});
 verifyEqual(tc, ids(p), {'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
 verifyEqual(tc, p.Slots(2).alternatives{1}.params.exclude, {'VEOG'});   % non-EEG channels left out of the average
+verifyEqual(tc, p.Slots(1).alternatives{1}.params.exclude, {'VEOG'});   % nor tested for bad channels
+verifyEqual(tc, p.Slots(end).alternatives{1}.params.exclude, {'VEOG'}); % nor for the epoch threshold
+verifyEqual(tc, p.Slots(1).alternatives{1}.params.detectHighpass, 1);  % bad channels found on a 1 Hz high-passed copy
 p = pipecompare.simple.Presets.recipe('filters', st, c, 'average');
 verifyEqual(tc, ids(p), {'reref', 'highpass', 'lowpass', 'epoch', 'baseline'});
 noloc = st; noloc.nLocated = 0;
@@ -85,6 +98,7 @@ verifyTrue(tc, any(contains(notes, 'no channel locations')));
 [p, notes] = pipecompare.simple.Presets.recipe('standard', pipecompare.live.DataState.fromEEG(Ep), c);
 verifyFalse(tc, any(ismember({'highpass', 'lowpass', 'epoch'}, ids(p))));
 verifyTrue(tc, any(contains(notes, 'already epoched')));
+verifyEqual(tc, p.Slots(1).alternatives{1}.params.detectHighpass, 0);  % no high-pass on short epochs
 verifyError(tc, @() pipecompare.simple.Presets.recipe('full', st, c), 'PipeCompare:Simple');   % ASR: panel or script
 % filter edges the data already have are not compared: they would leave
 % the data unchanged but filter the known signal
