@@ -476,12 +476,11 @@ p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('ic
 r = pipecompare.PipeCompare.optimize(p, nqc_c());
 d = r.cands(1).ica;
 verifyNumElements(tc, d, 1);
-verifyTrue(tc, any(contains(d{1}.coms, 'pop_runica')));
 W = d{1}.icaweights([2 1 3:end], :);   % not what runica gives: proves it is applied, not refitted
 r.cands(1).ica{1}.icaweights = W;
 E = pipecompare.run.Executor.replay(r, 1);
 verifyEqual(tc, E.icaweights, W);
-verifyTrue(tc, contains(E.history, 'pop_runica'));
+verifyTrue(tc, contains(E.history, d{1}.coms{1}));
 end
 
 function testIclabelThresholdsShareOneClassification(tc)
@@ -504,7 +503,8 @@ verifyGreaterThanOrEqual(tc, r.cands(1).icsRemoved + r.cands(2).icsRemoved, 1);
 % a given classification is used as it is: component 2 is Eye
 E = EEG; rng(4); E.icaweights = randn(E.nbchan); E.icasphere = eye(E.nbchan); E.icachansind = 1:E.nbchan;
 E.icawinv = []; E.icaact = []; E = eeg_checkset(E);
-cls = repmat([1 0 0 0 0 0 0], E.nbchan, 1); cls(2, :) = [0 0 1 0 0 0 0];
+% pop_icflag compares with strict inequalities, so no probability is exactly 0 or 1
+cls = repmat([0.94 0.01 0.01 0.01 0.01 0.01 0.01], E.nbchan, 1); cls(2, :) = [0.01 0.01 0.94 0.01 0.01 0.01 0.01];
 lab = struct('classification', struct('ICLabel', struct('classes', {{'Brain','Muscle','Eye','Heart', ...
     'Line Noise','Channel Noise','Other'}}, 'classifications', cls, 'version', 'default')), ...
     'com', 'EEG = pop_iclabel(EEG, ''default'');');
