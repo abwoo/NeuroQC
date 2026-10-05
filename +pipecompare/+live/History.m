@@ -240,6 +240,10 @@ classdef History
             if isempty(lhs) && ~isempty(regexp(stmt, '^\s*[A-Za-z]\w*(\.\w+)+\s*=', 'once'))
                 e.kind = 'admin'; e.note = 'direct field assignment'; return;
             end
+            if strcmp(lhs, 'EEGica') && ~strcmp(fn, 'pop_runica')
+                % PipeCompare's high-passed copy for fitting ICA: the data are not filtered
+                e.kind = 'admin'; e.note = 'copy for fitting ICA'; return;
+            end
             nv = pipecompare.live.History.nameValues(args);
             switch fn
                 case {'pop_loadset','pop_biosig','pop_fileio','pop_loadbv','pop_loadcnt', ...

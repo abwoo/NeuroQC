@@ -49,6 +49,23 @@ verifyEqual(tc, e(strcmp({e.fn}, 'pop_rejepoch')).step, 'reject_epochs');
 verifyEqual(tc, e(1).kind, 'admin');
 end
 
+function testIcaFittedOnAFilteredCopy(tc)
+% The line PipeCompare writes for ICA fitted on a high-passed copy: an ICA
+% step, and no filter of the data.
+h = sprintf(['EEG = pop_eegfiltnew(EEG, ''locutoff'',0.1,''plotfreqz'',0);\n' ...
+    'EEGica = pop_eegfiltnew(EEG, ''locutoff'', 1, ''plotfreqz'', 0); EEGica = pop_runica(EEGica, ' ...
+    '''icatype'',''runica'',''extended'',1,''rndreset'',''no'',''interrupt'',''off''); ' ...
+    'EEG.icaweights = EEGica.icaweights; EEG.icasphere = EEGica.icasphere; ' ...
+    'EEG.icachansind = EEGica.icachansind; EEG.icawinv = []; EEG.icaact = []; ' ...
+    'EEG = eeg_checkset(EEG); clear EEGica; %% PipeCompare: ICA fitted on a 1 Hz high-passed copy']);
+e = pipecompare.live.History.parse(h);
+verifyEqual(tc, sum(strcmp({e.step}, 'ica')), 1);
+verifyEqual(tc, sum(strcmp({e.step}, 'highpass')), 1);
+EEG = nqc_synth(struct('seconds', 20, 'nPerCond', 5)); EEG.history = h;
+s = pipecompare.live.DataState.fromEEG(EEG);
+verifyEqual(tc, s.filters.highpass, 0.1);
+end
+
 function testHistoryCharMatrixAndPositional(tc)
 h = char({'EEG = pop_eegfiltnew(EEG, 0.5, []);', 'EEG = pop_eegfiltnew(EEG, [], 40);', ...
     'EEG = pop_resample( EEG, 250);'});

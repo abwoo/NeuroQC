@@ -252,24 +252,27 @@ classdef Steps
             % test_engine/testEndToEndRecoversSensibleChoice and the adopt
             % replay check, which refuses a candidate that differs).
             opts = {'icatype', 'runica', 'extended', p.extended, 'rndreset', 'no', 'interrupt', 'off'};
+            % pop_runica returns its command only from its dialog, so the
+            % history line is written here
+            args = vararg2str(opts);
             applied = 0; if isfield(ctx, 'highpass'), applied = ctx.highpass; end
             if p.fitHighpass > 0 && p.fitHighpass > applied
                 % Fit on a high-passed copy (stable decomposition), apply
                 % the weights to the data as they are (ERP signal kept).
                 [tmp, ~] = pop_eegfiltnew(EEG, 'locutoff', p.fitHighpass, 'plotfreqz', 0);
-                [tmp, c2] = pop_runica(tmp, opts{:});
+                tmp = pop_runica(tmp, opts{:});
                 EEG.icaweights = tmp.icaweights; EEG.icasphere = tmp.icasphere;
                 EEG.icachansind = tmp.icachansind; EEG.icawinv = []; EEG.icaact = [];
                 EEG = eeg_checkset(EEG);
-                c2 = regexprep(c2, '^\s*EEG\s*=\s*pop_runica\(\s*EEG', 'EEGica = pop_runica(EEGica');
+                c2 = sprintf('EEGica = pop_runica(EEGica, %s);', args);
                 coms = {sprintf(['EEGica = pop_eegfiltnew(EEG, ''locutoff'', %g, ''plotfreqz'', 0); %s ', ...
                     'EEG.icaweights = EEGica.icaweights; EEG.icasphere = EEGica.icasphere; ', ...
                     'EEG.icachansind = EEGica.icachansind; EEG.icawinv = []; EEG.icaact = []; ', ...
                     'EEG = eeg_checkset(EEG); clear EEGica; %% PipeCompare: ICA fitted on a %g Hz high-passed copy'], ...
                     p.fitHighpass, c2, p.fitHighpass)};
             else
-                [EEG, com] = pop_runica(EEG, opts{:});
-                coms = {com};
+                EEG = pop_runica(EEG, opts{:});
+                coms = {sprintf('EEG = pop_runica(EEG, %s);', args)};
             end
         end
 

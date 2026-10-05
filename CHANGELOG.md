@@ -3,6 +3,14 @@
 All notable changes. Versions follow `PipeCompare.Version` (`NeuroQC.Version` up to 0.7.1); each
 release has a git tag `vX.Y.Z`.
 
+## Unreleased
+
+- The ICA step's line in `EEG.history` lacked the `pop_runica` call (EEGLAB returns that command
+  only from its dialog), so the history of an adopted dataset did not refit ICA when run again.
+  The line now holds the call. Reading such a history also took the high-passed copy that ICA is
+  fitted on for a filter of the data (a 1 Hz high-pass), which a later comparison on that dataset
+  then treated as already applied.
+
 ## 0.9.0 (2026-10-05)
 
 - *Use this pipeline* (and `adopt`) no longer fits ICA again: the decomposition computed during
