@@ -73,10 +73,16 @@ classdef PipeCompare
                 '% ICLabel components and rejected epochs are decided from that dataset''s own data, as', ...
                 '% PipeCompare did. Needs PipeCompare on the MATLAB path; every EEGLAB command goes to EEG.history.'};
             args = {};
-            if strcmp(c.analysis, 'erp') && ~isempty(c.epoch)
+            if strcmp(c.analysis, 'bandpower')
+                args = {'analysis', 'bandpower', 'bands', [{c.bands.name}' {c.bands.freq}' {c.bands.roi}']};
+                if c.isSegmented(), args = [args {'segment', c.segment}]; end
+            end
+            if ~c.isSegmented() && ~isempty(c.epoch)
                 conds = [{c.conditions.name}' {c.conditions.events}'];
-                args = {'conditions', conds, 'epoch', c.epoch, 'baseline', c.baseline};
-                if ~strcmp(c.trials.mode, 'all'), args = [args {'trials', c.trials}]; end
+                args = [args {'conditions', conds, 'epoch', c.epoch, 'baseline', c.baseline}];
+            end
+            if ~isempty(args) && ~strcmp(c.trials.mode, 'all')
+                args = [args {'trials', c.trials}];
                 if strcmp(c.trials.mode, 'urevents')
                     L{end+1} = sprintf('%% The trial rule lists urevent ids of %s: change it for other recordings.', result.state.setname);
                 end

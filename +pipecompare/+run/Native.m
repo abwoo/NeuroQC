@@ -135,7 +135,8 @@ classdef Native
                 v = valueCode(values{i});
                 if args(i).key, parts{i} = sprintf('''%s'',%s', args(i).name, v); else, parts{i} = v; end
             end
-            com = sprintf('EEG = %s(EEG, %s);', fn, strjoin(parts, ','));
+            com = sprintf('EEG = %s(EEG);', fn);
+            if ~isempty(parts), com = sprintf('EEG = %s(EEG, %s);', fn, strjoin(parts, ',')); end
         end
 
         function [vals, notes] = catalogValues(type, command, EEG)
