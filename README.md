@@ -122,7 +122,7 @@ pipecompare_setup                         % run from the PipeCompare folder
    | Recipe | Steps compared |
    |---|---|
    | Filters only | high-pass and low-pass cutoffs |
-   | Standard | filters, ICLabel threshold for removing components, epoch-rejection threshold |
+   | Standard | filters, ICLabel threshold for removing components, epoch-rejection threshold (band power: one high-pass and one low-pass, the edges nearest the band, so 9 pipelines instead of 108) |
 
    *Standard* detects bad channels once and fits ICA once, before the filters, so every filter
    setting shares one decomposition. Both look at a 1 Hz high-passed copy, so slow drifts do not
@@ -131,8 +131,10 @@ pipecompare_setup                         % run from the PipeCompare folder
    count in epoch rejection. The dialog shows how many pipelines will run before you
    start. Steps the data cannot support are left out, with the reason; for example, interpolation
    and ICLabel require channel locations, and for band power no filter edge inside the band is
-   compared. Epoched data keep their own epochs when these hold the measurement window. To
-   compare ASR (artifact subspace reconstruction) or other steps, use the advanced panel or a
+   compared. Epoched data keep their own epochs when these hold the measurement window. N2pc and
+   LRP are scored as ERP CORE measures them, contralateral minus ipsilateral: choose the event
+   types of each side (target on the left and on the right; left-hand and right-hand responses).
+   To compare ASR (artifact subspace reconstruction) or other steps, use the advanced panel or a
    script.
 
    Start from the raw continuous data. If your analysis uses the average reference, choose it under
@@ -161,6 +163,9 @@ The menu dialog records an equivalent command in EEGLAB's command history (`ALLC
 ```matlab
 % ERP: compare pipelines for the P3, one condition per event type
 EEG = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'target', 'standard'}, 'recipe', 'standard');
+
+% N2pc, contralateral minus ipsilateral: the event types of each target side
+EEG = pop_pipecompare(EEG, 'measure', 'N2pc', 'left', {'111', '112'}, 'right', {'121', '122'});
 
 % Continuous data: compare pipelines for alpha-band power in 2 s segments
 EEG = pop_pipecompare(EEG, 'measure', 'alpha', 'recipe', 'filters');

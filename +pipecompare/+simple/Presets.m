@@ -4,10 +4,15 @@ classdef Presets
     %   ERP components: the time-locking, epoch, baseline, electrode sites
     %   and mean-amplitude window recommended by ERP CORE (Kappenman,
     %   Farrens, Zhang, Stewart & Luck, 2021, NeuroImage 225, 117465;
-    %   Tables 1 and 2). PipeCompare scores each condition's waveform at these
-    %   sites; difference waves (deviant - standard, contralateral -
-    %   ipsilateral) are formed later in your own analysis. Epoched data
-    %   keep their own epochs when these hold the measurement window.
+    %   Tables 1 and 2). N2pc and LRP are scored as ERP CORE measures them,
+    %   contralateral minus ipsilateral (PO7/PO8 to the target side, C3/C4
+    %   to the response hand), with the event types of each side; the
+    %   others score each condition's waveform at their sites. (For MMN,
+    %   deviant minus standard, scoring each condition ranks the
+    %   pipelines as the difference wave does: the SME of a difference of
+    %   independent means is sqrt(SME1^2 + SME2^2), and the search ranks
+    %   by the RMS of the conditions' SMEs.) Epoched data keep their own
+    %   epochs when these hold the measurement window.
     %
     %   Frequency bands: delta 1-4, theta 4-8, alpha 8-13, beta 13-30 Hz,
     %   the conventional clinical bands (cf. the IFCN glossary, Kane et al.,
@@ -23,7 +28,11 @@ classdef Presets
     %   decomposition (fitted on a 1 Hz high-passed copy; filtering and
     %   unmixing are both linear, so their order does not change the data).
     %   ASR is compared from the panel or a script (it multiplies the
-    %   search beyond the simple mode's limit).
+    %   search beyond the simple mode's limit). For band power, 'standard'
+    %   uses one high-pass and one low-pass edge, the catalog values
+    %   nearest the band outside it: outside the band a filter does not
+    %   change its power (only what epoch rejection sees), and 9 pipelines
+    %   are compared instead of 108; 'filters' compares the filters.
     %
     %   Reference: kept as recorded, or the average reference as a fixed
     %   step in every pipeline, after the bad channels are interpolated (a
@@ -38,7 +47,9 @@ classdef Presets
 
         function p = component(name)
             % ERP CORE Table 1 (epoch, baseline, sites, time-locking) and
-            % Table 2 (measurement window); times in s.
+            % Table 2 (measurement window); times in s. contra: the site
+            % contralateral to the left and to the right side (target side,
+            % response hand), for contralateral minus ipsilateral.
             T = {
                 'N170', 'stimulus', [-0.2 0.8], [-0.2 0],    {'PO8'},        [0.110 0.150], 'negative'
                 'MMN',  'stimulus', [-0.2 0.8], [-0.2 0],    {'FCz'},        [0.125 0.225], 'negative'
@@ -51,7 +62,16 @@ classdef Presets
             assert(~isempty(k), 'PipeCompare:Simple', 'Unknown component %s (known: %s).', name, ...
                 strjoin(T(:, 1)', ', '));
             p = struct('name', T{k, 1}, 'lockedTo', T{k, 2}, 'epoch', T{k, 3}, 'baseline', T{k, 4}, ...
-                'sites', {T{k, 5}}, 'window', T{k, 6}, 'polarity', T{k, 7});
+                'sites', {T{k, 5}}, 'window', T{k, 6}, 'polarity', T{k, 7}, 'contra', {{}}, 'side', '');
+            switch p.name
+                case 'N2pc', p.contra = {'PO8', 'PO7'}; p.side = 'target';
+                case 'LRP', p.contra = {'C4', 'C3'}; p.side = 'hand';
+            end
+        end
+
+        function tf = isLateral(measure)
+            % scored contralateral minus ipsilateral (events of each side)
+            tf = any(strcmpi(measure, {'N2pc', 'LRP'}));
         end
 
         function names = bandNames()
@@ -86,7 +106,9 @@ classdef Presets
             % component, a band name, 'custom' (your own ERP window) or
             % 'band' (your own band); events: the event types (ERP: one
             % condition per type, or one condition for all when pool is
-            % true) - ignored for a band. custom: struct with window ([t1
+            % true) - ignored for a band; N2pc and LRP: struct with left
+            % and right, the event types of each side (target side,
+            % response hand), one condition per side. custom: struct with window ([t1
             % t2] s, 'custom'), band ([f1 f2] Hz, 'band') and channels
             % (labels; for 'band' all EEG channels when empty).
             if nargin < 4 || isempty(segment), segment = 2; end
@@ -124,11 +146,14 @@ classdef Presets
                 p = P.component(measure);
             end
             if EEG.trials > 1, p = fitEpochs(p, EEG); end
-            events = cellstr(events);
-            assert(~isempty(events), 'PipeCompare:Simple', 'Choose the %s-locked event type(s) for %s.', p.lockedTo, p.name);
             [ok, at] = ismember(lower(p.sites), lower(labels));
             assert(all(ok), 'PipeCompare:Simple', ['%s is measured at %s (ERP CORE); the dataset has no %s. ', ...
                 'Choose "your own window and electrodes" instead.'], p.name, strjoin(p.sites, '/'), strjoin(p.sites(~ok), ', '));
+            if ~isempty(p.contra)
+                c = lateralContract(p, events, labels(at)); return;
+            end
+            events = cellstr(events);
+            assert(~isempty(events), 'PipeCompare:Simple', 'Choose the %s-locked event type(s) for %s.', p.lockedTo, p.name);
             conds = [events(:) cellfun(@(e) {e}, events(:), 'UniformOutput', false)];
             if pool, conds = {strjoin(events, '+'), events(:)'}; end
             c = pipecompare.eval.Contract('conditions', conds, 'epoch', p.epoch, 'baseline', p.baseline, ...
@@ -209,10 +234,11 @@ classdef Presets
                 if strcmp(contract.analysis, 'bandpower')
                     f = vertcat(contract.bands.freq); lo = min(f(:, 1)); hi = max(f(:, 2));
                 end
+                fix = standard && strcmp(contract.analysis, 'bandpower');
                 [plan, notes] = addFilter(plan, notes, 'highpass', state.filters.highpass, @(v, done) v > done, @max, ...
-                    @(v) v <= lo, lo);
+                    @(v) v <= lo, lo, fix);
                 [plan, notes] = addFilter(plan, notes, 'lowpass', state.filters.lowpass, @(v, done) v < done, @min, ...
-                    @(v) v >= hi, hi);
+                    @(v) v >= hi, hi, fix);
             else
                 notes{end+1} = 'the data are already epoched, so filters are not compared (they must run before epoching)';
             end
@@ -222,6 +248,30 @@ classdef Presets
             if standard, plan = plan.add('reject_threshold', exclusion{:}); end
         end
     end
+end
+
+function c = lateralContract(p, events, sites)
+% Contralateral minus ipsilateral: one condition per side (the event
+% types with the target on the left / responses of the left hand, and
+% the right), each with the site contralateral to it, in the dataset's
+% spelling.
+assert(isstruct(events) && isfield(events, 'left') && isfield(events, 'right'), 'PipeCompare:Simple', ...
+    ['%s is contralateral minus ipsilateral: give the event types of each side (%s on the left, on the right), ', ...
+    'e.g. pop_pipecompare(EEG, ''measure'', ''%s'', ''left'', {...}, ''right'', {...}).'], p.name, p.side, p.name);
+conds = cell(0, 2); contra = {};
+sides = {'left', 'right'};
+for k = 1:2
+    ev = events.(sides{k});
+    if isnumeric(ev), ev = arrayfun(@(x) sprintf('%g', x), ev, 'UniformOutput', false); end
+    ev = cellstr(ev);
+    if isempty(ev), continue; end
+    conds(end+1, :) = {sprintf('%s %s', sides{k}, p.side), ev(:)'}; %#ok<AGROW>
+    contra{end+1} = sites{strcmpi(p.sites, p.contra{k})}; %#ok<AGROW>
+end
+assert(~isempty(conds), 'PipeCompare:Simple', 'Choose the %s-locked event types of %s (left, right, or both).', ...
+    p.lockedTo, p.name);
+c = pipecompare.eval.Contract('conditions', conds, 'epoch', p.epoch, 'baseline', p.baseline, ...
+    'components', {p.name, p.window, sites, {'mean', p.polarity}, contra});
 end
 
 function p = fitEpochs(p, EEG)
@@ -249,10 +299,11 @@ if ~isempty(exclude), args = [args {'exclude', cellstr(exclude)}]; end
 plan = plan.add('reref', args{:});
 end
 
-function [plan, notes] = addFilter(plan, notes, type, earlier, keep, edge, outside, bandEdge)
+function [plan, notes] = addFilter(plan, notes, type, earlier, keep, edge, outside, bandEdge, fix)
 % Add a filter step searched over the catalog's values that still change
 % the data, given the edges in the dataset's history, and (band power)
-% that stay outside the bands.
+% that stay outside the bands. fix: one value only, the edge nearest the
+% band (band power, Standard).
 d = pipecompare.plan.Catalog.get(type);
 vals = [d.params.suggest{:}];
 name = strrep(type, 'pass', '-pass');
@@ -269,6 +320,12 @@ if ~isempty(bandEdge)
         where = pipecompare.utils.ternary(strcmp(type, 'highpass'), 'starts', 'ends');
         notes{end+1} = sprintf('%s %s Hz (it would cut into the band, which %s at %g Hz)', name, list(drop), where, bandEdge);
     end
+end
+if fix && numel(vals) > 1
+    v = edge(vals);
+    notes{end+1} = sprintf(['%s %s Hz (band power: a filter outside the band does not change its power, so ', ...
+        'one %s is used, %g Hz; "Filters only" compares them)'], name, list(setdiff(vals, v)), name, v);
+    vals = v;
 end
 if ~isempty(vals), plan = plan.add(type, 'cutoff', num2cell(vals)); end
 end

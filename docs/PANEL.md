@@ -20,12 +20,19 @@ Two choices (what to measure; for ERP, the event types); the recipe is preselect
    epoch, baseline, electrode sites and mean-amplitude window are those of ERP CORE (Kappenman et
    al., 2021, Tables 1 and 2): N170 PO8 110–150 ms; MMN FCz 125–225 ms; N2pc PO7/PO8 200–275 ms;
    N400 CPz 300–500 ms; P3 Pz 300–600 ms; LRP C3/C4 −100–0 ms (response-locked); ERN FCz 0–100
-   ms (response-locked). Each condition's waveform is scored at these sites; difference waves
-   are formed later in your analysis. Band power: delta 1–4, theta 4–8, alpha 8–13, beta 13–30
+   ms (response-locked). N2pc and LRP are scored contralateral minus ipsilateral, as ERP CORE
+   measures them: the dialog then shows two lists, the event types with the target on the left
+   and on the right (LRP: left-hand and right-hand responses), and each trial's score is the
+   electrode contralateral to its side minus the other. The other components score each
+   condition's waveform at their sites (for MMN this ranks the pipelines as the deviant-minus-
+   standard difference wave does). Band power: delta 1–4, theta 4–8, alpha 8–13, beta 13–30
    Hz over all EEG channels, in 2 s segments.
 3. **Compare**: *standard* (preselected) or *filters only* (high-pass × low-pass edges; with fewer
    than two pipelines, as on epoched data, *Run* stays off). *Standard* adds the ICLabel threshold
-   and epoch rejection; each searches the catalog's default lists. *Standard* detects bad channels
+   and epoch rejection; each searches the catalog's default lists. For band power, *Standard* uses
+   one high-pass and one low-pass edge, the catalog values nearest the band outside it (outside
+   the band a filter does not change its power), and compares ICLabel and epoch rejection: 9
+   pipelines; *filters only* compares the filters. *Standard* detects bad channels
    once (kurtosis, z = 5, on a 1 Hz high-passed copy; the channels are interpolated in the data as
    they are) and fits ICA once, before the filters, so every filter choice shares
    one decomposition (fitted on a 1 Hz high-passed copy; filtering and unmixing are linear, so

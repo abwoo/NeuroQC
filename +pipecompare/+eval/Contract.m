@@ -14,6 +14,12 @@ classdef Contract
     %               'peakLatency'     latency of the averaged peak (ms)
     %       Give {'peakLatency','negative'} to set the peak polarity
     %       ('positive' default, 'negative').
+    %   A fifth column scores contralateral minus ipsilateral (N2pc, LRP):
+    %   two ROI electrodes, one per hemisphere, and for each condition the
+    %   one contralateral to it, e.g. conditions {'left target', ...;
+    %   'right target', ...} with {'N2pc', [0.2 0.275], {'PO7','PO8'},
+    %   'mean', {'PO8','PO7'}}. Each trial's score is then the
+    %   contralateral electrode minus the other.
     %
     %   Band power (e.g. resting state)
     %   c = pipecompare.eval.Contract('analysis', 'bandpower', 'segment', 2, ...
@@ -65,6 +71,10 @@ classdef Contract
                         end
                     case 'components'
                         if iscell(v)
+                            % (the field contra only when used: contracts without
+                            % it keep their earlier identity)
+                            lateral = size(v, 2) >= 5 && any(~cellfun(@isempty, v(:, 5)));
+                            comps = [];
                             for r = 1:size(v, 1)
                                 meas = 'mean'; pol = 'positive';
                                 if size(v, 2) >= 4 && ~isempty(v{r, 4})
@@ -72,9 +82,15 @@ classdef Contract
                                     if iscell(m), meas = char(m{1}); if numel(m) > 1, pol = lower(char(m{2})); end
                                     else, meas = char(m); end
                                 end
-                                obj.components(end+1) = struct('name', char(v{r, 1}), 'window', double(v{r, 2}), ...
+                                c = struct('name', char(v{r, 1}), 'window', double(v{r, 2}), ...
                                     'roi', {cellstr(v{r, 3})}, 'measure', meas, 'polarity', pol);
+                                if lateral
+                                    c.contra = {};
+                                    if ~isempty(v{r, 5}), c.contra = reshape(cellstr(v{r, 5}), 1, []); end
+                                end
+                                comps = [comps c]; %#ok<AGROW>
                             end
+                            if ~isempty(comps), obj.components = comps; end
                         else
                             obj.components = v;
                         end
@@ -109,6 +125,11 @@ classdef Contract
         function tf = isSegmented(obj)
             % band power of consecutive segments of continuous data
             tf = strcmp(obj.analysis, 'bandpower') && ~isempty(obj.segment);
+        end
+
+        function tf = isLateral(obj, k)
+            % component k is scored contralateral minus ipsilateral
+            tf = isfield(obj.components, 'contra') && ~isempty(obj.components(k).contra);
         end
 
         function ev = allEvents(obj)
@@ -160,6 +181,13 @@ classdef Contract
                     'Component %s: measure must be mean, peakAmplitude or peakLatency.', cname);
                 assert(any(strcmp(obj.components(k).polarity, {'positive','negative'})), 'PipeCompare:Contract', ...
                     'Component %s: polarity must be positive or negative.', cname);
+                if obj.isLateral(k)
+                    comp = obj.components(k);
+                    assert(numel(comp.roi) == 2 && numel(comp.contra) == numel(obj.conditions) && ...
+                        all(ismember(lower(comp.contra), lower(comp.roi))), 'PipeCompare:Contract', ...
+                        ['Component %s (contralateral minus ipsilateral) needs two ROI electrodes and, ', ...
+                        'for each condition, the one contralateral to it.'], cname);
+                end
             end
             obj.validateTrialRule();
             if nargin < 2 || isempty(state), return; end

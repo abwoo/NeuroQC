@@ -86,6 +86,15 @@ the SD of the *B* values (Luck et al., 2021). [`pipecompare.eval.Measure`]
 Several measures that share a unit are combined as the root mean square over measures and
 conditions. Measures in different units (µV and ms) are never added: one of them must be chosen.
 
+**Difference waves.** A lateralized component (N2pc, LRP) is scored as ERP CORE measures it,
+contralateral minus ipsilateral: each trial's score is the electrode contralateral to its side
+(target side, response hand) minus the other, so the SME is that of the difference wave. It can
+rank pipelines differently from scoring each electrode: noise common to both hemispheres cancels
+in the difference. The signal check then injects a field centred on one of the two electrodes and
+checks the difference of the two. A difference between independent conditions (MMN, deviant
+minus standard) needs no such scoring: its SME is √(SME₁² + SME₂²), √2 times the root mean
+square over the two conditions, so the ranking is the same.
+
 ## 2. Gain-corrected SME (the ranking objective)
 
 **Problem with raw SME.** SME is in µV, so it is not invariant to the scale of the data. A pipeline

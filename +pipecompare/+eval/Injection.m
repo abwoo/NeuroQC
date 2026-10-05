@@ -9,7 +9,9 @@ classdef Injection
     %   window, sigma = window/4, amplitude opts.injectUv) with a smooth
     %   scalp topography centred on the component's ROI over the channels
     %   that have locations (a box over the ROI only when no ROI channel
-    %   has one), added at every scored trial.
+    %   has one), added at every scored trial. A component scored
+    %   contralateral minus ipsilateral gets a field centred on its first
+    %   electrode and is checked on the difference of its two electrodes.
     %
     %   compare() also returns the gain of each measure (recovered /
     %   expected window mean, or peak; 1 for a latency), by which Rank
@@ -74,7 +76,11 @@ classdef Injection
             end
             Wfull = zeros(numel(full), numel(contract.components));
             for j = 1:numel(contract.components)
-                Wfull(:, j) = topography(struct('chanlocs', {full}), contract.components(j).roi);
+                % contralateral minus ipsilateral: a field centred on one of
+                % the two electrodes, so that their difference carries it
+                roi = contract.components(j).roi;
+                if contract.isLateral(j), roi = roi(1); end
+                Wfull(:, j) = topography(struct('chanlocs', {full}), roi);
             end
             W = Wfull(1:nch, :);
             tt = (round(contract.epoch(1) * fs):round(contract.epoch(2) * fs)) / fs;
@@ -182,9 +188,16 @@ classdef Injection
             amp = nan(1, nJ); lat = amp; wc = amp; tc = amp; art = amp;
             for j = 1:nJ
                 comp = contract.components(j);
-                roi = ismember(labs, lower(comp.roi));
                 w = times >= comp.window(1) - 1e-9 & times <= comp.window(2) + 1e-9;
-                rec = mean(avg(roi, :), 1); xp = mean(ex(roi, :), 1);
+                if contract.isLateral(j)
+                    % the difference of the two electrodes (the score's
+                    % contralateral minus ipsilateral, up to its sign)
+                    e1 = find(strcmp(labs, lower(comp.roi{1})), 1); e2 = find(strcmp(labs, lower(comp.roi{2})), 1);
+                    rec = avg(e1, :) - avg(e2, :); xp = ex(e1, :) - ex(e2, :);
+                else
+                    roi = ismember(labs, lower(comp.roi));
+                    rec = mean(avg(roi, :), 1); xp = mean(ex(roi, :), 1);
+                end
                 mx = mean(xp(w)); s = sign(mx); if s == 0, s = 1; end
                 amp(j) = abs(mean(rec(w)) / mx - 1);
                 [px, ix] = max(s * xp(w)); [py, iy] = max(s * rec(w)); tw = times(w);

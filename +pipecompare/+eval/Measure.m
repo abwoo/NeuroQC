@@ -15,6 +15,11 @@ classdef Measure
     %     peakLatency   ROI waveform = bootstrapped SME (bSME: SD of the
     %                   measure over bootstrap averages; uV or ms)
     %
+    %   A component scored contralateral minus ipsilateral (N2pc, LRP; see
+    %   pipecompare.eval.Contract) has, per trial, the electrode
+    %   contralateral to the trial's condition minus the other one as its
+    %   waveform: the SME is that of the difference wave.
+    %
     %   (Luck, Stewart, Simmons & Rhemtulla, 2021, Psychophysiology.)
     %   SME falls when noise is removed and rises when trials are lost, so it
     %   prices the noise-vs-trial-count trade-off directly. It does NOT tell
@@ -229,7 +234,16 @@ classdef Measure
                 comp = contract.components(j);
                 roi = roiIndex(comp.roi, labels);
                 w = times >= comp.window(1) - 1e-9 & times <= comp.window(2) + 1e-9;
-                wave = permute(mean(data(roi, w, :), 1), [3 2 1]);   % trials x samples
+                if contract.isLateral(j)
+                    % contralateral minus ipsilateral: the first ROI electrode
+                    % minus the second, sign-flipped where the second is the
+                    % contralateral one of the trial's condition
+                    [~, ci] = ismember(lower(comp.contra), lower(comp.roi));
+                    sgn = 3 - 2 * ci(T.cond);
+                    wave = permute(data(roi(1), w, :) - data(roi(2), w, :), [3 2 1]) .* sgn(:);
+                else
+                    wave = permute(mean(data(roi, w, :), 1), [3 2 1]);   % trials x samples
+                end
                 if size(wave, 2) ~= sum(w), wave = reshape(wave, [], sum(w)); end
                 if strcmp(comp.measure, 'mean')
                     T.data{j} = mean(wave, 2);

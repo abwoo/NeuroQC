@@ -157,6 +157,27 @@ outside = w(~ismember(L, {'fz', 'pz', 'p3'}));
 verifyTrue(tc, any(outside > 0.05 & outside < 0.95));     % graded, not a box
 end
 
+function testLateralSignalCheck(tc)
+% Contralateral minus ipsilateral (N2pc, LRP): the known field is centred
+% on one of the two electrodes, so their difference carries it. Unchanged
+% data return it with gain 1, and so does the average reference (an
+% electrode difference does not depend on the reference).
+EEG = tc.TestData.EEG;
+c = pipecompare.eval.Contract('conditions', {'left target', {'11'}; 'right target', {'31'}}, 'epoch', [-0.2 0.8], ...
+    'baseline', [-0.2 0], 'components', {'N2pc', [0.2 0.275], {'PO7', 'PO8'}, 'mean', {'PO8', 'PO7'}});
+[S, truth] = pipecompare.eval.Injection.prepare(EEG, c, pipecompare.eval.Measure.reference(EEG, c));
+L = lower(truth.labels);
+verifyEqual(tc, truth.weights(strcmp(L, 'po7'), 1), 1, 'AbsTol', 1e-9);
+verifyLessThan(tc, truth.weights(strcmp(L, 'po8'), 1), 0.5);  % lateralized
+r = pipecompare.eval.Injection.compare(S, c, truth, {});
+verifyEqual(tc, r.gain, 1, 'AbsTol', 1e-6);
+verifyLessThan(tc, r.amplitudeError, 1e-6);
+in = inst('reref', 'mode', 'average', 'channels', {});
+S = pipecompare.run.Steps.replayDecision(in, S, struct(), struct('contract', c, 'highpass', 0));
+r = pipecompare.eval.Injection.compare(S, c, truth, {in});
+verifyEqual(tc, r.gain, 1, 'AbsTol', 1e-6);
+end
+
 function testBandPowerSignalCheck(tc)
 % A sinusoid at the band centre goes through the candidate: a 30 Hz
 % low-pass keeps the alpha band, a 9 Hz low-pass removes most of it.
