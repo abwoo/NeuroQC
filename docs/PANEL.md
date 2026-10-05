@@ -59,8 +59,8 @@ are recognised from the amplitude scale and compared in µV. The Command Window 
 summary; the full log (every EEGLAB command of every pipeline) is written to
 `pipecompare_last_run.log` in MATLAB's `tempdir`, replaced by the next run.
 
-*Advanced…* opens the panel below with these choices filled in (ERP only: for band power it is
-off). When the choices cannot be filled in (e.g. a component's electrode is missing), it says
+*Advanced…* opens the panel below with these choices filled in (not for N2pc and LRP, whose
+contralateral-minus-ipsilateral scoring the panel does not define). When the choices cannot be filled in (e.g. a component's electrode is missing), it says
 why and the dialog stays open. The result window says in one
 sentence which pipeline to use and why, naming pipelines by the settings compared (e.g. high-pass
 0.5 Hz, low-pass 30 Hz), lists it (*) with the best others (checks, noise (SME), trials kept,
@@ -88,6 +88,13 @@ runs on its own copy.
   the recording it was set on and is reset (or flagged) when another recording becomes current. *View ERP* opens
   `pop_timtopo`, *Chan. locations…* opens `pop_chanedit`. The text fields stay editable and show
   the trials per condition under the rule.
+- **Measure: ERP components or band power.** *Band power* (continuous data) replaces the
+  components with bands (`name: low high @ channels`, in Hz; *Add band…* offers delta, theta,
+  alpha and beta as in the simple mode, or your own edges, then the electrodes, all EEG channels
+  to start with). The data are cut into consecutive segments of the given length (2 s to start
+  with; at least two cycles of the lowest band edge), which are the trials: conditions, epoch and
+  baseline are not used, the plan's *epoch* step cuts the segments, and a *baseline* step does not
+  belong in the plan. Trials can still be limited by time ranges or markers.
 - **Nothing is prefilled for a particular study.** Conditions, epoch and components start empty.
   Defaults that are used are stated and come from conventions or from the data: an empty baseline
   is the pre-stimulus interval [epoch start, 0]; an empty epoch on epoched data is the data's own

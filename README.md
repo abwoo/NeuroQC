@@ -153,9 +153,9 @@ pipecompare_setup                         % run from the PipeCompare folder
 
 For any EEGLAB step, order search, several components or different constraints, open
 **Advanced…** in the dialog, or **Tools > PipeCompare > Advanced panel…**. The panel defines ERP
-measures only; band power with other steps is set up from a script (see
-[Scripting interface](#scripting-interface)). See [docs/PANEL.md](docs/PANEL.md) for a
-description of every control.
+components and band power; N2pc and LRP scored contralateral minus ipsilateral are set up from
+a script (see [Scripting interface](#scripting-interface)). See [docs/PANEL.md](docs/PANEL.md)
+for a description of every control.
 
 ### From the command line
 

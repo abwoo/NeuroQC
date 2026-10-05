@@ -27,6 +27,16 @@ verifyEqual(tc, T.parseComponents(T.componentsText(c)), c);
 verifyError(tc, @() T.parseComponents('P3: 0.3 @ Pz'), 'PipeCompare:Contract');
 end
 
+function testBandsRoundTrip(tc)
+T = pipecompare.gui.PanelText;
+b = T.parseBands('alpha: 8 13 @ O1 Oz O2; theta: 4 8 @ "F z"');
+verifyEqual(tc, b(1, :), {'alpha', [8 13], {'O1', 'Oz', 'O2'}});
+verifyEqual(tc, b(2, :), {'theta', [4 8], {'F z'}});
+verifyEqual(tc, T.parseBands(T.bandsText(b)), b);
+verifyEqual(tc, size(T.parseBands('')), [0 3]);
+verifyError(tc, @() T.parseBands('alpha: 8 @ Oz'), 'PipeCompare:Contract');
+end
+
 function testTrialRuleAndNumberTexts(tc)
 T = pipecompare.gui.PanelText;
 verifyEqual(tc, T.trialText(struct('mode', 'all')), 'all trials');

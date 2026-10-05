@@ -21,6 +21,8 @@ classdef Panel < handle
         DatasetLabel; WarnArea; HistTable
         PlanTable; TypeDrop; OrderDrop; ConstraintLabel
         CondField; EpochField; BaseField; CompField; EventsLabel
+        AnalysisDrop; SegField; BandField; CompLabel; AddMeasureButton
+        ErpWidgets = {}           % what band power does not use: conditions, epoch, baseline
         TrialRule = struct('mode', 'all')
         TrialRuleSource = ''      % the recording the trial rule was set on (recordingId)
         AutoFilled = struct('CondField', '', 'EpochField', '', 'BaseField', '')   % what the data filled in
@@ -113,17 +115,25 @@ classdef Panel < handle
 
             % contract + run + results (right, row 3)
             rp = uipanel(g, 'Title', 'Analysis contract, constraints, search'); rp.Layout.Row = 3; rp.Layout.Column = 2;
-            rg = uigridlayout(rp, [3 1]); rg.RowHeight = {196, 56, 64};
+            rg = uigridlayout(rp, [3 1]); rg.RowHeight = {223, 56, 64};
             % Each item: label | its text (the one source of the setting, also
             % editable by hand) | buttons that fill it from EEGLAB's dialogs.
-            cg = uigridlayout(rg, [7 4]); cg.Padding = [0 0 0 0]; cg.RowSpacing = 3;
-            cg.ColumnWidth = {80, '1x', 150, 95}; cg.RowHeight = repmat({24}, 1, 7);
+            cg = uigridlayout(rg, [8 4]); cg.Padding = [0 0 0 0]; cg.RowSpacing = 3;
+            cg.ColumnWidth = {80, '1x', 150, 95}; cg.RowHeight = repmat({24}, 1, 8);
+            uilabel(cg, 'Text', 'Measure');
+            obj.AnalysisDrop = uidropdown(cg, 'Items', {'ERP components', 'Band power'}, 'ItemsData', {'erp', 'bandpower'}, ...
+                'Tooltip', ['ERP: amplitude or latency in a window after the conditions'' events; band power: ', ...
+                'log power in a band, per consecutive segment of continuous data'], ...
+                'ValueChangedFcn', @(~, ~) obj.analysisChanged());
+            uilabel(cg, 'Text', 'Segment length (s)', 'HorizontalAlignment', 'right');
+            obj.SegField = uieditfield(cg, 'numeric', 'Value', 2, 'Limits', [0 Inf], 'LowerLimitInclusive', 'off', ...
+                'Enable', 'off', 'Tooltip', 'Band power: the continuous data are cut into consecutive segments of this length (the trials)');
             uilabel(cg, 'Text', 'Conditions');
             obj.CondField = uieditfield(cg, 'Placeholder', 'none yet - use Add from events... (format: name: code code; name2: code)');
-            uibutton(cg, 'Text', 'Add from events...', 'Tooltip', ...
+            condButtons = {uibutton(cg, 'Text', 'Add from events...', 'Tooltip', ...
                 'Name a condition and pick its event codes from the dataset''s own event list (EEGLAB selection window)', ...
-                'ButtonPushedFcn', @(~, ~) obj.addCondition());
-            uibutton(cg, 'Text', 'Clear', 'ButtonPushedFcn', @(~, ~) obj.setField(obj.CondField, ''));
+                'ButtonPushedFcn', @(~, ~) obj.addCondition()), ...
+                uibutton(cg, 'Text', 'Clear', 'ButtonPushedFcn', @(~, ~) obj.setField(obj.CondField, ''))};
             uilabel(cg, 'Text', 'Trials');
             obj.TrialLabel = uilabel(cg, 'Text', 'all trials', 'FontColor', [0.2 0.2 0.2]);
             uibutton(cg, 'Text', 'Choose trials...', 'Tooltip', ...
@@ -131,29 +141,35 @@ classdef Panel < handle
                 'ButtonPushedFcn', @(~, ~) obj.chooseTrials());
             uibutton(cg, 'Text', 'All trials', 'ButtonPushedFcn', @(~, ~) obj.setTrialRule(struct('mode', 'all')));
             uilabel(cg, 'Text', 'Epoch (s)'); obj.EpochField = uieditfield(cg, 'Value', '', 'Placeholder', 'start end in s around the event - required (EEGLAB pop_epoch...)');
-            uibutton(cg, 'Text', 'EEGLAB pop_epoch...', 'Tooltip', ...
+            epochButton = uibutton(cg, 'Text', 'EEGLAB pop_epoch...', 'Tooltip', ...
                 'Set the epoch in EEGLAB''s own epoching dialog (run on a copy); the window is filled in here', ...
                 'ButtonPushedFcn', @(~, ~) obj.epochFromEEGLAB());
             uilabel(cg, 'Text', '');
             uilabel(cg, 'Text', 'Baseline (s)'); obj.BaseField = uieditfield(cg, 'Value', '', 'Placeholder', 'empty = pre-stimulus baseline [epoch start 0] s');
-            uibutton(cg, 'Text', 'EEGLAB pop_rmbase...', 'Tooltip', ...
+            baseButton = uibutton(cg, 'Text', 'EEGLAB pop_rmbase...', 'Tooltip', ...
                 'Set the baseline in EEGLAB''s own baseline dialog on epoched preview data (ms are converted to s)', ...
                 'ButtonPushedFcn', @(~, ~) obj.baselineFromEEGLAB());
             uilabel(cg, 'Text', '');
-            uilabel(cg, 'Text', 'Components');
+            obj.CompLabel = uilabel(cg, 'Text', 'Components');
             obj.CompField = uieditfield(cg, 'Placeholder', 'none yet - use Add component... (format: name: start end @ channels [# measure polarity])');
-            uibutton(cg, 'Text', 'Add component...', 'Tooltip', ...
+            % the bands take the components' place when the measure is band power
+            obj.BandField = uieditfield(cg, 'Placeholder', 'none yet - use Add band... (format: name: low high @ channels, in Hz)', 'Visible', 'off');
+            obj.BandField.Layout.Row = 6; obj.BandField.Layout.Column = 2;
+            obj.AddMeasureButton = uibutton(cg, 'Text', 'Add component...', 'Tooltip', ...
                 'Name, window and measure, then the ROI from the dataset''s channels (EEGLAB channel selection)', ...
-                'ButtonPushedFcn', @(~, ~) obj.addComponent());
-            uibutton(cg, 'Text', 'Set ROI...', 'Tooltip', 'Replace the ROI of a component with channels chosen in EEGLAB''s channel selection', ...
+                'ButtonPushedFcn', @(~, ~) obj.addMeasure());
+            obj.AddMeasureButton.Layout.Row = 6; obj.AddMeasureButton.Layout.Column = 3;
+            roiButton = uibutton(cg, 'Text', 'Set ROI...', 'Tooltip', 'Replace the ROI of a component or band with channels chosen in EEGLAB''s channel selection', ...
                 'ButtonPushedFcn', @(~, ~) obj.setRoi());
+            roiButton.Layout.Row = 6; roiButton.Layout.Column = 4;
             obj.SummaryLabel = uilabel(cg, 'Text', '', 'FontColor', [0 0.3 0.1], 'WordWrap', 'on');
-            obj.SummaryLabel.Layout.Column = [1 4]; obj.SummaryLabel.Layout.Row = 6;
+            obj.SummaryLabel.Layout.Column = [1 4]; obj.SummaryLabel.Layout.Row = 7;
             obj.EventsLabel = uilabel(cg, 'Text', 'Event types: -', 'FontColor', [0.3 0.3 0.3], 'WordWrap', 'on');
-            obj.EventsLabel.Layout.Column = [1 2]; obj.EventsLabel.Layout.Row = 7;
-            uibutton(cg, 'Text', 'View ERP (EEGLAB)...', 'Tooltip', ...
+            obj.EventsLabel.Layout.Column = [1 2]; obj.EventsLabel.Layout.Row = 8;
+            erpButton = uibutton(cg, 'Text', 'View ERP (EEGLAB)...', 'Tooltip', ...
                 'ERP and scalp maps of the conditions in EEGLAB (pop_timtopo on epoched preview data), to choose windows and ROIs', ...
                 'ButtonPushedFcn', @(~, ~) obj.viewErp());
+            obj.ErpWidgets = [{obj.CondField} condButtons {obj.EpochField, epochButton, obj.BaseField, baseButton, erpButton}];
             uibutton(cg, 'Text', 'Chan. locations...', 'Tooltip', ...
                 'Edit channel locations of the current dataset in EEGLAB (pop_chanedit); needed for interpolation and topographies', ...
                 'ButtonPushedFcn', @(~, ~) obj.editChanlocs());
@@ -201,7 +217,7 @@ classdef Panel < handle
             obj.DetailArea = uitextarea(rgl, 'Editable', 'off', 'WordWrap', 'on', 'FontSize', 11, ...
                 'Value', {'Select a row of the history, the plan or the results to see its full content here.'});
             % any change to what the search depends on makes shown results stale
-            settings = [{obj.CondField, obj.EpochField, obj.CompField, obj.BaseField, obj.ObjectiveField}, ...
+            settings = [{obj.CondField, obj.EpochField, obj.CompField, obj.BaseField, obj.BandField, obj.SegField, obj.ObjectiveField}, ...
                 struct2cell(obj.LimitFields)'];
             for k = 1:numel(settings)
                 settings{k}.ValueChangedFcn = @(~, ~) obj.settingsChanged();
@@ -300,7 +316,7 @@ classdef Panel < handle
         function showPlan(obj)
             S = obj.Plan.Slots;
             data = cell(numel(S), 4);
-            ctxt = struct('epoch', obj.EpochField.Value, 'baseline', obj.BaseField.Value);
+            ctxt = obj.planContext();
             for k = 1:numel(S)
                 data{k, 1} = k; data{k, 2} = S(k).id;
                 data{k, 3} = pipecompare.gui.PanelValues.settingsText(S(k), ctxt); data{k, 4} = S(k).pinned;
@@ -668,9 +684,44 @@ classdef Panel < handle
 
         % -------------------------------------------------------------- run
         function c = contract(obj)
+            if obj.isBandPower()
+                % the segments are the trials: conditions, epoch and baseline are not used
+                c = pipecompare.eval.Contract('analysis', 'bandpower', 'segment', obj.SegField.Value, ...
+                    'bands', pipecompare.gui.PanelText.parseBands(obj.BandField.Value), 'trials', obj.TrialRule);
+                return;
+            end
             [ep, bl] = obj.windows();
             c = pipecompare.eval.Contract('conditions', pipecompare.gui.PanelText.parseConditions(obj.CondField.Value), ...
                 'components', pipecompare.gui.PanelText.parseComponents(obj.CompField.Value), 'epoch', ep, 'baseline', bl, 'trials', obj.TrialRule);
+        end
+
+        function tf = isBandPower(obj)
+            tf = strcmp(obj.AnalysisDrop.Value, 'bandpower');
+        end
+
+        function analysisChanged(obj)
+            % ERP: conditions, epoch, baseline, components; band power: the
+            % bands and the segment length. Each keeps what was typed, so
+            % switching back and forth loses nothing.
+            band = obj.isBandPower();
+            erpOn = pipecompare.utils.ternary(band, 'off', 'on');
+            for w = obj.ErpWidgets, w{1}.Enable = erpOn; end
+            obj.SegField.Enable = pipecompare.utils.ternary(band, 'on', 'off');
+            obj.CompField.Visible = erpOn;
+            obj.BandField.Visible = pipecompare.utils.ternary(band, 'on', 'off');
+            obj.CompLabel.Text = pipecompare.utils.ternary(band, 'Bands', 'Components');
+            obj.AddMeasureButton.Text = pipecompare.utils.ternary(band, 'Add band...', 'Add component...');
+            obj.AddMeasureButton.Tooltip = pipecompare.utils.ternary(band, ...
+                'A conventional band or your own edges (Hz), then the ROI (all EEG channels to start with)', ...
+                'Name, window and measure, then the ROI from the dataset''s channels (EEGLAB channel selection)');
+            obj.showPlan();
+            obj.settingsChanged();
+        end
+
+        function ctxt = planContext(obj)
+            % what the epoch and baseline steps take from the analysis contract
+            ctxt = struct('epoch', obj.EpochField.Value, 'baseline', obj.BaseField.Value);
+            if obj.isBandPower(), ctxt.segment = obj.SegField.Value; end
         end
 
         function [ep, bl] = windows(obj)
@@ -963,20 +1014,57 @@ classdef Panel < handle
             obj.setField(obj.CompField, pipecompare.gui.PanelText.componentsText(comps));
         end
 
-        function setRoi(obj, k, roi)
-            comps = pipecompare.gui.PanelText.parseComponents(obj.CompField.Value);
-            if isempty(comps), uialert(obj.Fig, 'Add a component first.', 'PipeCompare'); return; end
+        function addMeasure(obj)
+            if obj.isBandPower(), obj.addBand(); else, obj.addComponent(); end
+        end
+
+        function addBand(obj, name, freq, roi)
+            % One of the conventional bands (as in the simple mode) or your
+            % own edges, then the ROI, starting from all EEG channels.
             if nargin < 2
-                k = 1;
-                if size(comps, 1) > 1
-                    [k, ok] = listdlg('ListString', comps(:, 1), 'SelectionMode', 'single', 'Name', 'Component');
-                    if ~ok, return; end
+                names = pipecompare.simple.Presets.bandNames();
+                items = [cellfun(@(n) sprintf('%s (%g-%g Hz)', n, pipecompare.simple.Presets.band(n)), names, 'UniformOutput', false), ...
+                    {'your own band...'}];
+                [k, ok] = listdlg('ListString', items, 'SelectionMode', 'single', 'Name', 'Band', 'ListSize', [220 110]);
+                if ~ok, return; end
+                if k <= numel(names)
+                    name = names{k}; freq = pipecompare.simple.Presets.band(name);
+                else
+                    a = inputdlg({'Band name', 'Low edge (Hz)', 'High edge (Hz)'}, 'PipeCompare band', 1, {'', '', ''});
+                    if isempty(a), return; end
+                    name = strtrim(a{1}); freq = [str2double(a{2}) str2double(a{3})];
+                    assert(~isempty(name) && all(isfinite(freq)) && freq(1) > 0 && freq(2) > freq(1), 'PipeCompare:Contract', ...
+                        'Give a name and the band edges with 0 < low < high (Hz).');
                 end
-                roi = obj.pickChannels(comps{k, 3});
+                EEG = pipecompare.live.Session.current();
+                start = {}; if ~isempty(EEG), start = pipecompare.simple.Presets.eegChannels(EEG); end
+                roi = obj.pickChannels(start);
                 if isempty(roi), return; end
             end
-            comps{k, 3} = cellstr(roi);
-            obj.setField(obj.CompField, pipecompare.gui.PanelText.componentsText(comps));
+            bands = pipecompare.gui.PanelText.parseBands(obj.BandField.Value);
+            bands(end+1, :) = {name, freq, cellstr(roi)};
+            obj.setField(obj.BandField, pipecompare.gui.PanelText.bandsText(bands));
+        end
+
+        function setRoi(obj, k, roi)
+            % the ROI of a component or, for band power, of a band
+            band = obj.isBandPower();
+            if band, field = obj.BandField; rows = pipecompare.gui.PanelText.parseBands(field.Value);
+            else, field = obj.CompField; rows = pipecompare.gui.PanelText.parseComponents(field.Value); end
+            what = pipecompare.utils.ternary(band, 'band', 'component');
+            if isempty(rows), uialert(obj.Fig, sprintf('Add a %s first.', what), 'PipeCompare'); return; end
+            if nargin < 2
+                k = 1;
+                if size(rows, 1) > 1
+                    [k, ok] = listdlg('ListString', rows(:, 1), 'SelectionMode', 'single', 'Name', what);
+                    if ~ok, return; end
+                end
+                roi = obj.pickChannels(rows{k, 3});
+                if isempty(roi), return; end
+            end
+            rows{k, 3} = cellstr(roi);
+            if band, obj.setField(field, pipecompare.gui.PanelText.bandsText(rows));
+            else, obj.setField(field, pipecompare.gui.PanelText.componentsText(rows)); end
         end
 
         function labels = pickChannels(obj, current)
@@ -1042,6 +1130,8 @@ classdef Panel < handle
             % The trials are the condition events that the EEGLAB event
             % selection kept (identified by urevent).
             c = obj.contract();
+            assert(~c.isSegmented(), 'PipeCompare:Contract', ['Band power segments are not events of the dataset: ', ...
+                'choose its trials by time ranges or between markers.']);
             codes = c.allEvents();
             assert(~isempty(codes), 'PipeCompare:Contract', 'Define the conditions first.');
             ty = arrayfun(@(e) strtrim(char(string(e.type))), sel.event, 'UniformOutput', false);
@@ -1097,7 +1187,15 @@ classdef Panel < handle
             try
                 EEG = pipecompare.live.Session.current();
                 c = obj.contract();
-                if isempty(EEG) || isempty(c.conditions), obj.SummaryLabel.Text = ''; return; end
+                if isempty(EEG) || (c.isSegmented() && isempty(c.bands)), obj.SummaryLabel.Text = ''; return; end
+                if c.isSegmented()
+                    c.validate(pipecompare.live.DataState.fromEEG(EEG));
+                    obj.SummaryLabel.Text = sprintf('Band power: about %d segments of %g s | ROI channels: %d', ...
+                        floor(EEG.pnts / EEG.srate / c.segment), c.segment, numel(c.allRoi()));
+                    obj.SummaryLabel.FontColor = [0 0.3 0.1];
+                    return;
+                end
+                if isempty(c.conditions), obj.SummaryLabel.Text = ''; return; end
                 [elig, E] = pipecompare.run.Executor.eligibleUrevents(EEG, c);
                 parts = cell(1, numel(c.conditions));
                 for k = 1:numel(c.conditions)
@@ -1204,7 +1302,7 @@ classdef Panel < handle
                     case 'plan'
                         slot = obj.Plan.Slots(r);
                         v = {sprintf('Step %d: %s', r, slot.id), ...
-                            ['Values: ' pipecompare.gui.PanelValues.settingsText(slot, struct('epoch', obj.EpochField.Value, 'baseline', obj.BaseField.Value))]};
+                            ['Values: ' pipecompare.gui.PanelValues.settingsText(slot, obj.planContext())]};
                         for a = 1:numel(slot.alternatives)
                             alt = slot.alternatives{a};
                             if strcmp(alt.type, 'native'), v = [v {'EEGLAB command(s):'} pipecompare.run.Native.statements(alt.params.command)]; end %#ok<AGROW>

@@ -21,7 +21,7 @@ error. The History list must keep 1 row unless the step says *Apply now*.
 | 3 | *Choose trials…* > *EEGLAB event selection*: in `pop_selectevent`, select events by latency. | Trials label: `n selected events (...)`. Then *All trials*. |
 | 4 | *EEGLAB pop_epoch…*: set limits −0.3 0.9. | Epoch field `-0.3 0.9`. |
 | 5 | *EEGLAB pop_rmbase…*: set −300 0 ms. | Baseline field `-0.3 0`. |
-| 6 | *Add component…*: P3, 0.3, 0.5, mean; then pick Pz P3 P4 in the channel window. *Set ROI…* again. | Components field shows the ROI; Objective list contains `P3.mean`. |
+| 6 | *Add component…*: P3, 0.3, 0.5, mean; then pick Pz P3 P4 in the channel window. *Set ROI…* again. Then *Measure* > *Band power*, *Add band…* > `alpha (8-13 Hz)`, OK in the channel window; then back to *ERP components*. | Components field shows the ROI; Objective list contains `P3.mean`. With band power: conditions, epoch and baseline greyed, the Bands field shows `alpha: 8 13 @` all EEG channels, Objective list `alpha.logpower`; back on ERP the P3 is still there. |
 | 7 | *View ERP (EEGLAB)…* | EEGLAB's `pop_timtopo` opens on the preview (title says PipeCompare preview). |
 | 8 | Add `lowpass`, select it, *Configure in EEGLAB…*: higher edge 30. Again with 40. | Values column: `cutoff = {30, 40}`. The step stays `lowpass`. |
 | 9 | Add `reject_threshold`, *Configure in EEGLAB…*: limits −60 / 120. | A question naming the asymmetric limits. *Only the step's values*: `uv = 120` added. |

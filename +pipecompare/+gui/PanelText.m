@@ -64,6 +64,26 @@ classdef PanelText
             t = strjoin(parts, '; ');
         end
 
+        function bands = parseBands(txt)
+            % 'alpha: 8 13 @ O1 Oz O2; theta: 4 8 @ Fz' -> rows {name, [low high] Hz, roi}
+            bands = cell(0, 3);
+            for part = strsplit(strtrim(char(txt)), ';')
+                p = strtrim(part{1}); if isempty(p), continue; end
+                tok = regexp(p, '^([^:]+):\s*([-\d\.eE]+)\s+([-\d\.eE]+)\s*@\s*(.+)$', 'tokens', 'once');
+                assert(~isempty(tok), 'PipeCompare:Contract', 'Bands: name: low high @ ch1 ch2; ... (Hz)');
+                bands(end+1, :) = {strtrim(tok{1}), [str2double(tok{2}) str2double(tok{3})], pipecompare.gui.PanelText.tokens(tok{4})}; %#ok<AGROW>
+            end
+        end
+
+        function t = bandsText(bands)
+            parts = cell(1, size(bands, 1));
+            for k = 1:size(bands, 1)
+                parts{k} = sprintf('%s: %g %g @ %s', bands{k, 1}, bands{k, 2}, ...
+                    strjoin(cellfun(@pipecompare.gui.PanelText.quoteItem, cellstr(bands{k, 3}), 'UniformOutput', false), ' '));
+            end
+            t = strjoin(parts, '; ');
+        end
+
         function t = trialText(r)
             switch r.mode
                 case 'all', t = 'all trials';

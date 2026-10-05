@@ -33,6 +33,9 @@ release has a git tag `vX.Y.Z`.
   data and their history that only the panel showed before. The Command Window gets the same
   lines. After *Use this pipeline*, the message says the data are ready to average and should not
   be filtered, re-referenced or rejected again.
+- The panel defines band power too (*Measure: Band power*): bands with their electrodes and the
+  segment length, as the simple mode does; before, it defined ERP components only, and *Advanced…*
+  was off for band power. *Advanced…* now takes a band choice over to the panel.
 - The panel's *Run search* shows the same progress window as the dialog, with *Stop* (the
   pipelines already finished are ranked); before, a panel search could only be interrupted from the
   Command Window. The panel also has *Save script…*, which writes the selected pipeline as a

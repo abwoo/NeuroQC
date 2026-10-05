@@ -874,6 +874,41 @@ r = evalin('base', 'pipecompare_result');
 verifyEqual(tc, r.ranking.units, {'ms'});
 end
 
+function testPanelDefinesBandPower(tc)
+% Band power from the panel, as in the simple mode: bands and a segment
+% length instead of conditions, epoch, baseline and components.
+nqc_setBase(nqc_synth(struct('seconds', 150, 'nPerCond', 10, 'alphaUv', 10, 'artifactTrials', 0)));
+app = pipecompare.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
+app.CompField.Value = 'P3: 0.3 0.5 @ Pz';
+app.AnalysisDrop.Value = 'bandpower'; app.analysisChanged();
+verifyEqual(tc, char(app.CondField.Enable), 'off');             % not used by band power
+verifyEqual(tc, char(app.EpochField.Enable), 'off');
+verifyEqual(tc, char(app.BandField.Visible), 'on'); verifyEqual(tc, char(app.CompField.Visible), 'off');
+verifyEqual(tc, app.AddMeasureButton.Text, 'Add band...');
+app.addBand('alpha', [8 12], {'Oz', 'O1', 'O2'});
+verifyEqual(tc, app.BandField.Value, 'alpha: 8 12 @ Oz O1 O2');
+verifyEqual(tc, app.ObjectiveField.Items, {'composite', 'alpha.logpower'});
+verifyTrue(tc, contains(app.SummaryLabel.Text, 'segments of 2 s'));
+app.SegField.Value = 0.1; app.settingsChanged();                % fewer than two cycles of 8 Hz
+verifyTrue(tc, contains(app.SummaryLabel.Text, 'two cycles'));
+app.SegField.Value = 2; app.settingsChanged();
+app.TypeDrop.Value = 'highpass'; app.addStep();
+app.PlanTable.Selection = [1 1]; app.setValues('cutoff', {1});
+app.TypeDrop.Value = 'lowpass'; app.addStep();
+app.PlanTable.Selection = [2 1]; app.setValues('cutoff', {9, 30});
+app.TypeDrop.Value = 'epoch'; app.addStep();
+verifyTrue(tc, contains(app.PlanTable.Data{3, 3}, 'consecutive 2 s segments'));
+app.run(false);
+verifyEqual(tc, size(app.ResultTable.Data, 1), 2);
+r = evalin('base', 'pipecompare_result');
+verifyEqual(tc, r.ranking.units, {'log10(uV^2)'});
+verifyTrue(tc, r.ref.segmented);
+verifyEqual(tc, r.ranking.table.status{contains(r.labels, 'cutoff=9')}, 'rejected');   % 9 Hz low-pass cuts the band
+app.AnalysisDrop.Value = 'erp'; app.analysisChanged();            % back to ERP: what was typed is kept
+verifyEqual(tc, app.CompField.Value, 'P3: 0.3 0.5 @ Pz');
+verifyEqual(tc, char(app.CondField.Enable), 'on');
+end
+
 % ------------------------------------------------------------- real data
 function testRealDatasetStateOnWorkingCopy(tc)
 % Reads the real dataset's history and state; the file on disk must not change.

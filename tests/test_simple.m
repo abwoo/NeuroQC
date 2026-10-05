@@ -384,8 +384,18 @@ function testAdvancedTakesTheChoicesOrSaysWhyNot(tc)
 EEG = tc.TestData.EEG;
 nqc_setBase(EEG);
 d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>
+d.MeasureDrop.Value = 'N2pc'; d.measureChanged();
+verifyEqual(tc, char(d.AdvancedButton.Enable), 'off');          % the panel scores no contra minus ipsi
 d.MeasureDrop.Value = 'alpha'; d.measureChanged();
-verifyEqual(tc, char(d.AdvancedButton.Enable), 'off');          % the panel defines ERP measures only
+verifyEqual(tc, char(d.AdvancedButton.Enable), 'on');           % band power: the panel takes it
+appB = d.advanced(); cb = onCleanup(@() delete(appB)); %#ok<NASGU>
+verifyEqual(tc, appB.AnalysisDrop.Value, 'bandpower');
+verifyTrue(tc, startsWith(appB.BandField.Value, 'alpha: 8 13 @ '));
+k = appB.contract();
+verifyTrue(tc, k.isSegmented()); verifyEqual(tc, k.segment, 2);
+verifyEqual(tc, k.bands.roi, pipecompare.simple.Presets.eegChannels(EEG));
+verifyTrue(tc, ismember('epoch', {appB.Plan.Slots.id}));
+d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>   % (advanced closed the first)
 d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
 verifyEqual(tc, char(d.AdvancedButton.Enable), 'on');
 app = d.advanced(); ca = onCleanup(@() delete(app)); %#ok<NASGU>
