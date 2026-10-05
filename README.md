@@ -1,4 +1,4 @@
-# PipeCompare
+<p align="center"><img src="docs/assets/banner.svg" alt="PipeCompare" width="640"></p>
 
 **Data-driven comparison of EEG preprocessing pipelines in EEGLAB.**
 
@@ -18,8 +18,6 @@ a new EEGLAB dataset and as a runnable script.
 
 The comparison never uses an experimental effect (condition differences, p-values), so selecting a
 pipeline does not bias the statistical test you run afterwards.
-
-![The PipeCompare panel on synthetic data](docs/assets/panel.png)
 
 *Formerly NeuroQC (versions up to 0.7.1); see [CHANGELOG.md](CHANGELOG.md) for migration notes.*
 
