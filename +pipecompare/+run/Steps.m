@@ -55,7 +55,7 @@ classdef Steps
                     coms = {com};
                     info.asr = recordAsr(E0, EEG, p.cutoff);
                 case 'badchannels'
-                    [EEG, coms, info] = pipecompare.run.Steps.badChannels(EEG, p);
+                    [EEG, coms, info] = pipecompare.run.Steps.badChannels(EEG, p, ctx);
                 case 'channels'
                     [EEG, coms, info] = pipecompare.run.Steps.listedChannels(EEG, p);
                 case 'restore'
@@ -178,25 +178,44 @@ classdef Steps
             end
         end
 
-        function [EEG, coms, info] = badChannels(EEG, p)
+        function [EEG, coms, info] = badChannels(EEG, p, ctx)
             elec = 1:EEG.nbchan;
             if isfield(p, 'exclude') && ~isempty(p.exclude)   % e.g. EOG / reference channels are not tested
                 elec = find(~ismember(lower({EEG.chanlocs.labels}), lower(presentChannels(EEG, p.exclude, 'badchannels exclude'))));
             end
             args = {'elec', elec, 'threshold', p.threshold, 'norm', 'on', 'measure', p.measure};
             if strcmp(p.measure, 'spec'), args = [args {'freqrange', [1 min(50, EEG.srate/2 - 1)]}]; end
-            [EEGrem, bad, ~, com] = pop_rejchan(EEG, args{:});
+            % Detect on a high-passed copy (slow drifts distort kurtosis
+            % and probability), interpolate or remove on the data as they are.
+            hp = pipecompare.utils.fieldOr(p, 'detectHighpass', 0);
+            applied = 0; if nargin > 2 && isfield(ctx, 'highpass'), applied = ctx.highpass; end
+            copy = hp > 0 && hp > applied;
+            src = EEG; on = '';
+            if copy
+                src = pop_eegfiltnew(EEG, 'locutoff', hp, 'plotfreqz', 0);
+                on = sprintf(' on a %g Hz high-passed copy', hp);
+            end
+            [EEGrem, bad, ~, com] = pop_rejchan(src, args{:});
             bad = elec(bad(:)');   % pop_rejchan indexes the tested channels (it removes opt.elec(indelec) itself)
             labels = {EEG.chanlocs(bad).labels};
             info.badChannels = labels; info.badIdx = bad;
             if strcmp(p.action, 'remove')
-                EEG = EEGrem;
-                coms = {com};
                 info.removed = labels;
+                if ~copy
+                    EEG = EEGrem;
+                    coms = {com};
+                    return;
+                end
+                coms = {sprintf('%% PipeCompare: pop_rejchan(measure %s, threshold %g, norm on, %d channels tested)%s -> bad channels [%s] removed', ...
+                    p.measure, p.threshold, numel(elec), on, strjoin(labels, ' '))};
+                if ~isempty(bad)
+                    [EEG, com2] = pop_select(EEG, 'nochannel', bad);
+                    coms{end+1} = com2;
+                end
                 return;
             end
-            coms = {sprintf('%% PipeCompare: pop_rejchan(measure %s, threshold %g, norm on, %d channels tested) -> bad channels [%s] interpolated in place', ...
-                p.measure, p.threshold, numel(elec), strjoin(labels, ' '))};
+            coms = {sprintf('%% PipeCompare: pop_rejchan(measure %s, threshold %g, norm on, %d channels tested)%s -> bad channels [%s] interpolated in place', ...
+                p.measure, p.threshold, numel(elec), on, strjoin(labels, ' '))};
             info.interpolated = labels;
             if ~isempty(bad)
                 requireLocations(EEG.chanlocs(bad), 'badchannels');

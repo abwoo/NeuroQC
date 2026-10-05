@@ -51,6 +51,7 @@ classdef Catalog
                     d.params = [P('measure', 'kurt', {'kurt','prob'}, false, 'pop_rejchan measure'), ...
                         P('threshold', 5, {3, 5}, false, 'z threshold'), ...
                         P('exclude', {}, {}, false, 'channels not tested (e.g. EOG, reference electrodes)'), ...
+                        P('detectHighpass', 0, {}, false, 'detect on a copy high-passed at this edge (Hz), interpolate on the data as is; 0 = detect on the data as is'), ...
                         P('action', 'interpolate', {}, false, '''interpolate'' in place or ''remove'' (restore later)')];
                 case 'channels'
                     d.label = 'Named channels: remove or interpolate'; d.dialog = 'pop_select';
@@ -235,7 +236,10 @@ switch type
         if isfield(p, 'freq') && ischar(p.freq), reason = 'no clear 50/60 Hz line noise in this dataset; set linenoise freq';
         elseif pos('freq') || pos('halfwidth'), reason = 'linenoise freq and halfwidth must be positive numbers (Hz)'; end
     case 'asr', if pos('cutoff'), reason = 'asr cutoff must be a positive number (SD)'; end
-    case 'badchannels', if pos('threshold'), reason = 'badchannels threshold must be a positive number'; end
+    case 'badchannels'
+        if pos('threshold'), reason = 'badchannels threshold must be a positive number';
+        elseif isfield(p, 'detectHighpass') && ~(isnumeric(p.detectHighpass) && isscalar(p.detectHighpass) && p.detectHighpass >= 0)
+            reason = 'badchannels detectHighpass must be >= 0 (0 = detect on the data as is)'; end
     case 'reject_threshold', if pos('uv'), reason = 'reject_threshold uv must be a positive number'; end
     case {'reject_jointprob','reject_kurtosis'}, if pos('sd'), reason = sprintf('%s sd must be a positive number', type); end
     case 'icremove'

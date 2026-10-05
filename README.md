@@ -125,7 +125,10 @@ pipecompare_setup                         % run from the PipeCompare folder
    | Standard | filters, ICLabel threshold for removing components, epoch-rejection threshold |
 
    *Standard* detects bad channels once and fits ICA once, before the filters, so every filter
-   setting shares one decomposition. The dialog shows how many pipelines will run before you
+   setting shares one decomposition. Both look at a 1 Hz high-passed copy, so slow drifts do not
+   mislead them; the data themselves are filtered only by the settings being compared. EOG, ECG
+   and EMG channels (by type or by name, such as VEOG) are not tested as bad channels and do not
+   count in epoch rejection. The dialog shows how many pipelines will run before you
    start. Steps the data cannot support are left out, with the reason; for example, interpolation
    and ICLabel require channel locations. To compare ASR (artifact subspace reconstruction) or
    other steps, use the advanced panel or a script.

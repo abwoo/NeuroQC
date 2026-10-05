@@ -144,25 +144,29 @@ classdef Presets
         end
 
         function labels = nonEegChannels(EEG)
-            % channels typed as non-EEG (EOG, ECG, ...): left out of an average reference
+            % non-EEG channels (EOG, ECG, ...): not tested for bad channels
+            % or epoch rejection, and left out of an average reference
             labels = setdiff({EEG.chanlocs.labels}, pipecompare.simple.Presets.eegChannels(EEG), 'stable');
         end
 
         function roi = eegChannels(EEG)
-            % all channels except those typed as non-EEG (EOG, ECG, EMG, ...)
+            % all channels except non-EEG ones (EOG, ECG, EMG, ...), by
+            % type or, when the type is not set, by name (VEOG, HEOG, ECG1)
             labels = {EEG.chanlocs.labels};
             roi = labels;
+            keep = cellfun(@isempty, regexpi(labels, '^([VH]?EOG|ECG|EKG|EMG)', 'once'));
             if isfield(EEG.chanlocs, 'type')
                 ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), EEG.chanlocs, 'UniformOutput', false);
-                keep = ~ismember(ty, {'EOG', 'HEOG', 'VEOG', 'ECG', 'EKG', 'EMG', 'MISC', 'TRIG', 'STIM'});
-                if any(keep), roi = labels(keep); end
+                keep = keep & ~ismember(ty, {'EOG', 'HEOG', 'VEOG', 'ECG', 'EKG', 'EMG', 'MISC', 'TRIG', 'STIM'});
             end
+            if any(keep), roi = labels(keep); end
         end
 
         function [plan, notes] = recipe(name, state, contract, reference, exclude)
             % The plan of a recipe for these data, and why a step was left
             % out. reference: 'asis' (default) or 'average'; exclude: the
-            % channels left out of the average (e.g. EOG, ECG).
+            % non-EEG channels (e.g. EOG, ECG), not tested for bad channels
+            % or epoch rejection and left out of the average.
             if nargin < 4 || isempty(reference), reference = 'asis'; end
             if nargin < 5, exclude = {}; end
             assert(any(strcmp(reference, {'asis', 'average'})), 'PipeCompare:Simple', ...
@@ -173,13 +177,18 @@ classdef Presets
             continuous = ~state.isEpoched;
             standard = strcmp(name, 'standard');
             ica = false;
+            exclusion = {};
+            if ~isempty(exclude), exclusion = {'exclude', cellstr(exclude)}; end
             if standard
                 if state.nLocated == 0
                     notes{end+1} = 'no channel locations: bad-channel interpolation and ICLabel are left out';
                 else
                     % the catalog defaults, fixed: a searched step before
-                    % ICA would multiply the decompositions
-                    plan = plan.add('badchannels', 'measure', 'kurt', 'threshold', 5);
+                    % ICA would multiply the decompositions; on continuous
+                    % data detected on a 1 Hz high-passed copy (slow drifts
+                    % distort the kurtosis), as ICA is fitted
+                    plan = plan.add('badchannels', 'measure', 'kurt', 'threshold', 5, ...
+                        'detectHighpass', double(continuous), exclusion{:});
                     plan = addReference(plan, reference, exclude);
                     if exist('pop_iclabel', 'file') ~= 2
                         notes{end+1} = 'ICLabel is not installed: ICA and IC removal left out';
@@ -201,7 +210,7 @@ classdef Presets
             if ica, plan = plan.add('icremove'); end
             if continuous, plan = plan.add('epoch'); end
             if ~isempty(contract.baseline), plan = plan.add('baseline'); end
-            if standard, plan = plan.add('reject_threshold'); end
+            if standard, plan = plan.add('reject_threshold', exclusion{:}); end
         end
     end
 end

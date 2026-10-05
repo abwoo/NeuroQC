@@ -9,6 +9,11 @@ release has a git tag `vX.Y.Z`.
   after the bad channels and before ICA (`pop_pipecompare(..., 'reference', 'average')`).
   Previously re-referencing had to be done before PipeCompare, which spread bad channels into
   the average.
+- Simple mode, *Standard*: bad channels are detected on a 1 Hz high-passed copy (slow drifts
+  distorted the kurtosis of unfiltered data) and interpolated in the data as they are
+  (`badchannels` parameter `detectHighpass`, 0 by default in the panel). EOG, ECG and EMG channels
+  are no longer tested as bad channels or counted by the epoch-rejection threshold, where blinks
+  removed many epochs; they are recognised by type or, when the type is not set, by name.
 
 - Simple mode reads the data unit from the amplitude scale, as the panel does: on data stored in
   volts the epoch-rejection thresholds previously removed nothing.
