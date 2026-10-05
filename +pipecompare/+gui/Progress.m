@@ -34,7 +34,7 @@ classdef Progress < handle
 
         function stop = step(obj, n)
             % n more pipelines are finished (0 = only asking)
-            if isempty(obj.Dlg) || ~isvalid(obj.Dlg), stop = true; return; end   % the window was closed: stop as well
+            if ~isvalid(obj.Fig) || ~isvalid(obj.Dlg), stop = true; return; end   % the window was closed: stop as well
             dlg = obj.Dlg;
             obj.NDone = obj.NDone + n;
             if n > 0 && ~obj.Stopping
