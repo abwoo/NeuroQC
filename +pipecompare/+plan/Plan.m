@@ -34,6 +34,10 @@ classdef Plan
         Precedence = cell(0, 2)      % {before, after} slot ids
     end
 
+    properties (Constant)
+        MaxLeaves = 500              % default opts.maxLeaves of enumerate (and of the search)
+    end
+
     methods
         function obj = add(obj, type, varargin)
             type = char(type);
@@ -154,7 +158,7 @@ classdef Plan
             %   advance (8 free steps = 40320 orders is fine when most are
             %   illegal). opts.maxVisits bounds the work (refused above it).
             if nargin < 4, opts = struct(); end
-            opts = pipecompare.utils.withDefaults(opts, struct('maxLeaves', 500, 'maxVisits', 2e6));
+            opts = pipecompare.utils.withDefaults(opts, struct('maxLeaves', pipecompare.plan.Plan.MaxLeaves, 'maxVisits', 2e6));
             assert(~isempty(obj.Slots), 'PipeCompare:Plan', 'The plan is empty: add at least one step.');
             n = numel(obj.Slots);
             obj = obj.resolveAuto(state);

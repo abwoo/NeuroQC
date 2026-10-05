@@ -168,7 +168,7 @@ classdef Panel < handle
                 obj.LimitFields.(names{k}) = uieditfield(lg, 'numeric', 'Value', d.(names{k}));
             end
             uilabel(lg, 'Text', 'max pipelines', 'HorizontalAlignment', 'right');
-            obj.LimitFields.maxLeaves = uieditfield(lg, 'numeric', 'Value', 500);
+            obj.LimitFields.maxLeaves = uieditfield(lg, 'numeric', 'Value', pipecompare.plan.Plan.MaxLeaves);
             ag = uigridlayout(rg, [2 6]); ag.Padding = [0 0 0 0]; ag.RowSpacing = 4;
             ag.ColumnWidth = {'fit', 170, 'fit', 'fit', 'fit', '1x'};
             uilabel(ag, 'Text', 'Objective', 'HorizontalAlignment', 'right');

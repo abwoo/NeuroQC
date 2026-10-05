@@ -65,6 +65,12 @@ catch err
     verifyEqual(tc, err.identifier, 'PipeCompare:NoLegalPipeline');
     verifySubstring(tc, err.message, 'Signal Processing Toolbox');
 end
+% the same for clean_rawdata added as an EEGLAB command, unless its ASR is off
+asr = 'EEG = pop_clean_rawdata(EEG, ''FlatlineCriterion'',''off'',''ChannelCriterion'',''off'',''LineNoiseCriterion'',''off'',''Highpass'',''off'',''BurstCriterion'',%s,''WindowCriterion'',''off'',''BurstRejection'',''off'',''Distance'',''Euclidian'');';
+p = pipecompare.plan.Plan(); p = p.addNative(sprintf(asr, '20'));
+verifyError(tc, @() p.enumerate(nqc_fakeState(false, 250), nqc_contract()), 'PipeCompare:NoLegalPipeline');
+p = pipecompare.plan.Plan(); p = p.addNative(sprintf(asr, '''off'''));
+verifyNotEmpty(tc, p.enumerate(nqc_fakeState(false, 250), nqc_contract()));
 end
 
 function testOrderSearchWithPinAndBefore(tc)
@@ -289,5 +295,7 @@ verifyEqual(tc, m.params.args(1).values, {0.1, 0.5});
 [~, changed] = pipecompare.run.Native.mergeEeglab(a, pipecompare.run.Native.eeglabAlt('EEG = pop_reref(EEG, []);'));
 verifyEmpty(tc, changed);                                            % another call: not merged
 verifyEmpty(tc, pipecompare.run.Native.eeglabAlt(sprintf('EEG = pop_iclabel(EEG, ''default'');\nEEG = pop_subcomp(EEG, [], 0);')));
+z = pipecompare.run.Native.eeglabAlt('EEG = pop_rmbase(EEG);');            % no argument after EEG
+verifyEqual(tc, pipecompare.run.Native.eeglabCommand(z.params.fn, z.params.args, {}), 'EEG = pop_rmbase(EEG);');
 end
 

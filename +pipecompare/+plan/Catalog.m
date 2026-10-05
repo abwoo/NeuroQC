@@ -182,6 +182,9 @@ classdef Catalog
                                 st.epoched = true;
                             case 'resample'
                                 if isfield(e.params, 'fs') && isfinite(e.params.fs), st.srate = e.params.fs; end
+                            case 'clean_rawdata'
+                                bc = pipecompare.utils.fieldOr(e.params, 'BurstCriterion', 5);   % clean_artifacts' default: ASR on
+                                if ~(ischar(bc) && strcmpi(bc, 'off')), reason = asrFilter(st.srate); if ~isempty(reason), return; end; end
                             case 'ica', st.hasICA = true; st.icRemoved = false;
                             case {'ic_flags','icremove'}
                                 if ~st.hasICA, reason = sprintf('native %s needs ICA earlier in the plan or in the dataset', e.fn); return; end

@@ -14,6 +14,11 @@ release has a git tag `vX.Y.Z`.
   (`badchannels` parameter `detectHighpass`, 0 by default in the panel). EOG, ECG and EMG channels
   are no longer tested as bad channels or counted by the epoch-rejection threshold, where blinks
   removed many epochs; they are recognised by type or, when the type is not set, by name.
+- *Save script...* for band power wrote the default ERP contract, so the script did not cut the
+  data into segments and failed at its epoch step; it now keeps the band-power contract.
+- A `pop_clean_rawdata` step added as an EEGLAB command is refused at plan time when ASR has no
+  filter for the rate (no Signal Processing Toolbox), as the catalog ASR step is; it silently did
+  nothing. An EEGLAB command with no argument after `EEG` no longer fails with a syntax error.
 
 - Simple mode reads the data unit from the amplitude scale, as the panel does: on data stored in
   volts the epoch-rejection thresholds previously removed nothing.

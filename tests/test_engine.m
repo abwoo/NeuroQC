@@ -747,3 +747,24 @@ verifyFalse(tc, r.ref.segmented);
 verifyEqual(tc, r.ref.n, [30 30]);
 verifyTrue(tc, all(strcmp(r.ranking.table.status, 'feasible')));
 end
+
+function testBandPowerScriptKeepsTheContract(tc)
+% Audit: writeScript wrote the default (ERP) contract for band power, so
+% the saved script did not segment the data and its epoch step failed.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'alphaUv', 10, 'artifactTrials', 0));
+nqc_setBase(EEG);
+cs = {pipecompare.eval.Contract('analysis', 'bandpower', 'segment', 2, 'bands', {'alpha', [8 12], {'Oz', 'O1', 'O2'}}), ...
+      pipecompare.eval.Contract('analysis', 'bandpower', 'conditions', {'t', {'11'}; 's', {'31'}}, ...
+          'epoch', [-0.5 1.5], 'bands', {'alpha', [8 12], {'Oz', 'O1', 'O2'}})};
+d = tempname; mkdir(d); cleanup = onCleanup(@() rmdir(d, 's')); %#ok<NASGU>
+addpath(d); c2 = onCleanup(@() rmpath(d)); %#ok<NASGU>
+for i = 1:numel(cs)
+    p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', 1); p = p.add('epoch');
+    r = pipecompare.PipeCompare.optimize(p, cs{i});
+    name = sprintf('nqc_band_script%d', i);
+    pipecompare.PipeCompare.writeScript(r, 1, fullfile(d, [name '.m']));
+    out = feval(name, EEG);
+    m = pipecompare.eval.Measure.candidate(out, r.contract, r.ref);
+    verifyEqual(tc, [m.objectives.agg], [r.cands(1).m.objectives.agg], 'RelTol', 1e-6);
+end
+end

@@ -236,7 +236,7 @@ classdef SimpleDialog < handle
                 [leaves, tree] = plan.enumerate(obj.State, c, struct('maxLeaves', Inf));
                 n = numel(leaves);
                 nIca = sum(arrayfun(@(k) strcmp(tree(k).inst.type, 'ica'), 2:numel(tree)));   % shared prefixes run once
-                maxLeaves = 500;                       % the search's default limit (maxLeaves)
+                maxLeaves = pipecompare.plan.Plan.MaxLeaves;   % the search's default limit
                 msg = sprintf('%d pipelines will be compared', n);
                 if nIca > 0, msg = sprintf('%s (%d ICA decomposition%s)', msg, nIca, pipecompare.utils.ternary(nIca > 1, 's', '')); end
                 if n < 2
