@@ -99,9 +99,10 @@ classdef Steps
                     info.reref = p;
                 case 'ica'
                     [EEG, coms] = pipecompare.run.Steps.ica(EEG, p, ctx);
-                    info.ica = struct('icaweights', EEG.icaweights, 'icasphere', EEG.icasphere, 'icachansind', EEG.icachansind);
+                    info.ica = struct('icaweights', EEG.icaweights, 'icasphere', EEG.icasphere, ...
+                        'icachansind', EEG.icachansind, 'coms', {coms});
                 case 'icremove'
-                    [EEG, coms, info] = pipecompare.run.Steps.icRemove(EEG, p);
+                    [EEG, coms, info] = pipecompare.run.Steps.icRemove(EEG, p, ctx);
                 case 'epoch'
                     c = ctx.contract;
                     [EEG, ~, com] = pop_epoch(EEG, c.allEvents(), c.epoch, 'epochinfo', 'yes');
@@ -272,9 +273,17 @@ classdef Steps
             end
         end
 
-        function [EEG, coms, info] = icRemove(EEG, p)
+        function [EEG, coms, info] = icRemove(EEG, p, ctx)
+            % ctx.iclabel, when set, is the ICLabel classification of these
+            % same data (a sibling step with another threshold made it), so
+            % the network does not run again.
             assert(exist('pop_iclabel', 'file') == 2, 'PipeCompare:Dependency', 'ICLabel plugin not installed');
-            [EEG, c1] = pop_iclabel(EEG, 'default');
+            if nargin > 2 && isfield(ctx, 'iclabel') && ~isempty(ctx.iclabel)
+                EEG.etc.ic_classification = ctx.iclabel.classification; c1 = ctx.iclabel.com;
+            else
+                [EEG, c1] = pop_iclabel(EEG, 'default');
+            end
+            info.iclabel = struct('classification', EEG.etc.ic_classification, 'com', c1);
             cats = {'Brain','Muscle','Eye','Heart','Line Noise','Channel Noise','Other'};
             classes = cellstr(p.classes);
             assert(all(ismember(classes, cats)) && ~ismember('Brain', classes), 'PipeCompare:ICLabel', ...

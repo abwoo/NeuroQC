@@ -84,7 +84,9 @@ classdef Executor
                 assert(isfield(d, 'identity') && strcmp(d.identity, M.identity) && d.id <= numel(result.leaves) && ...
                     strcmp(d.key, result.leaves(d.id).key), 'PipeCompare:Checkpoint', ...
                     'Checkpoint file %s does not belong to this search.', files(f).name);
-                prev(d.id) = d.cand; done(d.id) = true;
+                c = emptyCand();   % a file from an earlier version may lack newer fields
+                for n = fieldnames(d.cand)', c.(n{1}) = d.cand.(n{1}); end
+                prev(d.id) = c; done(d.id) = true;
             end
             pipecompare.utils.log('Resuming: %d of %d candidates already evaluated.', sum(done), numel(done));
             result.prevCands = prev;
@@ -123,7 +125,8 @@ classdef Executor
                 env.identity = result.identity;
             end
             ctx0 = struct('contract', contract, 'highpass', rootHighpass(result.state));
-            acc0 = struct('interpolated', {{}}, 'icsRemoved', 0, 'rejected', 0, 'coms', {{}}, 'seconds', 0, 'unmatched', {{}});
+            acc0 = struct('interpolated', {{}}, 'icsRemoved', 0, 'rejected', 0, 'coms', {{}}, 'seconds', 0, 'unmatched', {{}}, ...
+                'ica', {{}});
             % pipelines with no step at all (every slot chose 'none') are the starting copy itself
             pre = repmat(emptyCand(), 0, 1);
             for li = tree(1).leaves
@@ -180,6 +183,7 @@ classdef Executor
             % record per evaluated leaf. No shared state: safe for parfor.
             out = repmat(emptyCand(), 0, 1);
             tree = env.tree;
+            labels = [];   % ICLabel classification of E, shared by sibling icremove steps
             for child = tree(node).children
                 under = leavesUnder(tree, child);
                 if all(env.done(under)), continue; end
@@ -188,7 +192,10 @@ classdef Executor
                 t0 = tic;
                 try
                     pipecompare.utils.log('step %s', in.label);
-                    [E2, coms, info] = runStep(in, E, ctx, env.opts.verbose);
+                    cx = ctx;
+                    if strcmp(in.type, 'icremove'), cx.iclabel = labels; end
+                    [E2, coms, info] = runStep(in, E, cx, env.opts.verbose);
+                    if isfield(info, 'iclabel'), labels = info.iclabel; end
                     for q = 1:numel(coms)
                         fprintf('    %s\n', coms{q});
                         E2 = eeg_hist(E2, coms{q});
@@ -347,10 +354,26 @@ classdef Executor
             if recordGlobal
                 for q = 1:numel(result.rootComs), eegh(result.rootComs{q}); end
             end
+            % ICA decompositions the search computed on this path (runica is
+            % deterministic here, so fitting again would give the same ones)
+            ica = {}; nIca = 0;
+            if isfield(result, 'cands') && numel(result.cands) >= idx && isfield(result.cands, 'ica')
+                ica = result.cands(idx).ica;
+            end
             for k = 1:numel(path)
                 in = path{k};
-                pipecompare.utils.log('step %s', in.label);
-                [EEG, coms] = runStep(in, EEG, ctx, result.options.verbose);
+                if strcmp(in.type, 'ica'), nIca = nIca + 1; end
+                if strcmp(in.type, 'ica') && nIca <= numel(ica)
+                    pipecompare.utils.log('step %s: the decomposition from the search is reused', in.label);
+                    d = ica{nIca};
+                    EEG.icaweights = d.icaweights; EEG.icasphere = d.icasphere;
+                    EEG.icachansind = d.icachansind; EEG.icawinv = []; EEG.icaact = [];
+                    EEG = eeg_checkset(EEG);
+                    coms = d.coms;
+                else
+                    pipecompare.utils.log('step %s', in.label);
+                    [EEG, coms] = runStep(in, EEG, ctx, result.options.verbose);
+                end
                 for q = 1:numel(coms)
                     fprintf('    %s\n', coms{q});
                     % eeg_hist always appends; eegh(com, EEG) would skip a command equal to
@@ -557,10 +580,12 @@ function c = emptyCand()
 %                           the signal copy
 %   notes                   facts the user must know that are not
 %                           failures (e.g. epochs marked but not removed)
+%   ica                     the ICA decompositions of its path (weights,
+%                           sphere, channels, commands), reused by replay
 % Rank.run reads status, m, signal, interpolatedFraction and stratum.
 c = struct('id', 0, 'key', '', 'stratum', '', 'status', 'pending', 'message', '', 'm', [], 'signal', [], ...
     'interpolatedFraction', NaN, 'icsRemoved', 0, 'rejectedEpochs', 0, 'coms', {{}}, 'seconds', 0, 'unmatched', {{}}, ...
-    'notes', {{}});
+    'notes', {{}}, 'ica', {{}});
 end
 
 function out = failUnder(env, under, in, ME)
@@ -601,6 +626,7 @@ acc.unmatched = unique([acc.unmatched unmatched]);
 if isfield(info, 'interpolated'), acc.interpolated = union(acc.interpolated, lower(info.interpolated)); end
 if isfield(info, 'icsRemoved'), acc.icsRemoved = acc.icsRemoved + info.icsRemoved; end
 if isfield(info, 'rejected'), acc.rejected = acc.rejected + info.rejected; end
+if isfield(info, 'ica'), acc.ica{end+1} = info.ica; end
 end
 
 function [E2, coms, info] = runStep(in, E, ctx, verbose)
@@ -620,7 +646,7 @@ c.id = li; c.key = env.leaves(li).key; c.stratum = env.leaves(li).stratum;
 c.coms = acc.coms; c.seconds = acc.seconds;
 c.icsRemoved = acc.icsRemoved; c.rejectedEpochs = acc.rejected;
 c.interpolatedFraction = numel(acc.interpolated) / env.nbchan;
-c.unmatched = acc.unmatched;
+c.unmatched = acc.unmatched; c.ica = acc.ica;
 try
     c.m = pipecompare.eval.Measure.candidate(E, env.contract, env.ref, env.opts);
     nm = markedNotRemoved(E);

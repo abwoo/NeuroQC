@@ -3,7 +3,14 @@
 All notable changes. Versions follow `PipeCompare.Version` (`NeuroQC.Version` up to 0.7.1); each
 release has a git tag `vX.Y.Z`.
 
-## Unreleased
+## 0.9.0 (2026-10-05)
+
+- *Use this pipeline* (and `adopt`) no longer fits ICA again: the decomposition computed during
+  the comparison is reused, so adopting a pipeline with ICA no longer waits for a whole ICA. The result is the same (runica already started from a fixed state, and the replay
+  check still compares the scores); the dataset history keeps the `pop_runica` command.
+- ICLabel classifies each dataset once: pipelines that differ only in the ICLabel threshold share
+  the classification. *Standard* for ERPs runs ICLabel 36 times instead of 108; the results are
+  unchanged.
 
 - Signal check: the injected ERP is at least 50 ms wide at half maximum. For N170 (40 ms window)
   it was 10 ms wide in sigma, half a real N170, so a 20 Hz low-pass rang beyond the artifact limit
