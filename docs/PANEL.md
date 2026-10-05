@@ -33,7 +33,7 @@ Two choices (what to measure; for ERP, the event types); the recipe is preselect
    one high-pass and one low-pass edge, the catalog values nearest the band outside it (outside
    the band a filter does not change its power), and compares ICLabel and epoch rejection: 9
    pipelines; *filters only* compares the filters. *Standard* detects bad channels
-   once (kurtosis, z = 5, on a 1 Hz high-passed copy; the channels are interpolated in the data as
+   once (kurtosis or joint probability, z = 5, on a 1 Hz high-passed copy; the channels are interpolated in the data as
    they are) and fits ICA once, before the filters, so every filter choice shares
    one decomposition (fitted on a 1 Hz high-passed copy; filtering and unmixing are linear, so
    their order does not change the data). Non-EEG channels (typed EOG, ECG, … or named so, such

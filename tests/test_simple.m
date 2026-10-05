@@ -164,6 +164,15 @@ verifyEmpty(tc, pipecompare.simple.Presets.nextStep(r));        % already re-ref
 r.leaves = struct('path', {{struct('type', 'highpass')}});
 r.ranking.whyList = {{'signal: amplitude changed by 17%'}; {'signal: amplitude changed by 20%'}};
 verifyEmpty(tc, pipecompare.simple.Presets.nextStep(r));        % excluded for another reason
+% the channels most often over the limit are named (likely bad channels
+% the detection missed), summed over the pipelines; rare ones are not
+r.ranking.whyList = {{'retention 20% (< 50%)'}; {'retention 30% (< 50%)'}};
+r.leaves = struct('path', {{struct('type', 'reref')}});
+r.cands = struct('overLimit', {struct('labels', {{'O1', 'O2', 'Fz'}}, 'counts', [40 30 2]), ...
+    struct('labels', {{'O1', 'T7'}}, 'counts', [20 8])});
+t = pipecompare.simple.Presets.nextStep(r);
+verifyTrue(tc, contains(t, 'O1 (60%), O2 (30%)'), t);
+verifyFalse(tc, contains(t, 'Fz') || contains(t, 'T7') || contains(t, 'average reference'), t);
 end
 
 function testRecipesAdaptToTheData(tc)
@@ -184,6 +193,7 @@ verifyEqual(tc, p.Slots(2).alternatives{1}.params.exclude, {'VEOG'});   % non-EE
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.exclude, {'VEOG'});   % nor tested for bad channels
 verifyEqual(tc, p.Slots(end).alternatives{1}.params.exclude, {'VEOG'}); % nor for the epoch threshold
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.detectHighpass, 1);  % bad channels found on a 1 Hz high-passed copy
+verifyEqual(tc, p.Slots(1).alternatives{1}.params.measure, 'kurt+prob');  % spiky or noisy
 p = pipecompare.simple.Presets.recipe('filters', st, c, 'average');
 verifyEqual(tc, ids(p), {'reref', 'highpass', 'lowpass', 'epoch', 'baseline'});
 noloc = st; noloc.nLocated = 0;

@@ -5,6 +5,13 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- *Standard* finds bad channels by kurtosis or joint probability (either above z = 5), not by
+  kurtosis alone. On a raw recording kurtosis missed two noisy channels, which then made the
+  epoch threshold reject most epochs in every pipeline. The
+  `badchannels` step takes several measures joined by `+` (e.g. `'kurt+prob'`).
+- When most pipelines were excluded for losing too many epochs, the result names the channels most
+  often over the rejection limit (summed over the pipelines), as likely bad channels to remove or
+  interpolate before running again.
 - Datasets imported with `pop_biosig` (e.g. EDF files) keep their channels as a column, and the
   simple mode stopped at once with an index error; channel lists are now read in either shape.
 - Eye channels named EYEL/EYER (also with the *POL* prefix of some EDF exports) are recognised as

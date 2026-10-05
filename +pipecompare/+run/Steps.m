@@ -184,8 +184,9 @@ classdef Steps
             if isfield(p, 'exclude') && ~isempty(p.exclude)   % e.g. EOG / reference channels are not tested
                 elec = find(~ismember(lower({EEG.chanlocs.labels}), lower(presentChannels(EEG, p.exclude, 'badchannels exclude'))));
             end
-            args = {'elec', elec, 'threshold', p.threshold, 'norm', 'on', 'measure', p.measure};
-            if strcmp(p.measure, 'spec'), args = [args {'freqrange', [1 min(50, EEG.srate/2 - 1)]}]; end
+            % measure: one pop_rejchan measure, or several joined by '+'
+            % (e.g. 'kurt+prob'): a channel is bad when any of them flags it
+            measures = strsplit(p.measure, '+');
             % Detect on a high-passed copy (slow drifts distort kurtosis
             % and probability), interpolate or remove on the data as they are.
             hp = pipecompare.utils.fieldOr(p, 'detectHighpass', 0);
@@ -196,13 +197,19 @@ classdef Steps
                 src = pop_eegfiltnew(EEG, 'locutoff', hp, 'plotfreqz', 0);
                 on = sprintf(' on a %g Hz high-passed copy', hp);
             end
-            [EEGrem, bad, ~, com] = pop_rejchan(src, args{:});
-            bad = elec(bad(:)');   % pop_rejchan indexes the tested channels (it removes opt.elec(indelec) itself)
+            bad = [];
+            for m = measures
+                args = {'elec', elec, 'threshold', p.threshold, 'norm', 'on', 'measure', m{1}};
+                if strcmp(m{1}, 'spec'), args = [args {'freqrange', [1 min(50, EEG.srate/2 - 1)]}]; end
+                [EEGrem, b, ~, com] = pop_rejchan(src, args{:});
+                bad = union(bad, b(:)');
+            end
+            bad = elec(bad);   % pop_rejchan indexes the tested channels (it removes opt.elec(indelec) itself)
             labels = {EEG.chanlocs(bad).labels};
             info.badChannels = labels; info.badIdx = bad;
             if strcmp(p.action, 'remove')
                 info.removed = labels;
-                if ~copy
+                if ~copy && isscalar(measures)
                     EEG = EEGrem;
                     coms = {com};
                     return;
@@ -325,8 +332,11 @@ classdef Steps
             idx = find(marks);
             % which channels drive the rejections (a hint for bad channels)
             info.topChannels = '';
+            info.overLimit = struct('labels', {{}}, 'counts', []);
             if ~isempty(E) && size(E, 1) == EEG.nbchan && ~isempty(idx)
-                [cnt, order] = sort(sum(E(:, idx) ~= 0, 2), 'descend');
+                n = sum(E(:, idx) ~= 0, 2)';
+                info.overLimit = struct('labels', {{EEG.chanlocs(n > 0).labels}}, 'counts', n(n > 0));
+                [cnt, order] = sort(n', 'descend');
                 keep = order(cnt > 0); keep = keep(1:min(5, numel(keep)));
                 info.topChannels = strjoin(arrayfun(@(c) sprintf('%s (%d)', EEG.chanlocs(c).labels, ...
                     sum(E(c, idx) ~= 0)), keep(:)', 'UniformOutput', false), ', ');

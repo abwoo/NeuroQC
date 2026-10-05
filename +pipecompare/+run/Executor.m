@@ -126,7 +126,7 @@ classdef Executor
             end
             ctx0 = struct('contract', contract, 'highpass', rootHighpass(result.state));
             acc0 = struct('interpolated', {{}}, 'icsRemoved', 0, 'rejected', 0, 'coms', {{}}, 'seconds', 0, 'unmatched', {{}}, ...
-                'ica', {{}});
+                'ica', {{}}, 'overLimit', noOverLimit());
             % pipelines with no step at all (every slot chose 'none') are the starting copy itself
             pre = repmat(emptyCand(), 0, 1);
             for li = tree(1).leaves
@@ -583,10 +583,18 @@ function c = emptyCand()
 %                           failures (e.g. epochs marked but not removed)
 %   ica                     the ICA decompositions of its path (weights,
 %                           sphere, channels, commands), reused by replay
+%   overLimit               per channel (labels, counts), the rejected
+%                           epochs in which it was over the limit: names
+%                           bad channels the detection missed
 % Rank.run reads status, m, signal, interpolatedFraction and stratum.
 c = struct('id', 0, 'key', '', 'stratum', '', 'status', 'pending', 'message', '', 'm', [], 'signal', [], ...
     'interpolatedFraction', NaN, 'icsRemoved', 0, 'rejectedEpochs', 0, 'coms', {{}}, 'seconds', 0, 'unmatched', {{}}, ...
-    'notes', {{}}, 'ica', {{}});
+    'notes', {{}}, 'ica', {{}}, 'overLimit', noOverLimit());
+end
+
+function o = noOverLimit()
+% per channel, the rejected epochs in which it was over the limit
+o = struct('labels', {{}}, 'counts', []);
 end
 
 function out = failUnder(env, under, in, ME)
@@ -628,6 +636,10 @@ if isfield(info, 'interpolated'), acc.interpolated = union(acc.interpolated, low
 if isfield(info, 'icsRemoved'), acc.icsRemoved = acc.icsRemoved + info.icsRemoved; end
 if isfield(info, 'rejected'), acc.rejected = acc.rejected + info.rejected; end
 if isfield(info, 'ica'), acc.ica{end+1} = info.ica; end
+if isfield(info, 'overLimit') && ~isempty(info.overLimit.counts)
+    [labels, ~, j] = unique([acc.overLimit.labels(:); info.overLimit.labels(:)]);
+    acc.overLimit = struct('labels', {labels(:)'}, 'counts', accumarray(j(:), [acc.overLimit.counts(:); info.overLimit.counts(:)])');
+end
 end
 
 function [E2, coms, info] = runStep(in, E, ctx, verbose)
@@ -647,7 +659,7 @@ c.id = li; c.key = env.leaves(li).key; c.stratum = env.leaves(li).stratum;
 c.coms = acc.coms; c.seconds = acc.seconds;
 c.icsRemoved = acc.icsRemoved; c.rejectedEpochs = acc.rejected;
 c.interpolatedFraction = numel(acc.interpolated) / env.nbchan;
-c.unmatched = acc.unmatched; c.ica = acc.ica;
+c.unmatched = acc.unmatched; c.ica = acc.ica; c.overLimit = acc.overLimit;
 try
     c.m = pipecompare.eval.Measure.candidate(E, env.contract, env.ref, env.opts);
     nm = markedNotRemoved(E);

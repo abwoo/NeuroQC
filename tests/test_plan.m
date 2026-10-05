@@ -256,6 +256,22 @@ verifyNumElements(tc, p.enumerate(st, c), 1);
 verifyNumElements(tc, p3.enumerate(st, c), 1);
 end
 
+function testBadChannelMeasuresCanBeCombined(tc)
+% 'kurt+prob' flags a channel when either measure does; an unknown
+% measure makes the pipeline illegal, with the reason.
+st = nqc_fakeState(false, 250); st.nLocated = 30;
+c = nqc_contract();
+p = pipecompare.plan.Plan(); p = p.add('badchannels', 'measure', 'kurt+prob', 'threshold', 5);
+verifyNumElements(tc, p.enumerate(st, c), 1);
+q = pipecompare.plan.Plan(); q = q.add('badchannels', 'measure', 'kurt+corr', 'threshold', 5);
+try
+    q.enumerate(st, c); verifyFail(tc, 'expected PipeCompare:NoLegalPipeline');
+catch ME
+    verifyEqual(tc, ME.identifier, 'PipeCompare:NoLegalPipeline');
+    verifyTrue(tc, contains(ME.message, 'kurt, prob or spec'));
+end
+end
+
 function testDifferentFixedArgumentsAreDifferentPipelines(tc)
 % Two configurations that differ only in a fixed argument (high-pass 0.1
 % vs 0.5, both searching the low-pass) are four pipelines, none dropped.

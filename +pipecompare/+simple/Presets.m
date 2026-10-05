@@ -192,16 +192,37 @@ classdef Presets
 
         function t = nextStep(result)
             % What to try when no pipeline passed because most lost too many
-            % epochs to rejection: the average reference when the data keep
-            % a recorded reference ('' when that is not the case)
+            % epochs to rejection: the channels that were most often over the
+            % limit (likely bad channels the detection missed), and the
+            % average reference when the data keep a recorded reference
+            % ('' when neither applies)
             t = '';
             why = [result.ranking.whyList{:}];
             if ~isempty(result.ranking.byStratum) || isempty(why) || mean(startsWith(why, 'retention')) < 0.5, return; end
+            if isfield(result, 'cands') && isfield(result.cands, 'overLimit')
+                labels = {}; counts = [];
+                for c = result.cands(:)'
+                    labels = [labels; c.overLimit.labels(:)]; counts = [counts; c.overLimit.counts(:)]; %#ok<AGROW>
+                end
+                if ~isempty(counts)
+                    [labels, ~, j] = unique(labels);
+                    share = accumarray(j(:), counts)' / sum(counts);
+                    [share, order] = sort(share, 'descend');
+                    top = order(share >= 0.1); top = top(1:min(5, numel(top)));
+                    if ~isempty(top)
+                        t = sprintf(['The channels most often over the rejection limit were %s (share of all ', ...
+                            'over-limit marks). If they are bad channels, remove them (Edit > Select data) or ', ...
+                            'interpolate them (Tools > Interpolate electrodes) and run again.'], ...
+                            strjoin(arrayfun(@(k, f) sprintf('%s (%.0f%%)', labels{k}, 100 * f), top, share(1:numel(top)), ...
+                            'UniformOutput', false), ', '));
+                    end
+                end
+            end
             reref = any(cellfun(@(e) strcmp(e.type, 'reref'), result.leaves(1).path));
             if reref || strcmpi(result.state.reference, 'average'), return; end
-            t = ['Most pipelines lost too many epochs to the rejection thresholds, and the data keep their recorded ', ...
-                'reference, which often makes amplitudes large. Try the average reference (Reference: average reference; ', ...
-                'pop_pipecompare(..., ''reference'', ''average'')).'];
+            t = strtrim([t ' Most pipelines lost too many epochs to the rejection thresholds, and the data keep their ', ...
+                'recorded reference, which often makes amplitudes large. Try the average reference (Reference: average ', ...
+                'reference; pop_pipecompare(..., ''reference'', ''average'')).']);
         end
 
         function [plan, notes] = recipe(name, state, contract, reference, exclude)
@@ -225,11 +246,13 @@ classdef Presets
                 if state.nLocated == 0
                     notes{end+1} = 'no channel locations: bad-channel interpolation and ICLabel are left out';
                 else
-                    % the catalog defaults, fixed: a searched step before
-                    % ICA would multiply the decompositions; on continuous
-                    % data detected on a 1 Hz high-passed copy (slow drifts
-                    % distort the kurtosis), as ICA is fitted
-                    plan = plan.add('badchannels', 'measure', 'kurt', 'threshold', 5, ...
+                    % fixed: a searched step before ICA would multiply the
+                    % decompositions; kurtosis flags spiky channels, joint
+                    % probability noisy ones (e.g. poor contact), so either
+                    % marks a channel bad; on continuous data detected on a
+                    % 1 Hz high-passed copy (slow drifts distort both), as
+                    % ICA is fitted
+                    plan = plan.add('badchannels', 'measure', 'kurt+prob', 'threshold', 5, ...
                         'detectHighpass', double(continuous), exclusion{:});
                     plan = addReference(plan, reference, exclude);
                     steps = {state.process.step};

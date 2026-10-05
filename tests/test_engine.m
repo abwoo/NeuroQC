@@ -623,6 +623,24 @@ end
 verifyFalse(tc, any(contains(coms, 'copy')));
 end
 
+function testBadChannelMeasuresCombine(tc)
+% Standard detects with 'kurt+prob': kurtosis finds a spiky channel, joint
+% probability a noisy one (on a real recording kurtosis alone missed two
+% noisy channels), and a channel is bad when either measure flags it.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'noisyChannels', {{'T7'}}, 'noisyUv', 200));
+rng(1); k = find(strcmp({EEG.chanlocs.labels}, 'PO8'));
+EEG.data(k, :) = EEG.data(k, :) + 2000 * (rand(1, EEG.pnts) > 0.999);   % one spiky channel
+p = struct('measure', 'kurt+prob', 'threshold', 5, 'exclude', {{'EOG1', 'EOG2'}}, ...
+    'detectHighpass', 1, 'action', 'interpolate');
+[~, coms, info] = pipecompare.run.Steps.badChannels(EEG, p, struct('highpass', 0));
+verifyTrue(tc, all(ismember({'PO8', 'T7'}, info.badChannels)), strjoin(info.badChannels, ' '));
+verifyTrue(tc, contains(coms{1}, 'measure kurt+prob'));
+p.action = 'remove'; p.detectHighpass = 0;                          % one copy-free path, several measures
+[E, ~, info] = pipecompare.run.Steps.badChannels(EEG, p, struct('highpass', 0));
+verifyFalse(tc, any(ismember(info.badChannels, {E.chanlocs.labels})));
+verifyEqual(tc, E.nbchan, EEG.nbchan - numel(info.badChannels));
+end
+
 function testFixedEeglabCommandsAreDecisionMatched(tc)
 % A fixed EEGLAB transform re-run on the injected copy is the same
 % operation (not flagged); a data-driven one (pop_rejchan) is flagged.
