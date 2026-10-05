@@ -3,7 +3,7 @@
 **Data-driven comparison of EEG preprocessing pipelines in EEGLAB.**
 
 [![MATLAB tests](https://github.com/abwoo/PipeCompare/actions/workflows/matlab-tests.yml/badge.svg)](https://github.com/abwoo/PipeCompare/actions/workflows/matlab-tests.yml)
-![Version](https://img.shields.io/badge/version-0.8.0-2f6fed)
+![Version](https://img.shields.io/badge/version-0.9.0-2f6fed)
 ![MATLAB](https://img.shields.io/badge/MATLAB-R2026a-orange)
 ![EEGLAB](https://img.shields.io/badge/EEGLAB-2026.0.0-blueviolet)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -147,8 +147,8 @@ pipecompare_setup                         % run from the PipeCompare folder
    (for example *high-pass 0.5 Hz, low-pass 30 Hz*). **Use this pipeline** stores it as a new
    EEGLAB dataset; **Save script…** writes it as a MATLAB function that you can run on your other
    recordings; **Show all pipelines** lists every pipeline with the reason it was excluded.
-   **Use this pipeline** runs the steps again (ICA included), so it can take a while; save the new
-   dataset afterwards with File > Save current dataset as.
+   **Use this pipeline** runs the steps again, except ICA, whose decomposition comes from the
+   comparison; save the new dataset afterwards with File > Save current dataset as.
 
 For any EEGLAB step, order search, several components or different constraints, open
 **Advanced…** in the dialog, or **Tools > PipeCompare > Advanced panel…**. The panel defines ERP
@@ -329,7 +329,7 @@ If you use PipeCompare in published work, please cite it:
   author  = {abwoo},
   title   = {PipeCompare: data-driven comparison of EEG preprocessing pipelines in EEGLAB},
   year    = {2026},
-  version = {0.8.0},
+  version = {0.9.0},
   url     = {https://github.com/abwoo/PipeCompare}
 }
 ```

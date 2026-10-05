@@ -130,14 +130,16 @@ classdef SimpleResults < handle
         end
 
         function adopt(obj)
-            % Rebuild the pipeline (its steps run again, ICA included) and
-            % store it in EEGLAB; it is in memory only until saved.
+            % Rebuild the pipeline (its steps run again; the ICA decomposition
+            % comes from the comparison) and store it in EEGLAB; it is in
+            % memory only until saved.
             dlg = [];
             try
                 k = pipecompare.run.Executor.pickCandidate(obj.Result, obj.chosen());
                 msg = sprintf('Building pipeline %d from the start (every step runs again)...', k);
                 if any(cellfun(@(e) strcmp(e.type, 'ica'), obj.Result.leaves(k).path))
-                    msg = sprintf('Building pipeline %d from the start; ICA runs again, which takes a while...', k);
+                    msg = sprintf(['Building pipeline %d from the start; every step runs again except ICA, ', ...
+                        'whose decomposition comes from the comparison...'], k);
                 end
                 dlg = uiprogressdlg(obj.Fig, 'Title', 'Use this pipeline', 'Message', msg, 'Indeterminate', 'on');
                 pipecompare.PipeCompare.adopt(obj.Result, k);

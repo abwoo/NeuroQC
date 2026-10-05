@@ -63,7 +63,7 @@ sentence which pipeline to use and why, naming pipelines by the settings compare
 0.5 Hz, low-pass 30 Hz), lists it (*) with the best others (checks, noise (SME), trials kept,
 signal change, settings) above one line with the steps every pipeline shares. *Show all
 pipelines* lists every pipeline with the reason it was excluded. *Use this pipeline* builds the
-pipeline again (ICA too; a progress window says so) as a new EEGLAB dataset, which is in memory
+pipeline again (with the ICA decomposition of the comparison) as a new EEGLAB dataset, which is in memory
 until saved; *Save script…* writes a function that runs the steps on any recording.
 
 ## Panel (*Advanced panel…*)

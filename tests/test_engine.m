@@ -95,6 +95,7 @@ p = p.add('reref', 'mode', 'average'); p = p.add('ica', 'fitHighpass', 1);
 p = p.add('icremove', 'threshold', 0.8);
 p = p.add('epoch'); p = p.add('baseline'); p = p.add('reject_threshold', 'uv', {80, 1000});
 r = pipecompare.PipeCompare.optimize(p, c);
+[r.cands.ica] = deal({});   % replay fits ICA again instead of reusing the search's
 for k = 1:numel(r.leaves)
     E = pipecompare.run.Executor.replay(r, k);
     m = pipecompare.eval.Measure.candidate(E, c, r.ref);
@@ -465,6 +466,53 @@ verifyEqual(tc, E.trials, 60 - c.rejectedEpochs);
 % legality: a rejection workflow on continuous data is refused with a reason
 q = pipecompare.plan.Plan(); q = q.addNative(wf, 'reject'); q = q.add('epoch');
 verifyError(tc, @() q.enumerate(pipecompare.live.DataState.fromEEG(EEG), nqc_c()), 'PipeCompare:NoLegalPipeline');
+end
+
+function testReplayReusesTheSearchIca(tc)
+% Adopting does not fit ICA again: the search's decomposition is applied.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+nqc_setBase(EEG);
+p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('ica');
+r = pipecompare.PipeCompare.optimize(p, nqc_c());
+d = r.cands(1).ica;
+verifyNumElements(tc, d, 1);
+W = d{1}.icaweights([2 1 3:end], :);   % not what runica gives: proves it is applied, not refitted
+r.cands(1).ica{1}.icaweights = W;
+E = pipecompare.run.Executor.replay(r, 1);
+verifyEqual(tc, E.icaweights, W);
+verifyTrue(tc, contains(E.history, d{1}.coms{1}));
+end
+
+function testIclabelThresholdsShareOneClassification(tc)
+% Sibling ICLabel steps reuse one classification; each gives what a fresh
+% classification gives.
+assumeTrue(tc, exist('pop_iclabel', 'file') == 2, 'ICLabel not installed');
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30));
+nqc_setBase(EEG);
+p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('ica', 'fitHighpass', 1);
+p = p.add('icremove', 'threshold', {0.5, 0.95}); p = p.add('epoch'); p = p.add('baseline');
+r = pipecompare.PipeCompare.optimize(p, nqc_c());
+[r.cands.ica] = deal({});
+for k = 1:numel(r.leaves)
+    verifyEqual(tc, r.cands(k).status, 'ok');
+    E = pipecompare.run.Executor.replay(r, k);   % classifies again
+    m = pipecompare.eval.Measure.candidate(E, r.contract, r.ref);
+    verifyEqual(tc, m.composite, r.cands(k).m.composite, 'RelTol', 1e-10, r.labels{k});
+end
+verifyGreaterThanOrEqual(tc, r.cands(1).icsRemoved + r.cands(2).icsRemoved, 1);
+% a given classification is used as it is: component 2 is Eye
+E = EEG; rng(4); E.icaweights = randn(E.nbchan); E.icasphere = eye(E.nbchan); E.icachansind = 1:E.nbchan;
+E.icawinv = []; E.icaact = []; E = eeg_checkset(E);
+% pop_icflag compares with strict inequalities, so no probability is exactly 0 or 1
+cls = repmat([0.94 0.01 0.01 0.01 0.01 0.01 0.01], E.nbchan, 1); cls(2, :) = [0.01 0.01 0.94 0.01 0.01 0.01 0.01];
+lab = struct('classification', struct('ICLabel', struct('classes', {{'Brain','Muscle','Eye','Heart', ...
+    'Line Noise','Channel Noise','Other'}}, 'classifications', cls, 'version', 'default')), ...
+    'com', 'EEG = pop_iclabel(EEG, ''default'');');
+[E2, coms, info] = pipecompare.run.Steps.icRemove(E, struct('classes', {{'Eye'}}, 'threshold', 0.8), ...
+    struct('iclabel', lab));
+verifyEqual(tc, info.comps, 2);
+verifyEqual(tc, size(E2.icaweights, 1), E.nbchan - 1);
+verifyEqual(tc, coms{1}, lab.com);
 end
 
 function testNativeIcaWorkflowRemovesTheFlaggedComponents(tc)
