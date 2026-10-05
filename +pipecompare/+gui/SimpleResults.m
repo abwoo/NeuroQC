@@ -48,6 +48,8 @@ classdef SimpleResults < handle
                 % the reason with its numbers, from one pipeline
                 k = find(~strcmp(T.status, 'feasible') & ~cellfun(@isempty, R.whyList(:)), 1);
                 if ~isempty(k), t = sprintf('%s For example, pipeline %d: %s.', t, k, strjoin(R.whyList{k}, '; ')); end
+                hint = pipecompare.simple.Presets.nextStep(obj.Result);
+                if ~isempty(hint), t = sprintf('%s %s', t, hint); end
             elseif numel(R.byStratum) > 1
                 t = sprintf(['%sThese pipelines use different references, which measure different things, so there is ', ...
                     'one recommendation per reference: pipelines %s. Use the one that matches your analysis.'], ...
@@ -55,7 +57,10 @@ classdef SimpleResults < handle
             else
                 k = R.recommended; b = R.byStratum;
                 kept = pipecompare.gui.PanelText.pctText(T.minRetention(k));
-                if k == b.best
+                if pipecompare.eval.Rank.sameScores(R)
+                    t = sprintf(['%sUse pipeline %d: %s. All pipelines that passed the checks have exactly the same ', ...
+                        'noise: on these data the settings compared make no difference.'], t, k, obj.name(k));
+                elseif k == b.best
                     t = sprintf('%sUse pipeline %d: %s. It has the least noise and keeps at least %s of the trials.', ...
                         t, k, obj.name(k), kept);
                 else

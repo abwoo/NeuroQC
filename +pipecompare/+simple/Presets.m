@@ -178,15 +178,30 @@ classdef Presets
 
         function roi = eegChannels(EEG)
             % all channels except non-EEG ones (EOG, ECG, EMG, ...), by
-            % type or, when the type is not set, by name (VEOG, HEOG, ECG1)
+            % type or, when the type is not set, by name (VEOG, HEOG, ECG1,
+            % EYEL; with the POL prefix of some EDF exports: POL EYEL)
             labels = {EEG.chanlocs.labels};
             roi = labels;
-            keep = cellfun(@isempty, regexpi(labels, '^([VH]?EOG|ECG|EKG|EMG)', 'once'));
+            keep = cellfun(@isempty, regexpi(labels, '^(POL\s+)?([VH]?EOG|ECG|EKG|EMG|EYE)', 'once'));
             if isfield(EEG.chanlocs, 'type')
-                ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), EEG.chanlocs, 'UniformOutput', false);
+                ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), EEG.chanlocs(:)', 'UniformOutput', false);
                 keep = keep & ~ismember(ty, {'EOG', 'HEOG', 'VEOG', 'ECG', 'EKG', 'EMG', 'MISC', 'TRIG', 'STIM'});
             end
             if any(keep), roi = labels(keep); end
+        end
+
+        function t = nextStep(result)
+            % What to try when no pipeline passed because most lost too many
+            % epochs to rejection: the average reference when the data keep
+            % a recorded reference ('' when that is not the case)
+            t = '';
+            why = [result.ranking.whyList{:}];
+            if ~isempty(result.ranking.byStratum) || isempty(why) || mean(startsWith(why, 'retention')) < 0.5, return; end
+            reref = any(cellfun(@(e) strcmp(e.type, 'reref'), result.leaves(1).path));
+            if reref || strcmpi(result.state.reference, 'average'), return; end
+            t = ['Most pipelines lost too many epochs to the rejection thresholds, and the data keep their recorded ', ...
+                'reference, which often makes amplitudes large. Try the average reference (Reference: average reference; ', ...
+                'pop_pipecompare(..., ''reference'', ''average'')).'];
         end
 
         function [plan, notes] = recipe(name, state, contract, reference, exclude)
@@ -217,7 +232,11 @@ classdef Presets
                     plan = plan.add('badchannels', 'measure', 'kurt', 'threshold', 5, ...
                         'detectHighpass', double(continuous), exclusion{:});
                     plan = addReference(plan, reference, exclude);
-                    if exist('pop_iclabel', 'file') ~= 2
+                    steps = {state.process.step};
+                    icaAt = find(strcmp(steps, 'ica'), 1, 'last');
+                    if ~isempty(icaAt) && any(strcmp(steps(icaAt+1:end), 'icremove'))
+                        notes{end+1} = 'ICA was already run and components removed (history), so they are not compared again';
+                    elseif exist('pop_iclabel', 'file') ~= 2
                         notes{end+1} = 'ICLabel is not installed: ICA and IC removal left out';
                     else
                         plan = plan.add('ica'); ica = true;

@@ -288,6 +288,13 @@ classdef Rank
                 'min','median','max','range','mostInfluentialChoice','share'});
         end
 
+        function tf = sameScores(R)
+            % true when the pipelines that passed the checks all have the
+            % same score: the choices compared make no difference on these data
+            v = R.table.objective(strcmp(R.table.status, 'feasible'));
+            tf = numel(v) > 1 && max(v) - min(v) <= 1e-9 * max(abs(v));
+        end
+
         function c = commonReasons(R, k)
             % The k most frequent reasons why candidates are not feasible, as
             % 'reason (xN)'. Each reason is kept as its own item (a step key

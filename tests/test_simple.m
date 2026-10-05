@@ -146,6 +146,24 @@ E = EEG; E.chanlocs(strcmp({E.chanlocs.labels}, 'Fz')).type = 'ECG';
 E.chanlocs(strcmp({E.chanlocs.labels}, 'F3')).labels = 'heog';
 verifyEqual(tc, sort(pipecompare.simple.Presets.nonEegChannels(E)), sort({'Fz', 'heog', 'EOG1', 'EOG2'}));
 verifyFalse(tc, any(ismember({'EOG1', 'EOG2'}, pipecompare.simple.Presets.eegChannels(EEG))));
+C = E; C.chanlocs = C.chanlocs(:);                               % a column, as pop_biosig imports EDF files
+verifyEqual(tc, sort(pipecompare.simple.Presets.nonEegChannels(C)), sort({'Fz', 'heog', 'EOG1', 'EOG2'}));
+C.chanlocs(1).labels = 'POL EYEL';   % an EDF export's eye channel
+verifyTrue(tc, ismember('POL EYEL', pipecompare.simple.Presets.nonEegChannels(C)));
+end
+
+function testNextStepWhenRejectionRemovesTooMuch(tc)
+% Every pipeline lost too many epochs and the data keep their recorded
+% reference: the average reference is suggested.
+r.ranking = struct('byStratum', [], 'whyList', {{{'retention 0% (every epoch would be rejected)'}; {'retention 3% (< 50%)'}}});
+r.leaves = struct('path', {{struct('type', 'highpass')}});
+r.state = struct('reference', 'common');
+verifyTrue(tc, contains(pipecompare.simple.Presets.nextStep(r), 'average reference'));
+r.leaves = struct('path', {{struct('type', 'reref'), struct('type', 'highpass')}});
+verifyEmpty(tc, pipecompare.simple.Presets.nextStep(r));        % already re-referenced
+r.leaves = struct('path', {{struct('type', 'highpass')}});
+r.ranking.whyList = {{'signal: amplitude changed by 17%'}; {'signal: amplitude changed by 20%'}};
+verifyEmpty(tc, pipecompare.simple.Presets.nextStep(r));        % excluded for another reason
 end
 
 function testRecipesAdaptToTheData(tc)
@@ -178,6 +196,11 @@ verifyFalse(tc, any(ismember({'highpass', 'lowpass', 'epoch'}, ids(p))));
 verifyTrue(tc, any(contains(notes, 'already epoched')));
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.detectHighpass, 0);  % no high-pass on short epochs
 verifyError(tc, @() pipecompare.simple.Presets.recipe('full', st, c), 'PipeCompare:Simple');   % ASR: panel or script
+% ICA already run and components removed (history): not compared again
+done = st; done.process = struct('step', {'highpass', 'ica', 'icremove'});
+[p, notes] = pipecompare.simple.Presets.recipe('standard', done, c);
+verifyFalse(tc, any(ismember({'ica', 'icremove'}, ids(p))));
+verifyTrue(tc, any(contains(notes, 'ICA was already run')));
 % filter edges the data already have are not compared: they would leave
 % the data unchanged but filter the known signal
 H = EEG; H.history = sprintf('%s\nEEG = pop_eegfiltnew(EEG, ''locutoff'',0.5,''plotfreqz'',0);', EEG.history);
@@ -355,6 +378,20 @@ nqc_setBase(EEG);
 other = EEG; other.data(1) = other.data(1) + 1;
 verifyError(tc, @() pop_pipecompare(other, 'measure', 'P3', 'events', {'11'}, 'recipe', 'filters', 'show', 'off'), ...
     'PipeCompare:Simple');                                          % only the current dataset
+% epoched data: band power and the filters say why before any search
+[~, Ep] = evalc('pop_epoch(EEG, {''11'', ''31''}, [-0.2 0.8])');
+nqc_setBase(Ep);
+try
+    pop_pipecompare(Ep, 'measure', 'alpha', 'show', 'off'); verifyFail(tc, 'band power on epoched data ran');
+catch ME
+    verifyTrue(tc, contains(ME.message, 'already cut into epochs'), ME.message);
+end
+try
+    pop_pipecompare(Ep, 'measure', 'P3', 'events', {'11'}, 'recipe', 'filters', 'show', 'off'); verifyFail(tc, 'one pipeline ran');
+catch ME
+    verifyTrue(tc, contains(ME.message, 'nothing to compare') && contains(ME.message, 'already epoched'), ME.message);
+end
+nqc_setBase(EEG);
 end
 
 function testResultsWindow(tc)
