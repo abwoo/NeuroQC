@@ -19,6 +19,9 @@ release has a git tag `vX.Y.Z`.
   accepted; several selected datasets give a clear message.
 - Simple dialog: switching between your own window and your own band clears the numbers, so
   milliseconds are not read as hertz.
+- A single epoch (one event of the conditions, or rejection leaving one) stopped with a MATLAB
+  formatting error; it now says that each condition needs at least two trials. Three error
+  messages with time or frequency ranges failed the same way and now print their numbers.
 - Simple mode: *Reference* (as recorded, or average reference) as a fixed step of every pipeline,
   after the bad channels and before ICA (`pop_pipecompare(..., 'reference', 'average')`).
   Previously re-referencing had to be done before PipeCompare, which spread bad channels into
