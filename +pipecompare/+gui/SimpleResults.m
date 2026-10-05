@@ -21,7 +21,7 @@ classdef SimpleResults < handle
         function obj = SimpleResults(result)
             obj.Result = result;
             obj.Fig = uifigure('Name', 'Pipeline comparison', 'Position', [220 220 900 380]);
-            g = uigridlayout(obj.Fig, [4 1]); g.RowHeight = {66, '1x', 22, 30};
+            g = uigridlayout(obj.Fig, [4 1]); g.RowHeight = {'fit', '1x', 22, 30};
             obj.Headline = uilabel(g, 'Text', obj.headline(), 'WordWrap', 'on', 'FontWeight', 'bold', ...
                 'VerticalAlignment', 'top');
             obj.Table = uitable(g, 'RowName', {});
@@ -70,6 +70,8 @@ classdef SimpleResults < handle
                 end
                 t = sprintf('%s %d of %d pipelines passed the checks.', t, nFeas, height(T));
             end
+            prior = pipecompare.simple.Presets.priorFilterText(obj.Result);
+            if ~isempty(prior), t = sprintf('%s %s', t, prior); end
         end
 
         function showRows(obj)

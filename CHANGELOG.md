@@ -15,6 +15,11 @@ release has a git tag `vX.Y.Z`.
   stricter ones compared, so every pipeline added a filter (data already low-passed at 30 Hz got
   low-pass 20 Hz in every pipeline). Keeping the data's own filter is now one of the choices,
   shown as e.g. *low-pass as in the data (30 Hz)*.
+- Simple mode: filters applied before PipeCompare (read from the history) are outside the
+  pipelines' signal check, which starts from the data as they are. The same known signal is now
+  filtered at those edges; when that alone changes it beyond a pipeline's limit (e.g. a 1 Hz
+  high-pass on a P3), the result window and the Command Window say so and suggest starting from
+  the unfiltered data. Continuous data only (epoched data no longer hold what was filtered).
 - The panel's *Run search* shows the same progress window as the dialog, with *Stop* (the
   pipelines already finished are ranked); before, a panel search could only be interrupted from the
   Command Window. The panel also has *Save script…*, which writes the selected pipeline as a

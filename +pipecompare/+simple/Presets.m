@@ -230,6 +230,32 @@ classdef Presets
                 'reference; pop_pipecompare(..., ''reference'', ''average'')).']);
         end
 
+        function t = priorFilterText(result)
+            % A warning when the filters the data had before PipeCompare
+            % (result.priorFilters, pipecompare.eval.Injection.priorFilters)
+            % already change the known signal beyond the limit a pipeline
+            % must meet ('' otherwise): the comparison cannot undo them.
+            t = '';
+            if ~isfield(result, 'priorFilters') || isempty(result.priorFilters), return; end
+            p = result.priorFilters; sg = p.signal;
+            lim = pipecompare.utils.withDefaults(result.options, pipecompare.eval.Rank.defaults());
+            what = {};
+            if sg.amplitudeError > lim.maxAmplitudeError
+                what{end+1} = sprintf('change the size of the known signal by %.0f%% (a pipeline may change it by at most %.0f%%)', ...
+                    100 * sg.amplitudeError, 100 * lim.maxAmplitudeError);
+            end
+            if ~ismember('latencyShiftMs', sg.notApplicable) && sg.latencyShiftMs > lim.maxLatencyShiftMs
+                what{end+1} = sprintf('move its peak by %.0f ms (at most %g ms)', sg.latencyShiftMs, lim.maxLatencyShiftMs);
+            end
+            if isempty(what), return; end
+            edges = {};
+            if ~isempty(p.highpass), edges{end+1} = sprintf('high-pass %g Hz', p.highpass); end
+            if ~isempty(p.lowpass), edges{end+1} = sprintf('low-pass %g Hz', p.lowpass); end
+            t = sprintf(['The filters applied before PipeCompare (%s) already %s. The comparison cannot undo ', ...
+                'that: to compare filters without it, start from the unfiltered data.'], strjoin(edges, ', '), ...
+                strjoin(what, ' and '));
+        end
+
         function [plan, notes] = recipe(name, state, contract, reference, exclude)
             % The plan of a recipe for these data, and why a step was left
             % out. reference: 'asis' (default) or 'average'; exclude: the

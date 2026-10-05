@@ -233,6 +233,25 @@ verifyEqual(tc, numel(p.Slots(2).alternatives), 1);                  % no low-pa
 verifyTrue(tc, any(contains(notes, 'high-pass 0.1, 0.3, 0.5 Hz (the data are already high-pass-filtered at 0.5 Hz)')));
 end
 
+function testFiltersBeforePipeCompareAreChecked(tc)
+% Filters applied before PipeCompare are outside the pipelines' signal
+% check; the same known signal is filtered at the history's edges and a
+% loss beyond a pipeline's limit is said.
+EEG = tc.TestData.EEG;
+c = pipecompare.simple.Presets.contract(EEG, 'P3', {'11'});
+verifyEmpty(tc, pipecompare.eval.Injection.priorFilters(EEG, c, pipecompare.live.DataState.fromEEG(EEG)));
+H = EEG; H.history = sprintf('%s\nEEG = pop_eegfiltnew(EEG, ''locutoff'',2,''plotfreqz'',0);', EEG.history);
+r = pipecompare.eval.Injection.priorFilters(H, c, pipecompare.live.DataState.fromEEG(H));
+verifyEqual(tc, r.highpass, 2); verifyEmpty(tc, r.lowpass);
+verifyGreaterThan(tc, r.signal.amplitudeError, 0.1);            % a 2 Hz high-pass shrinks a P3
+t = pipecompare.simple.Presets.priorFilterText(struct('priorFilters', r, 'options', struct()));
+verifyTrue(tc, contains(t, 'high-pass 2 Hz') && contains(t, 'start from the unfiltered data'), t);
+L = EEG; L.history = sprintf('%s\nEEG = pop_eegfiltnew(EEG, ''hicutoff'',30,''plotfreqz'',0);', EEG.history);
+r = pipecompare.eval.Injection.priorFilters(L, c, pipecompare.live.DataState.fromEEG(L));
+verifyLessThan(tc, r.signal.amplitudeError, 0.1);               % a 30 Hz low-pass leaves it
+verifyEmpty(tc, pipecompare.simple.Presets.priorFilterText(struct('priorFilters', r, 'options', struct())));
+end
+
 function testPooledEventTypesAreOneCondition(tc)
 c = pipecompare.simple.Presets.contract(tc.TestData.EEG, 'P3', {'11', '31'}, 2, true);
 verifyEqual(tc, {c.conditions.name}, {'11+31'});

@@ -119,6 +119,15 @@ if isempty(result.ranking.recommended) && ~opts.pool && ~pipecompare.simple.Pres
 end
 hint = pipecompare.simple.Presets.nextStep(result);
 if ~isempty(hint), pipecompare.utils.log('%s', hint); end
+% filters applied before PipeCompare are outside the pipelines' signal check
+try
+    result.priorFilters = pipecompare.eval.Injection.priorFilters(result.root, c, state, result.options);
+catch ME
+    result.priorFilters = [];
+    pipecompare.utils.log('The filters applied before PipeCompare were not checked (%s).', ME.message);
+end
+prior = pipecompare.simple.Presets.priorFilterText(result);
+if ~isempty(prior), pipecompare.utils.log('%s', prior); end
 if fid > 0, pipecompare.utils.log('Full log (every EEGLAB command): %s', logFile); end
 assignin('base', 'pipecompare_result', result);
 args = {'measure', opts.measure};
