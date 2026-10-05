@@ -181,9 +181,12 @@ classdef Measure
             if EEG.trials == 1 && (~isfield(EEG, 'epoch') || isempty(EEG.epoch))
                 [~, EEG] = evalc('pop_epoch(EEG, codes, win, ''epochinfo'', ''yes'')');
             end
+            % (EEGLAB turns a single epoch into continuous data, so its times are lost)
+            assert(EEG.trials > 1, 'PipeCompare:Contract', ...
+                'There is only one epoch; each condition needs at least two trials.');
             tol = 1.5 / EEG.srate;
             assert(EEG.xmin <= win(1) + tol && EEG.xmax >= win(2) - tol, ...
-                'PipeCompare:Measure', 'Epochs [%g %g] s do not cover the contract epoch [%g %g] s.', EEG.xmin, EEG.xmax, win);
+                'PipeCompare:Measure', 'Epochs [%g %g] s do not cover the contract epoch [%g %g] s.', EEG.xmin, EEG.xmax, win(1), win(2));
             times = EEG.xmin + (0:EEG.pnts-1) / EEG.srate;
             labels = lower({EEG.chanlocs.labels});
             nT = EEG.trials;
@@ -271,7 +274,7 @@ w = 0.5 - 0.5 * cos(2 * pi * (0:n-1)' / (n - 1));
 F = fft(permute(X, [2 1 3]) .* w, [], 1);              % samples x ROI x trials
 f = (0:n-1) * fs / n;
 sel = f >= band(1) & f <= band(2);
-assert(any(sel), 'PipeCompare:Measure', 'The window is too short to resolve the band [%g %g] Hz.', band);
+assert(any(sel), 'PipeCompare:Measure', 'The window is too short to resolve the band [%g %g] Hz.', band(1), band(2));
 P = 2 * abs(F(sel, :, :)) .^ 2 / (fs * sum(w .^ 2));
 s = reshape(log10(mean(mean(P, 1), 2)), nt, 1);
 end

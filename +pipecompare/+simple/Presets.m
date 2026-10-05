@@ -6,7 +6,8 @@ classdef Presets
     %   Farrens, Zhang, Stewart & Luck, 2021, NeuroImage 225, 117465;
     %   Tables 1 and 2). PipeCompare scores each condition's waveform at these
     %   sites; difference waves (deviant - standard, contralateral -
-    %   ipsilateral) are formed later in your own analysis.
+    %   ipsilateral) are formed later in your own analysis. Epoched data
+    %   keep their own epochs when these hold the measurement window.
     %
     %   Frequency bands: delta 1-4, theta 4-8, alpha 8-13, beta 13-30 Hz,
     %   the conventional clinical bands (cf. the IFCN glossary, Kane et al.,
@@ -122,6 +123,7 @@ classdef Presets
             else
                 p = P.component(measure);
             end
+            if EEG.trials > 1, p = fitEpochs(p, EEG); end
             events = cellstr(events);
             assert(~isempty(events), 'PipeCompare:Simple', 'Choose the %s-locked event type(s) for %s.', p.lockedTo, p.name);
             [ok, at] = ismember(lower(p.sites), lower(labels));
@@ -201,9 +203,16 @@ classdef Presets
             if continuous
                 % filter edges the data already have are not alternatives:
                 % they leave the data unchanged but filter the known
-                % signal, which would bias the comparison
-                [plan, notes] = addFilter(plan, notes, 'highpass', state.filters.highpass, @(v, done) v > done, @max);
-                [plan, notes] = addFilter(plan, notes, 'lowpass', state.filters.lowpass, @(v, done) v < done, @min);
+                % signal, which would bias the comparison; for band power,
+                % neither are edges inside a band (they cut what is measured)
+                lo = []; hi = [];
+                if strcmp(contract.analysis, 'bandpower')
+                    f = vertcat(contract.bands.freq); lo = min(f(:, 1)); hi = max(f(:, 2));
+                end
+                [plan, notes] = addFilter(plan, notes, 'highpass', state.filters.highpass, @(v, done) v > done, @max, ...
+                    @(v) v <= lo, lo);
+                [plan, notes] = addFilter(plan, notes, 'lowpass', state.filters.lowpass, @(v, done) v < done, @min, ...
+                    @(v) v >= hi, hi);
             else
                 notes{end+1} = 'the data are already epoched, so filters are not compared (they must run before epoching)';
             end
@@ -215,6 +224,24 @@ classdef Presets
     end
 end
 
+function p = fitEpochs(p, EEG)
+% Epoched data keep their own epochs: the preset epoch is for epoching
+% continuous data, and data epoched otherwise (e.g. -100 to 600 ms) are
+% fine as long as they hold the measurement window. The baseline is the
+% preset's, from the epoch start when the epochs start later; a window
+% edge within 1.5 samples of the epoch edge is moved onto it (pop_epoch
+% leaves out the last sample: [-0.2 0.6] ends at 0.596 s at 250 Hz).
+ep = [EEG.xmin EEG.xmax]; tol = 1.5 / EEG.srate; ms = @(t) sprintf('%g to %g ms', round(1000 * t));
+w = p.window;
+assert(w(1) >= ep(1) - tol && w(2) <= ep(2) + tol, 'PipeCompare:Simple', ...
+    '%s is measured from %s, but the epochs run from %s.', p.name, ms(w), ms(ep));
+p.window = [max(w(1), ep(1)) min(w(2), ep(2))];
+b = [max(p.baseline(1), ep(1)) p.baseline(2)];
+assert(b(2) - b(1) >= tol, 'PipeCompare:Simple', ['The %s baseline (%s) lies before the epochs (from %s); ', ...
+    'epoch the data with a longer pre-event part.'], p.name, ms(p.baseline), ms(ep));
+p.epoch = ep; p.baseline = b;
+end
+
 function plan = addReference(plan, reference, exclude)
 if ~strcmp(reference, 'average'), return; end
 args = {'mode', 'average'};
@@ -222,17 +249,25 @@ if ~isempty(exclude), args = [args {'exclude', cellstr(exclude)}]; end
 plan = plan.add('reref', args{:});
 end
 
-function [plan, notes] = addFilter(plan, notes, type, earlier, keep, edge)
+function [plan, notes] = addFilter(plan, notes, type, earlier, keep, edge, outside, bandEdge)
 % Add a filter step searched over the catalog's values that still change
-% the data, given the edges in the dataset's history.
+% the data, given the edges in the dataset's history, and (band power)
+% that stay outside the bands.
 d = pipecompare.plan.Catalog.get(type);
 vals = [d.params.suggest{:}];
+name = strrep(type, 'pass', '-pass');
+list = @(v) strjoin(arrayfun(@(x) sprintf('%g', x), v, 'UniformOutput', false), ', ');
 if ~isempty(earlier)
     done = edge(earlier); drop = vals(~keep(vals, done)); vals = vals(keep(vals, done));
     if ~isempty(drop)
-        name = strrep(type, 'pass', '-pass');
-        notes{end+1} = sprintf('%s %s Hz (the data are already %s-filtered at %g Hz)', name, ...
-            strjoin(arrayfun(@(v) sprintf('%g', v), drop, 'UniformOutput', false), ', '), name, done);
+        notes{end+1} = sprintf('%s %s Hz (the data are already %s-filtered at %g Hz)', name, list(drop), name, done);
+    end
+end
+if ~isempty(bandEdge)
+    drop = vals(~outside(vals)); vals = vals(outside(vals));
+    if ~isempty(drop)
+        where = pipecompare.utils.ternary(strcmp(type, 'highpass'), 'starts', 'ends');
+        notes{end+1} = sprintf('%s %s Hz (it would cut into the band, which %s at %g Hz)', name, list(drop), where, bandEdge);
     end
 end
 if ~isempty(vals), plan = plan.add(type, 'cutoff', num2cell(vals)); end

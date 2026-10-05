@@ -5,6 +5,23 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Band power: the signal check tested only the band centre, so a filter that cut into the band
+  (a 40 Hz low-pass for a 30-45 Hz band) passed. It now also tests one frequency step inside each
+  band edge. The simple mode no longer compares filter edges inside the band (e.g. a 20 Hz
+  low-pass for beta, 13-30 Hz), and says so under *Left out*.
+- Simple mode on epoched data: the ERP CORE epoch (-200 to 800 ms) was required, so data epoched
+  otherwise (e.g. -100 to 600 ms) were refused although they hold the measurement window. Epoched
+  data now keep their own epochs; the baseline starts at the epoch start when the epochs start
+  later, and a window or baseline the epochs do not hold is named in the message.
+- `pop_pipecompare`: when the search stopped with an error, its log was lost (only the error was
+  shown); the log is now written to `pipecompare_last_run.log` first. `'recipe'` defaults to
+  `'standard'`, as in the dialog (it was an error to leave it out); numeric event types are
+  accepted; several selected datasets give a clear message.
+- Simple dialog: switching between your own window and your own band clears the numbers, so
+  milliseconds are not read as hertz.
+- A single epoch (one event of the conditions, or rejection leaving one) stopped with a MATLAB
+  formatting error; it now says that each condition needs at least two trials. Three error
+  messages with time or frequency ranges failed the same way and now print their numbers.
 - Simple mode: *Reference* (as recorded, or average reference) as a fixed step of every pipeline,
   after the bad channels and before ICA (`pop_pipecompare(..., 'reference', 'average')`).
   Previously re-referencing had to be done before PipeCompare, which spread bad channels into

@@ -113,7 +113,7 @@ classdef Steps
                     % contract by less than one sample after resampling)
                     b = 1000 * c.baseline;
                     assert(b(1) >= 1000 * EEG.xmin - 1000 / EEG.srate && b(2) <= 1000 * EEG.xmax + 1000 / EEG.srate, ...
-                        'PipeCompare:Baseline', 'Baseline [%g %g] ms lies outside the epochs [%g %g] ms', b, 1000 * [EEG.xmin EEG.xmax]);
+                        'PipeCompare:Baseline', 'Baseline [%g %g] ms lies outside the epochs [%g %g] ms', b(1), b(2), 1000 * EEG.xmin, 1000 * EEG.xmax);
                     b = [max(b(1), 1000 * EEG.xmin) min(b(2), 1000 * EEG.xmax)];
                     [EEG, com] = pop_rmbase(EEG, b, []);
                     coms = {com};

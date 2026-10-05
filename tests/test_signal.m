@@ -177,6 +177,21 @@ for k = 1:2
 end
 verifyLessThan(tc, err(1), 0.02);
 verifyGreaterThan(tc, err(2), 0.3);
+% the band's edges are checked, not only its centre: a 40 Hz low-pass
+% keeps 37.5 Hz but cuts the top of a 30-45 Hz band
+c = pipecompare.eval.Contract('analysis', 'bandpower', 'segment', 2, 'bands', ...
+    {'gamma', [30 45], {'Oz', 'O1', 'O2'}; 'alpha', [8 12], {'Oz', 'O1', 'O2'}});
+[S, truth] = pipecompare.eval.Injection.prepare(root, c, ref);
+verifyEqual(tc, truth.freqs, {[30.5 37.5 44.5], [8.5 10 11.5]});
+in = inst('lowpass', 'cutoff', 40);
+S = pipecompare.run.Steps.replayDecision(in, S, struct(), ctx(tc));
+r = pipecompare.eval.Injection.compare(S, c, truth, {in});
+verifyGreaterThan(tc, r.amplitudeError, 0.3);                  % gamma: 44.5 Hz is in the transition band
+in = inst('highpass', 'cutoff', 1);
+[S, truth] = pipecompare.eval.Injection.prepare(root, c, ref);
+S = pipecompare.run.Steps.replayDecision(in, S, struct(), ctx(tc));
+r = pipecompare.eval.Injection.compare(S, c, truth, {in});
+verifyLessThan(tc, r.amplitudeError, 0.05);                    % both bands untouched
 end
 
 function s = inst(type, varargin)
