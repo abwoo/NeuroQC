@@ -6,7 +6,8 @@ classdef Injection
     %
     %   A noise-free copy of the starting dataset is built that contains
     %   only a known signal: one Gaussian per component (centred in its
-    %   window, sigma = window/4, amplitude opts.injectUv) with a smooth
+    %   window, sigma = window/4 but at least 21 ms (a half-maximum width
+    %   of 50 ms), amplitude opts.injectUv) with a smooth
     %   scalp topography centred on the component's ROI over the channels
     %   that have locations (a box over the ROI only when no ROI channel
     %   has one), added at every scored trial. A component scored
@@ -300,7 +301,11 @@ function g = template(t, contract)
 g = zeros(numel(contract.components), numel(t));
 for j = 1:numel(contract.components)
     win = contract.components(j).window;
-    g(j, :) = exp(-0.5 * ((t - mean(win)) / (diff(win) / 4)) .^ 2);
+    % at least 50 ms wide at half maximum: a narrower template (N170's
+    % 40 ms window gave 10 ms) rings after a 20 Hz low-pass that leaves a
+    % real N170 unchanged (docs/METHODS.md, section 4)
+    sd = max(diff(win) / 4, 0.050 / 2.355);
+    g(j, :) = exp(-0.5 * ((t - mean(win)) / sd) .^ 2);
 end
 end
 

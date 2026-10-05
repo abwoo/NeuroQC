@@ -198,7 +198,12 @@ the artifactual-peak criterion of Zhang, Garrett and Luck (2024). Filters are li
 operators fixed by their design parameters (Widmann, Schröger & Maess, 2015), so re-running them on
 the copy applies the same operator.
 
-**Injected field.** One Gaussian per component, centred in its window with σ = window/4. Over the
+**Injected field.** One Gaussian per component, centred in its window with σ = window/4, but at
+least 21.2 ms (50 ms wide at half maximum). With σ = window/4 alone, N170's 40 ms window gave
+σ = 10 ms, about half a real N170's width: a 20 Hz low-pass then rang below the template by 7.5 %
+of its peak, past the 5 % artifact limit, so every pipeline with that filter was excluded, while it
+changes a realistic N170 (σ ≈ 20 ms) by about 0.1 % (simulation of EEGLAB's `pop_eegfiltnew` at
+250–1000 Hz; N2pc's template widens from 18.75 ms, and no other verdict changes). Over the
 scalp it is a Gaussian in the angle θ between a channel's unit position vector and the ROI
 centroid, w(θ) = exp(−θ²/(2·0.5²)), normalized to mean 1 over the ROI. Channels without coordinates
 (often EOG/ECG) have no defined scalp position: they get no field outside the ROI and the ROI's

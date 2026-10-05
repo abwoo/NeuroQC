@@ -5,6 +5,10 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Signal check: the injected ERP is at least 50 ms wide at half maximum. For N170 (40 ms window)
+  it was 10 ms wide in sigma, half a real N170, so a 20 Hz low-pass rang beyond the artifact limit
+  and was always excluded, although it changes a realistic N170 by about 0.1 %. The other ERP CORE
+  components are unaffected.
 - N2pc and LRP are scored contralateral minus ipsilateral, as ERP CORE measures them: the
   dialog takes the event types of each side (`pop_pipecompare(..., 'left', {...}, 'right',
   {...})`), each trial is scored as the electrode contralateral to its side minus the other, and
