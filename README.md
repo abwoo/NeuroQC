@@ -123,8 +123,10 @@ pipecompare_setup                         % run from the PipeCompare folder
    | Standard | filters, ICLabel threshold for removing components, epoch-rejection threshold (band power: one high-pass and one low-pass, the edges nearest the band, so 9 pipelines instead of 108) |
 
    *Standard* detects bad channels once and fits ICA once, before the filters, so every filter
-   setting shares one decomposition. Both look at a 1 Hz high-passed copy, so slow drifts do not
-   mislead them; the data themselves are filtered only by the settings being compared. EOG, ECG
+   setting shares one decomposition. A channel is bad when its kurtosis (spiky) or joint
+   probability (noisy, e.g. poor contact) is more than 5 SD from the other channels'. Both steps
+   look at a 1 Hz high-passed copy, so slow drifts do not mislead them; the data themselves are
+   filtered only by the settings being compared. EOG, ECG
    and EMG channels (by type or by name, such as VEOG) are not tested as bad channels and do not
    count in epoch rejection. The dialog shows how many pipelines will run before you
    start. Steps the data cannot support are left out, with the reason; for example, interpolation
