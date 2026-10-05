@@ -10,7 +10,9 @@ classdef SimpleDialog < handle
     %      own window or band with the electrodes you pick. ERP: the event
     %      types (the epochs' time-locking types are preselected on epoched
     %      data); each is one condition, or one condition together; too few
-    %      events are flagged before Run.
+    %      events are flagged before Run. N2pc and LRP (contralateral
+    %      minus ipsilateral) take the event types of each side in two
+    %      lists: target on the left / right, left / right hand.
     %   3. Which processing is compared: Standard is preselected. The
     %      number of pipelines is shown live, with the steps left out and
     %      why.
@@ -25,7 +27,7 @@ classdef SimpleDialog < handle
         CustomLabel; WindowField; ChannelLabel
         Channels = {}          % electrodes of a custom measure
         ChannelsFor = ''       % which custom measure they were chosen for
-        EventList; PoolBox
+        EventLabel; EventList; RightList; EventGrid; PoolBox
         Types; Counts          % the event types offered and how many of each
         RecipeDrop; RefDrop
         CountLabel; NotesLabel
@@ -77,13 +79,19 @@ classdef SimpleDialog < handle
             obj.WindowField = uieditfield(r, 'text', 'Placeholder', 'e.g. 300 600', 'ValueChangedFcn', @(~, ~) obj.update());
             uibutton(r, 'Text', 'Electrodes...', 'ButtonPushedFcn', @(~, ~) obj.pickChannels());
             obj.ChannelLabel = uilabel(r, 'Text', '', 'FontColor', [0.3 0.3 0.3]);
-            l = uilabel(g, 'Text', 'Event types (ERP)', 'VerticalAlignment', 'top'); l.Layout.Row = 4;
+            obj.EventLabel = uilabel(g, 'Text', 'Event types (ERP)', 'VerticalAlignment', 'top', 'WordWrap', 'on');
+            obj.EventLabel.Layout.Row = 4;
             ev = arrayfun(@(k) sprintf('%s (%d)', obj.Types{k}, obj.Counts(k)), 1:numel(obj.Types), ...
                 'UniformOutput', false);
             % epoched data: the types the epochs are time-locked to, read
-            % from the data; continuous data: nothing is preselected
-            obj.EventList = uilistbox(g, 'Items', ev, 'ItemsData', obj.Types, 'Multiselect', 'on', ...
+            % from the data; continuous data: nothing is preselected. The
+            % second list (right side) is shown for N2pc and LRP only.
+            obj.EventGrid = uigridlayout(g, [1 2]); obj.EventGrid.Padding = [0 0 0 0];
+            obj.EventGrid.ColumnWidth = {'1x', 0};
+            obj.EventList = uilistbox(obj.EventGrid, 'Items', ev, 'ItemsData', obj.Types, 'Multiselect', 'on', ...
                 'Value', obj.Types(isLock), 'ValueChangedFcn', @(~, ~) obj.update());
+            obj.RightList = uilistbox(obj.EventGrid, 'Items', ev, 'ItemsData', obj.Types, 'Multiselect', 'on', ...
+                'Value', {}, 'ValueChangedFcn', @(~, ~) obj.update());
             uilabel(g, 'Text', '');
             obj.PoolBox = uicheckbox(g, 'Text', 'Score the selected event types as one condition', ...
                 'ValueChangedFcn', @(~, ~) obj.update());
@@ -166,12 +174,25 @@ classdef SimpleDialog < handle
             end
             obj.showChannels();
             erp = obj.isErp() || strcmp(m, obj.Choose);
+            lateral = pipecompare.simple.Presets.isLateral(m);
+            obj.EventGrid.ColumnWidth{2} = pipecompare.utils.ternary(lateral, '1x', 0);
+            obj.EventLabel.Text = 'Event types (ERP)';
+            if lateral
+                side = pipecompare.utils.ternary(strcmp(m, 'LRP'), 'hand', 'target');
+                obj.EventLabel.Text = sprintf('Event types: left %s | right %s (contralateral minus ipsilateral)', side, side);
+            end
             obj.EventList.Enable = pipecompare.utils.ternary(erp, 'on', 'off');
-            obj.PoolBox.Enable = obj.EventList.Enable;
-            % the panel defines ERP measures only
-            obj.AdvancedButton.Enable = obj.EventList.Enable;
-            obj.AdvancedButton.Tooltip = pipecompare.utils.ternary(erp, '', ...
-                'The panel defines ERP measures; band power with other steps is set up from a script.');
+            obj.RightList.Enable = obj.EventList.Enable;
+            obj.PoolBox.Enable = pipecompare.utils.ternary(erp && ~lateral, 'on', 'off');   % one condition per side
+            % the panel defines ERP measures only, each condition at the
+            % electrodes (not contralateral minus ipsilateral)
+            obj.AdvancedButton.Enable = pipecompare.utils.ternary(erp && ~lateral, 'on', 'off');
+            obj.AdvancedButton.Tooltip = '';
+            if ~erp
+                obj.AdvancedButton.Tooltip = 'The panel defines ERP measures; band power with other steps is set up from a script.';
+            elseif lateral
+                obj.AdvancedButton.Tooltip = 'The panel scores each condition at the electrodes; contralateral minus ipsilateral is set up from a script.';
+            end
             obj.update();
         end
 
@@ -198,10 +219,16 @@ classdef SimpleDialog < handle
             m = obj.MeasureDrop.Value;
             if strcmp(m, obj.Choose), return; end
             erp = obj.isErp();
-            if erp && isempty(obj.EventList.Value), return; end
-            o = struct('measure', m, 'events', {cellstr(obj.EventList.Value)}, 'pool', obj.PoolBox.Value, ...
-                'window', [], 'band', [], 'channels', {{}}, 'recipe', obj.RecipeDrop.Value, 'reference', obj.RefDrop.Value, 'segment', 2, 'show', 'on');
+            lateral = pipecompare.simple.Presets.isLateral(m);
+            if erp && isempty(obj.EventList.Value) && ~(lateral && ~isempty(obj.RightList.Value)), return; end
+            o = struct('measure', m, 'events', {cellstr(obj.EventList.Value)}, 'left', {{}}, 'right', {{}}, ...
+                'pool', obj.PoolBox.Value, 'window', [], 'band', [], 'channels', {{}}, 'recipe', obj.RecipeDrop.Value, ...
+                'reference', obj.RefDrop.Value, 'segment', 2, 'show', 'on');
             if ~erp, o.events = {}; o.pool = false; end
+            if lateral
+                o.left = cellstr(obj.EventList.Value); o.right = cellstr(obj.RightList.Value);
+                o.events = {}; o.pool = false;
+            end
             if any(strcmp(m, {obj.CustomErp, obj.CustomBand}))
                 v = sscanf(strrep(obj.WindowField.Value, ',', ' '), '%f')';
                 if numel(v) ~= 2 || isempty(obj.Channels), o = []; return; end
@@ -211,7 +238,9 @@ classdef SimpleDialog < handle
         end
 
         function c = contract(obj, o)
-            c = pipecompare.simple.Presets.contract(obj.EEG, o.measure, o.events, o.segment, o.pool, ...
+            events = o.events;
+            if pipecompare.simple.Presets.isLateral(o.measure), events = struct('left', {o.left}, 'right', {o.right}); end
+            c = pipecompare.simple.Presets.contract(obj.EEG, o.measure, events, o.segment, o.pool, ...
                 struct('window', o.window, 'band', o.band, 'channels', {o.channels}));
         end
 
@@ -259,8 +288,21 @@ classdef SimpleDialog < handle
             % would exclude every pipeline, which would only show after the
             % run: say so now, with the way out when there is one.
             short = false;
-            if isempty(o.events), return; end
             d = pipecompare.eval.Rank.defaults(); need = d.minTrials;
+            if pipecompare.simple.Presets.isLateral(o.measure)
+                % one condition per side: its event types together
+                sides = {'left', 'right'};
+                for k = 1:2
+                    [~, at] = ismember(o.(sides{k}), obj.Types); n = sum(obj.Counts(at(at > 0)));
+                    if isempty(o.(sides{k})) || n >= need, continue; end
+                    short = true;
+                    obj.CountLabel.Text = 'Too few events for a condition.';
+                    obj.NotesLabel.Text = sprintf('The %s side has %d events; each side needs at least %d.', sides{k}, n, need);
+                    return;
+                end
+                return;
+            end
+            if isempty(o.events), return; end
             [~, at] = ismember(o.events, obj.Types);
             n = obj.Counts(at(at > 0));
             if o.pool, few = sum(n) < need; else, few = any(n < need); end

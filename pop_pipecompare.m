@@ -18,6 +18,10 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %   'events'   ERP: the time-locking event types, one condition each
 %   'pool'     ERP: true scores all the event types as one condition
 %              (default false)
+%   'left', 'right'  N2pc and LRP, scored contralateral minus ipsilateral
+%              as in ERP CORE: the event types with the target on the left
+%              / of left-hand responses, and of the right (instead of
+%              'events'; one side may be left out)
 %   'recipe'   'standard' (default) | 'filters': which steps are compared
 %   'reference' 'asis' (default) | 'average': the average reference as a
 %              fixed step of every pipeline, after the bad channels and
@@ -43,23 +47,30 @@ if nargin < 2
     opts = pipecompare.gui.SimpleDialog.ask(EEG);
     if isempty(opts), return; end                       % cancelled, or continued in the panel
 else
-    opts = struct('measure', '', 'events', {{}}, 'pool', false, 'window', [], 'band', [], 'channels', {{}}, ...
-        'recipe', 'standard', 'reference', 'asis', 'segment', 2, 'show', 'on');
+    opts = struct('measure', '', 'events', {{}}, 'left', {{}}, 'right', {{}}, 'pool', false, 'window', [], 'band', [], ...
+        'channels', {{}}, 'recipe', 'standard', 'reference', 'asis', 'segment', 2, 'show', 'on');
     for k = 1:2:numel(varargin)
         f = lower(char(varargin{k}));
-        assert(isfield(opts, f), 'PipeCompare:Simple', ['Unknown option %s (measure, events, pool, window, band, channels, recipe, ', ...
-            'reference, segment, show).'], f);
+        assert(isfield(opts, f), 'PipeCompare:Simple', ['Unknown option %s (measure, events, left, right, pool, window, ', ...
+            'band, channels, recipe, reference, segment, show).'], f);
         opts.(f) = varargin{k+1};
     end
-    if isnumeric(opts.events), opts.events = arrayfun(@(x) sprintf('%g', x), opts.events, 'UniformOutput', false); end
-    opts.events = cellstr(opts.events);
+    for f = {'events', 'left', 'right'}
+        v = opts.(f{1});
+        if isnumeric(v), v = arrayfun(@(x) sprintf('%g', x), v, 'UniformOutput', false); end
+        opts.(f{1}) = cellstr(v);
+    end
+    assert(~pipecompare.simple.Presets.isLateral(opts.measure) || isempty(opts.events), 'PipeCompare:Simple', ['%s is contralateral minus ipsilateral: give ', ...
+        'the event types of each side with ''left'' and ''right'' instead of ''events''.'], opts.measure);
 end
 % the search reads the dataset that is current in EEGLAB: it must be this one
 cur = pipecompare.live.Session.current();
 assert(~isempty(cur) && strcmp(pipecompare.live.Session.fingerprint(cur), pipecompare.live.Session.fingerprint(EEG)), ...
     'PipeCompare:Simple', 'pop_pipecompare works on the current EEGLAB dataset; make this dataset current first.');
 state = pipecompare.live.DataState.fromEEG(EEG);
-c = pipecompare.simple.Presets.contract(EEG, opts.measure, opts.events, opts.segment, opts.pool, ...
+events = opts.events;
+if pipecompare.simple.Presets.isLateral(opts.measure), events = struct('left', {opts.left}, 'right', {opts.right}); end
+c = pipecompare.simple.Presets.contract(EEG, opts.measure, events, opts.segment, opts.pool, ...
     struct('window', opts.window, 'band', opts.band, 'channels', {cellstr(opts.channels)}));
 [plan, notes] = pipecompare.simple.Presets.recipe(opts.recipe, state, c, opts.reference, ...
     pipecompare.simple.Presets.nonEegChannels(EEG));
@@ -101,7 +112,10 @@ args = {'measure', opts.measure};
 if strcmpi(opts.measure, 'custom'), args = [args {'window', opts.window}]; end
 if strcmpi(opts.measure, 'band'), args = [args {'band', opts.band}]; end
 if ~isempty(opts.channels), args = [args {'channels', cellstr(opts.channels)}]; end
-if ~pipecompare.simple.Presets.isBand(opts.measure)
+if pipecompare.simple.Presets.isLateral(opts.measure)
+    if ~isempty(opts.left), args = [args {'left', opts.left}]; end
+    if ~isempty(opts.right), args = [args {'right', opts.right}]; end
+elseif ~pipecompare.simple.Presets.isBand(opts.measure)
     args = [args {'events', opts.events}];
     if opts.pool, args = [args {'pool', true}]; end
 elseif opts.segment ~= 2, args = [args {'segment', opts.segment}]; end

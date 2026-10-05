@@ -91,6 +91,53 @@ p = pipecompare.simple.Presets.recipe('filters', st, pipecompare.simple.Presets.
 verifyEqual(tc, p.Slots(strcmp({p.Slots.id}, 'lowpass')).alternatives{1}.params.cutoff, {20, 30, 40});   % ERP: unchanged
 end
 
+function testBandPowerStandardFixesTheFilters(tc)
+% Outside the band a filter does not change its power: Standard uses the
+% high-pass and low-pass edges nearest the band and compares ICLabel and
+% epoch rejection only (9 pipelines instead of 108).
+EEG = tc.TestData.EEG;
+st = pipecompare.live.DataState.fromEEG(EEG);
+[p, notes] = pipecompare.simple.Presets.recipe('standard', st, pipecompare.simple.Presets.contract(EEG, 'alpha', {}));
+cut = @(id) p.Slots(strcmp({p.Slots.id}, id)).alternatives{1}.params.cutoff;
+verifyEqual(tc, cut('highpass'), {1});
+verifyEqual(tc, cut('lowpass'), {20});
+verifyTrue(tc, any(contains(notes, 'low-pass 30, 40 Hz (band power')));
+if exist('pop_iclabel', 'file') == 2
+    verifyEqual(tc, numel(p.enumerate(st, pipecompare.simple.Presets.contract(EEG, 'alpha', {}), struct('maxLeaves', Inf))), 9);
+end
+p = pipecompare.simple.Presets.recipe('standard', st, pipecompare.simple.Presets.contract(EEG, 'beta', {}));
+verifyEqual(tc, p.Slots(strcmp({p.Slots.id}, 'lowpass')).alternatives{1}.params.cutoff, {30});   % the nearest edge outside 13-30 Hz
+p = pipecompare.simple.Presets.recipe('filters', st, pipecompare.simple.Presets.contract(EEG, 'alpha', {}));
+verifyEqual(tc, p.Slots(strcmp({p.Slots.id}, 'lowpass')).alternatives{1}.params.cutoff, {20, 30, 40});   % Filters only compares them
+end
+
+function testLateralComponentsScoreContraMinusIpsi(tc)
+% N2pc and LRP are measured contralateral minus ipsilateral (ERP CORE):
+% one condition per side, each scored as the electrode contralateral to
+% it minus the other.
+EEG = tc.TestData.EEG;
+c = pipecompare.simple.Presets.contract(EEG, 'N2pc', struct('left', {{'11'}}, 'right', {{'31'}}));
+verifyEqual(tc, {c.conditions.name}, {'left target', 'right target'});
+verifyEqual(tc, c.components.contra, {'PO8', 'PO7'});
+c.validate(pipecompare.live.DataState.fromEEG(EEG));
+verifyError(tc, @() pipecompare.simple.Presets.contract(EEG, 'N2pc', {'11', '31'}), 'PipeCompare:Simple');
+l = pipecompare.simple.Presets.contract(EEG, 'LRP', struct('left', {{'11'}}, 'right', {{}}));
+verifyEqual(tc, {l.conditions.name}, {'left hand'});
+verifyEqual(tc, l.components.contra, {'C4'});
+p3 = pipecompare.simple.Presets.contract(EEG, 'P3', {'11'});
+verifyFalse(tc, p3.isLateral(1));
+verifyFalse(tc, isfield(p3.components, 'contra'));               % identity unchanged
+% a known lateral field: PO8 2 uV above PO7 in the window
+[~, Ep] = evalc('pop_epoch(EEG, {''11'', ''31''}, c.epoch)');
+times = Ep.xmin + (0:Ep.pnts-1) / Ep.srate;
+w = times >= c.components.window(1) - 1e-9 & times <= c.components.window(2) + 1e-9;
+Ep.data(:) = 0;
+Ep.data(strcmp({Ep.chanlocs.labels}, 'PO8'), w, :) = 2;
+T = pipecompare.eval.Measure.trials(Ep, c);
+verifyEqual(tc, T.data{1}(T.cond == 1), repmat(2, sum(T.cond == 1), 1), 'AbsTol', 1e-6);    % target left: PO8 - PO7
+verifyEqual(tc, T.data{1}(T.cond == 2), repmat(-2, sum(T.cond == 2), 1), 'AbsTol', 1e-6);   % target right: PO7 - PO8
+end
+
 function testNonEegChannelsByTypeOrName(tc)
 % Channels such as VEOG are often named but not typed: both count.
 EEG = tc.TestData.EEG;
@@ -175,6 +222,18 @@ d.MeasureDrop.Value = 'alpha'; d.measureChanged();
 verifyEqual(tc, char(d.EventList.Enable), 'off');               % band power needs no events
 o = d.options();
 verifyEmpty(tc, o.events);
+d.RecipeDrop.Value = 'standard';
+verifyEqual(tc, d.update(), 3 * 3);                             % band power: one high-pass, one low-pass
+d.MeasureDrop.Value = 'N2pc'; d.measureChanged();
+verifyEqual(tc, d.EventGrid.ColumnWidth{2}, '1x');              % one list per side
+verifyEqual(tc, char(d.PoolBox.Enable), 'off');
+d.EventList.Value = {'11'}; d.RightList.Value = {'31'}; d.RecipeDrop.Value = 'filters';
+verifyEqual(tc, d.update(), 12);
+o = d.options();
+verifyEqual(tc, [o.left o.right], {'11', '31'});
+verifyEmpty(tc, o.events);
+d.MeasureDrop.Value = 'P3'; d.measureChanged();
+verifyEqual(tc, d.EventGrid.ColumnWidth{2}, 0);
 % epoched data: ERP only; filters cannot be compared after epoching
 [~, Ep] = evalc('pop_epoch(EEG, {''11'', ''31''}, [-0.2 0.8])');
 d3 = pipecompare.gui.SimpleDialog(Ep); c3 = onCleanup(@() delete(d3)); %#ok<NASGU>
@@ -277,6 +336,13 @@ verifyTrue(tc, startsWith(com, 'EEG = pop_pipecompare(EEG, ''measure'',''custom'
 verifyTrue(tc, contains(com, '''channels'',{''Pz''},''events'',{''11'',''31''}'));
 [~, ~, rn] = pop_pipecompare(EEG, 'measure', 'P3', 'events', [11 31], 'recipe', 'filters', 'show', 'off');
 verifyEqual(tc, {rn.contract.conditions.name}, {'11', '31'});    % numeric event types
+[~, com, rl] = pop_pipecompare(EEG, 'measure', 'N2pc', 'left', {'11'}, 'right', 31, 'recipe', 'filters', 'show', 'off');
+verifyTrue(tc, contains(com, '''measure'',''N2pc'',''left'',{''11''},''right'',{''31''},'));
+verifyTrue(tc, rl.contract.isLateral(1));
+ok = strcmp({rl.cands.status}, 'ok');
+verifyNotEmpty(tc, find(ok));
+verifyTrue(tc, all(arrayfun(@(k) abs(rl.cands(k).signal.gain - 1) < 0.5, find(ok))));   % the lateral signal check
+verifyError(tc, @() pop_pipecompare(EEG, 'measure', 'N2pc', 'events', {'11'}, 'show', 'off'), 'PipeCompare:Simple');
 % an error during the search: the log so far is still written
 is11 = find(arrayfun(@(e) strcmp(strtrim(char(string(e.type))), '11'), EEG.event));
 F = EEG; F.event(is11(2:end)) = []; F.urevent = []; F = eeg_checkset(F, 'makeur');

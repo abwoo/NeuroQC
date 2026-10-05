@@ -5,6 +5,19 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Signal check: the injected ERP is at least 50 ms wide at half maximum. For N170 (40 ms window)
+  it was 10 ms wide in sigma, half a real N170, so a 20 Hz low-pass rang beyond the artifact limit
+  and was always excluded, although it changes a realistic N170 by about 0.1 %. The other ERP CORE
+  components are unaffected.
+- N2pc and LRP are scored contralateral minus ipsilateral, as ERP CORE measures them: the
+  dialog takes the event types of each side (`pop_pipecompare(..., 'left', {...}, 'right',
+  {...})`), each trial is scored as the electrode contralateral to its side minus the other, and
+  the signal check uses a lateralized field. Before, the mean of the two electrodes was scored,
+  which cancels the lateralized component and keeps the noise common to both hemispheres.
+- Band power, *Standard*: one high-pass and one low-pass edge (the catalog values nearest the
+  band outside it) instead of every combination, so 9 pipelines instead of 108 (ICLabel runs 3
+  times instead of 36). Outside the band a filter does not change its power. *Filters only*
+  still compares the filters.
 - Band power: the signal check tested only the band centre, so a filter that cut into the band
   (a 40 Hz low-pass for a 30-45 Hz band) passed. It now also tests one frequency step inside each
   band edge. The simple mode no longer compares filter edges inside the band (e.g. a 20 Hz

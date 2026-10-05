@@ -86,6 +86,15 @@ the SD of the *B* values (Luck et al., 2021). [`pipecompare.eval.Measure`]
 Several measures that share a unit are combined as the root mean square over measures and
 conditions. Measures in different units (µV and ms) are never added: one of them must be chosen.
 
+**Difference waves.** A lateralized component (N2pc, LRP) is scored as ERP CORE measures it,
+contralateral minus ipsilateral: each trial's score is the electrode contralateral to its side
+(target side, response hand) minus the other, so the SME is that of the difference wave. It can
+rank pipelines differently from scoring each electrode: noise common to both hemispheres cancels
+in the difference. The signal check then injects a field centred on one of the two electrodes and
+checks the difference of the two. A difference between independent conditions (MMN, deviant
+minus standard) needs no such scoring: its SME is √(SME₁² + SME₂²), √2 times the root mean
+square over the two conditions, so the ranking is the same.
+
 ## 2. Gain-corrected SME (the ranking objective)
 
 **Problem with raw SME.** SME is in µV, so it is not invariant to the scale of the data. A pipeline
@@ -189,7 +198,12 @@ the artifactual-peak criterion of Zhang, Garrett and Luck (2024). Filters are li
 operators fixed by their design parameters (Widmann, Schröger & Maess, 2015), so re-running them on
 the copy applies the same operator.
 
-**Injected field.** One Gaussian per component, centred in its window with σ = window/4. Over the
+**Injected field.** One Gaussian per component, centred in its window with σ = window/4, but at
+least 21.2 ms (50 ms wide at half maximum). With σ = window/4 alone, N170's 40 ms window gave
+σ = 10 ms, about half a real N170's width: a 20 Hz low-pass then rang below the template by 7.5 %
+of its peak, past the 5 % artifact limit, so every pipeline with that filter was excluded, while it
+changes a realistic N170 (σ ≈ 20 ms) by about 0.1 % (simulation of EEGLAB's `pop_eegfiltnew` at
+250–1000 Hz; N2pc's template widens from 18.75 ms, and no other verdict changes). Over the
 scalp it is a Gaussian in the angle θ between a channel's unit position vector and the ROI
 centroid, w(θ) = exp(−θ²/(2·0.5²)), normalized to mean 1 over the ROI. Channels without coordinates
 (often EOG/ECG) have no defined scalp position: they get no field outside the ROI and the ROI's
