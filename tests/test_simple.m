@@ -148,6 +148,8 @@ verifyEqual(tc, sort(pipecompare.simple.Presets.nonEegChannels(E)), sort({'Fz', 
 verifyFalse(tc, any(ismember({'EOG1', 'EOG2'}, pipecompare.simple.Presets.eegChannels(EEG))));
 C = E; C.chanlocs = C.chanlocs(:);                               % a column, as pop_biosig imports EDF files
 verifyEqual(tc, sort(pipecompare.simple.Presets.nonEegChannels(C)), sort({'Fz', 'heog', 'EOG1', 'EOG2'}));
+C.chanlocs(1).labels = 'POL EYEL';   % an EDF export's eye channel
+verifyTrue(tc, ismember('POL EYEL', pipecompare.simple.Presets.nonEegChannels(C)));
 end
 
 function testRecipesAdaptToTheData(tc)

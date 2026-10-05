@@ -178,10 +178,11 @@ classdef Presets
 
         function roi = eegChannels(EEG)
             % all channels except non-EEG ones (EOG, ECG, EMG, ...), by
-            % type or, when the type is not set, by name (VEOG, HEOG, ECG1)
+            % type or, when the type is not set, by name (VEOG, HEOG, ECG1,
+            % EYEL; with the POL prefix of some EDF exports: POL EYEL)
             labels = {EEG.chanlocs.labels};
             roi = labels;
-            keep = cellfun(@isempty, regexpi(labels, '^([VH]?EOG|ECG|EKG|EMG)', 'once'));
+            keep = cellfun(@isempty, regexpi(labels, '^(POL\s+)?([VH]?EOG|ECG|EKG|EMG|EYE)', 'once'));
             if isfield(EEG.chanlocs, 'type')
                 ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), EEG.chanlocs(:)', 'UniformOutput', false);
                 keep = keep & ~ismember(ty, {'EOG', 'HEOG', 'VEOG', 'ECG', 'EKG', 'EMG', 'MISC', 'TRIG', 'STIM'});

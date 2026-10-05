@@ -7,6 +7,8 @@ release has a git tag `vX.Y.Z`.
 
 - Datasets imported with `pop_biosig` (e.g. EDF files) keep their channels as a column, and the
   simple mode stopped at once with an index error; channel lists are now read in either shape.
+- Eye channels named EYEL/EYER (also with the *POL* prefix of some EDF exports) are recognised as
+  non-EEG channels, so they are not tested as bad channels or counted by the epoch threshold.
 - When every pipeline that passed the checks has exactly the same noise, the result says that the
   settings compared make no difference on these data, instead of recommending the first one as if
   it were better.
