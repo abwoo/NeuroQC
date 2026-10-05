@@ -18,7 +18,7 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %   'events'   ERP: the time-locking event types, one condition each
 %   'pool'     ERP: true scores all the event types as one condition
 %              (default false)
-%   'recipe'   'filters' | 'standard': which steps are compared
+%   'recipe'   'standard' (default) | 'filters': which steps are compared
 %   'reference' 'asis' (default) | 'average': the average reference as a
 %              fixed step of every pipeline, after the bad channels and
 %              before ICA (channels typed as EOG, ECG, ... are left out of
@@ -35,20 +35,23 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %   that repeats this comparison (EEGLAB puts it in ALLCOM). The panel
 %   (EEGLAB > Tools > PipeCompare > Advanced panel) offers every option.
 com = ''; result = [];
-assert(nargin >= 1 && ~isempty(EEG) && isfield(EEG, 'data') && ~isempty(EEG.data), 'PipeCompare:NoDataset', ...
+assert(nargin >= 1 && ~isempty(EEG) && isfield(EEG, 'data'), 'PipeCompare:NoDataset', ...
     'pop_pipecompare needs a dataset (load one in EEGLAB first).');
+assert(isscalar(EEG), 'PipeCompare:NoDataset', 'Several datasets are selected in EEGLAB; select one.');
+assert(~isempty(EEG.data), 'PipeCompare:NoDataset', 'pop_pipecompare needs a dataset (load one in EEGLAB first).');
 if nargin < 2
     opts = pipecompare.gui.SimpleDialog.ask(EEG);
     if isempty(opts), return; end                       % cancelled, or continued in the panel
 else
     opts = struct('measure', '', 'events', {{}}, 'pool', false, 'window', [], 'band', [], 'channels', {{}}, ...
-        'recipe', '', 'reference', 'asis', 'segment', 2, 'show', 'on');
+        'recipe', 'standard', 'reference', 'asis', 'segment', 2, 'show', 'on');
     for k = 1:2:numel(varargin)
         f = lower(char(varargin{k}));
         assert(isfield(opts, f), 'PipeCompare:Simple', ['Unknown option %s (measure, events, pool, window, band, channels, recipe, ', ...
             'reference, segment, show).'], f);
         opts.(f) = varargin{k+1};
     end
+    if isnumeric(opts.events), opts.events = arrayfun(@(x) sprintf('%g', x), opts.events, 'UniformOutput', false); end
     opts.events = cellstr(opts.events);
 end
 % the search reads the dataset that is current in EEGLAB: it must be this one
@@ -77,12 +80,17 @@ if ~strcmp(opts.show, 'off')
 end
 closeFig = onCleanup(@() delete(fig(isvalid(fig)))); %#ok<NASGU>   % also on an error
 % the full log goes to a file; the Command Window gets the summary
-t0 = tic;
-logText = evalc('result = pipecompare.PipeCompare.optimize(plan, c, runOpts);');
+t0 = tic; err = []; searchFcn = @runSearch;   % (evalc here may only assign existing variables)
+logText = evalc('[result, err] = searchFcn(plan, c, runOpts);');
 delete(fig(isvalid(fig)));
 logFile = fullfile(tempdir, 'pipecompare_last_run.log');
 fid = fopen(logFile, 'w');
 if fid > 0, fprintf(fid, '%s', logText); fclose(fid); end
+if ~isempty(err)
+    % the log says how far the search got; it would be lost with the error
+    if fid > 0, pipecompare.utils.log('The comparison stopped with an error; full log: %s', logFile); end
+    rethrow(err);
+end
 T = result.ranking.table;
 pipecompare.utils.log('%d pipelines compared on %s in %s; %d passed the checks%s.', height(T), state.setname, ...
     timeText(toc(t0)), sum(strcmp(T.status, 'feasible')), pipecompare.utils.ternary(isempty(result.ranking.recommended), ...
@@ -124,6 +132,16 @@ if ~strcmp(opts.show, 'off'), pipecompare.gui.SimpleResults(result); end
         stop = dlg.CancelRequested;
         if stop && ~stopping, stopping = true; dlg.Message = 'Stopping after the current step...'; drawnow; end
     end
+end
+
+function [result, err] = runSearch(plan, c, runOpts)
+% The search, with its error returned rather than thrown, so that the log
+% captured around it is written either way.
+result = []; err = [];
+try
+    result = pipecompare.PipeCompare.optimize(plan, c, runOpts);
+catch err
+end
 end
 
 function t = timeText(sec)

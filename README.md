@@ -130,8 +130,10 @@ pipecompare_setup                         % run from the PipeCompare folder
    and EMG channels (by type or by name, such as VEOG) are not tested as bad channels and do not
    count in epoch rejection. The dialog shows how many pipelines will run before you
    start. Steps the data cannot support are left out, with the reason; for example, interpolation
-   and ICLabel require channel locations. To compare ASR (artifact subspace reconstruction) or
-   other steps, use the advanced panel or a script.
+   and ICLabel require channel locations, and for band power no filter edge inside the band is
+   compared. Epoched data keep their own epochs when these hold the measurement window. To
+   compare ASR (artifact subspace reconstruction) or other steps, use the advanced panel or a
+   script.
 
    Start from the raw continuous data. If your analysis uses the average reference, choose it under
    **Reference** rather than re-referencing beforehand: it is then applied in every pipeline after

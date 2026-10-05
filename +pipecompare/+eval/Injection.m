@@ -54,16 +54,22 @@ classdef Injection
             % value after restoring is the true field there)
             [full, labels] = montage(root);
             if strcmp(contract.analysis, 'bandpower')
-                % a sinusoid at each band's centre frequency over the band's ROI
+                % sinusoids near each band's lower edge, at its centre and near
+                % its upper edge, over the band's ROI: a filter that cuts into
+                % the band is seen even when the centre is untouched
                 Wfull = zeros(numel(full), numel(contract.bands));
                 t = (0:root.pnts-1) / fs;
+                freqs = cell(1, numel(contract.bands));
                 for b = 1:numel(contract.bands)
                     Wfull(:, b) = topography(struct('chanlocs', {full}), contract.bands(b).roi);
-                    x = A * Wfull(1:nch, b) * sin(2 * pi * mean(contract.bands(b).freq) * t);
-                    S.data = S.data + repmat(cast(x, 'like', S.data), 1, 1, root.trials);
+                    freqs{b} = testFrequencies(contract.bands(b).freq, diff(contract.epoch));
+                    for f0 = freqs{b}
+                        x = A * Wfull(1:nch, b) * sin(2 * pi * f0 * t);
+                        S.data = S.data + repmat(cast(x, 'like', S.data), 1, 1, root.trials);
+                    end
                 end
                 truth = struct('kind', 'bandpower', 'weights', Wfull, 'labels', {labels}, 'A', A, ...
-                    'onsets', [], 'urevents', []);
+                    'onsets', [], 'urevents', [], 'freqs', {freqs});
                 return;
             end
             Wfull = zeros(numel(full), numel(contract.components));
@@ -140,20 +146,26 @@ classdef Injection
                 [~, S] = evalc('pop_epoch(S, contract.allEvents(), contract.epoch, ''epochinfo'', ''yes'')');
             end
             if strcmp(contract.analysis, 'bandpower')
-                % amplitude of the injected sinusoid per channel (least squares in
-                % each epoch, averaged) against the expected, re-referenced field.
-                % gain = 1: the score is log10 power, so a scale factor shifts
-                % every score equally and leaves its SD (the SME) unchanged; a
-                % filter that attenuates the band is caught by the amplitude error.
+                % amplitude of each injected sinusoid per channel (least squares
+                % in each epoch, averaged) against the expected, re-referenced
+                % field; the worst frequency of the band counts. gain = 1: the
+                % score is log10 power, so a scale factor shifts every score
+                % equally and leaves its SD (the SME) unchanged; a filter that
+                % attenuates the band is caught by the amplitude error.
                 nB = numel(contract.bands);
                 r.gain = ones(1, nB);
                 amp = nan(1, nB); tc = amp;
+                [f, ~, at] = unique([truth.freqs{:}]);          % a frequency two bands share is injected twice
+                owner = repelem(1:nB, cellfun(@numel, truth.freqs));
+                a = sineAmplitudes(S, f);                       % channels x frequencies
                 for b = 1:nB
-                    a = sineAmplitude(S, mean(contract.bands(b).freq));
                     roi = ismember(labs, lower(contract.bands(b).roi));
-                    e = truth.A * abs(Ew(:, b));
-                    amp(b) = abs(mean(a(roi)) / mean(e(roi)) - 1);
-                    tc(b) = safeCorr(a, e);
+                    amp(b) = 0; tc(b) = 1;
+                    for q = unique(at(owner == b))'
+                        e = truth.A * abs(sum(Ew(:, owner(at == q)), 2));
+                        amp(b) = max(amp(b), abs(mean(a(roi, q)) / mean(e(roi)) - 1));
+                        tc(b) = min(tc(b), safeCorr(a(:, q), e));
+                    end
                 end
                 r.amplitudeError = max(amp); r.topoCorr = min(tc);
                 r.notApplicable = {'latencyShiftMs', 'artifactPct', 'waveformCorr'};   % no waveform in a band power
@@ -316,15 +328,27 @@ E(ok, :) = F(loc(ok), :);
 end
 
 
-function amp = sineAmplitude(S, f0)
-% least-squares amplitude of a sinusoid at f0, per channel, averaged over epochs
+function f = testFrequencies(band, T)
+% Where the band-power signal check injects: one frequency step (1/T, the
+% resolution of an epoch of T s) inside each edge, and the centre. Points
+% of that grid are orthogonal over the epoch, and contiguous bands (alpha
+% 8-13, beta 13-30 Hz) do not share one. A band narrower than five steps
+% gets its centre only.
+g = (ceil(band(1) * T - 1e-9):floor(band(2) * T + 1e-9)) / T;
+if numel(g) >= 5, f = g([2 ceil(end / 2) end-1]); else, f = mean(band); end
+end
+
+function amp = sineAmplitudes(S, f0)
+% least-squares amplitude of a sinusoid at each frequency f0 (fitted
+% jointly), per channel, averaged over epochs: channels x numel(f0)
 X = double(S.data); [nch, n, nt] = size(X);
 t = (0:n-1)' / S.srate;
-B = [sin(2 * pi * f0 * t) cos(2 * pi * f0 * t)];
-amp = zeros(nch, 1);
+B = [sin(2 * pi * t * f0(:)') cos(2 * pi * t * f0(:)')];
+nf = numel(f0);
+amp = zeros(nch, nf);
 for k = 1:nt
     beta = B \ X(:, :, k)';
-    amp = amp + sqrt(sum(beta .^ 2, 1))';
+    amp = amp + sqrt(beta(1:nf, :) .^ 2 + beta(nf+1:end, :) .^ 2)';
 end
 amp = amp / nt;
 end

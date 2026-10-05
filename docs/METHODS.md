@@ -253,10 +253,14 @@ band power).
 **No gain correction is needed.** The log is scale-free: if the data are multiplied by *c*, every
 score shifts by 2·log₁₀ *c*, and their SD (the SME) is unchanged. The gain of section 2 is
 therefore 1 for band power. A step that attenuates the band itself is caught by the signal check:
-a sinusoid at the band's centre frequency, over the band's ROI, is carried through the candidate
-with the same decisions as the real data. Its recovered amplitude (least squares per epoch,
-averaged) is compared with the expected, re-referenced field (amplitude error, topography
-correlation).
+sinusoids one frequency step (1/T for epochs of T s) inside each band edge and at the band's
+centre, over the band's ROI, are carried through the candidate with the same decisions as the real
+data, so a filter that cuts into the band is seen even when the centre is untouched. Their
+recovered amplitudes (least squares per epoch, all frequencies fitted together, averaged) are
+compared with the expected, re-referenced field; the worst frequency of the band counts (amplitude
+error, topography correlation). The test frequencies lie on the 1/T grid, so they are orthogonal
+over an epoch, and contiguous bands do not share one. A band narrower than five grid steps is
+tested at its centre.
 
 **Dependent segments: moving-block bootstrap.** Consecutive segments of one recording are not
 independent, because state and noise change slowly. Resampling them one by one treats them as

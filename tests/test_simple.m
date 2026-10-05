@@ -60,6 +60,37 @@ own.band = [8 EEG.srate];
 verifyError(tc, @() pipecompare.simple.Presets.contract(EEG, 'band', {}, 2, false, own), 'PipeCompare:Simple');
 end
 
+function testEpochedDataKeepTheirEpochs(tc)
+% Data epoched otherwise than the preset (here -100 to 600 ms) are used as
+% they are when the epochs hold the measurement window.
+EEG = tc.TestData.EEG;
+[~, Ep] = evalc('pop_epoch(EEG, {''11'', ''31''}, [-0.1 0.6])');
+c = pipecompare.simple.Presets.contract(Ep, 'P3', {'11', '31'});
+verifyEqual(tc, c.epoch, [Ep.xmin Ep.xmax]);
+verifyEqual(tc, c.baseline, [Ep.xmin 0]);                        % the preset baseline, from the epoch start
+verifyEqual(tc, c.components.window, [0.3 Ep.xmax]);            % 0.596 s: pop_epoch leaves out the last sample
+c.validate(pipecompare.live.DataState.fromEEG(Ep));
+verifyError(tc, @() pipecompare.simple.Presets.contract(Ep, 'LRP', {'11'}), 'PipeCompare:Simple');   % baseline -800 to -600 ms
+[~, Short] = evalc('pop_epoch(EEG, {''11''}, [-0.2 0.4])');
+verifyError(tc, @() pipecompare.simple.Presets.contract(Short, 'P3', {'11'}), 'PipeCompare:Simple');  % ends before 600 ms
+end
+
+function testBandPowerFiltersStayOutsideTheBand(tc)
+% A filter edge inside the band would cut what is measured: such edges are
+% not compared, and the reason is given.
+EEG = tc.TestData.EEG;
+st = pipecompare.live.DataState.fromEEG(EEG);
+[p, notes] = pipecompare.simple.Presets.recipe('filters', st, pipecompare.simple.Presets.contract(EEG, 'beta', {}));
+verifyEqual(tc, p.Slots(strcmp({p.Slots.id}, 'lowpass')).alternatives{1}.params.cutoff, {30, 40});
+verifyTrue(tc, any(contains(notes, 'low-pass 20 Hz (it would cut into the band, which ends at 30 Hz)')));
+own = struct('window', [], 'band', [30 45], 'channels', {{}});
+[p, notes] = pipecompare.simple.Presets.recipe('filters', st, pipecompare.simple.Presets.contract(EEG, 'band', {}, 2, false, own));
+verifyFalse(tc, ismember('lowpass', {p.Slots.id}));
+verifyTrue(tc, any(contains(notes, 'low-pass 20, 30, 40 Hz')));
+p = pipecompare.simple.Presets.recipe('filters', st, pipecompare.simple.Presets.contract(EEG, 'P3', {'11'}));
+verifyEqual(tc, p.Slots(strcmp({p.Slots.id}, 'lowpass')).alternatives{1}.params.cutoff, {20, 30, 40});   % ERP: unchanged
+end
+
 function testNonEegChannelsByTypeOrName(tc)
 % Channels such as VEOG are often named but not typed: both count.
 EEG = tc.TestData.EEG;
@@ -244,6 +275,17 @@ verifyTrue(tc, rb.ref.segmented);
     'events', {'11', '31'}, 'recipe', 'filters', 'show', 'off');
 verifyTrue(tc, startsWith(com, 'EEG = pop_pipecompare(EEG, ''measure'',''custom'',''window'',[0.25'));
 verifyTrue(tc, contains(com, '''channels'',{''Pz''},''events'',{''11'',''31''}'));
+[~, ~, rn] = pop_pipecompare(EEG, 'measure', 'P3', 'events', [11 31], 'recipe', 'filters', 'show', 'off');
+verifyEqual(tc, {rn.contract.conditions.name}, {'11', '31'});    % numeric event types
+% an error during the search: the log so far is still written
+is11 = find(arrayfun(@(e) strcmp(strtrim(char(string(e.type))), '11'), EEG.event));
+F = EEG; F.event(is11(2:end)) = []; F.urevent = []; F = eeg_checkset(F, 'makeur');
+nqc_setBase(F);
+delete(fullfile(tempdir, 'pipecompare_last_run.log'));
+verifyError(tc, @() pop_pipecompare(F, 'measure', 'P3', 'events', {'11'}, 'recipe', 'filters', 'show', 'off'), ...
+    'PipeCompare:Contract');                                        % one trial of 11
+verifyTrue(tc, contains(fileread(fullfile(tempdir, 'pipecompare_last_run.log')), 'Exhaustive search'));
+nqc_setBase(EEG);
 other = EEG; other.data(1) = other.data(1) + 1;
 verifyError(tc, @() pop_pipecompare(other, 'measure', 'P3', 'events', {'11'}, 'recipe', 'filters', 'show', 'off'), ...
     'PipeCompare:Simple');                                          % only the current dataset

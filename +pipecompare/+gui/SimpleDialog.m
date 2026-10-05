@@ -161,6 +161,7 @@ classdef SimpleDialog < handle
                 % a window from none
                 obj.Channels = {};
                 if strcmp(m, obj.CustomBand), obj.Channels = pipecompare.simple.Presets.eegChannels(obj.EEG); end
+                obj.WindowField.Value = '';   % ms of a window are not Hz of a band
                 obj.ChannelsFor = m;
             end
             obj.showChannels();
