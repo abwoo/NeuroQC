@@ -23,6 +23,10 @@ release has a git tag `vX.Y.Z`.
 - Simple mode: with the average reference, EEG channels removed before PipeCompare (with a
   location) are interpolated back first, so the average covers the whole montage. Non-EEG channels
   (EOG, ECG, ...) are no longer offered for restoring anywhere: the scalp cannot predict them.
+- The history gives the edges of filters other than `pop_eegfiltnew` (ERPLAB's `pop_basicfilter`,
+  `pop_firws`, `pop_firpm`, `pop_eegfilt`, `pop_iirfilt`) and of clean_rawdata's own high-pass
+  (the end of its transition band). Before, such data counted as unfiltered, so the simple mode
+  compared filters they already had and could not check them.
 - The dialog says where PipeCompare starts (the raw continuous data with channel locations), which
   steps were already done to the data (they are not compared), that *Standard* fits an ICA in the
   data again (and does not use the components marked in it), and the inconsistencies between the

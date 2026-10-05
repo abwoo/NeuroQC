@@ -49,6 +49,34 @@ verifyEqual(tc, e(strcmp({e.fn}, 'pop_rejepoch')).step, 'reject_epochs');
 verifyEqual(tc, e(1).kind, 'admin');
 end
 
+function testEdgesOfOtherFilters(tc)
+% Filters other than pop_eegfiltnew (ERPLAB, firfilt's windowed sinc, the
+% old and the IIR filter) and clean_rawdata's own high-pass give their
+% edges, so the simple mode knows the data are already filtered there.
+h = sprintf([ ...
+    'EEG  = pop_basicfilter( EEG,  1:32 , ''Boundary'', ''boundary'', ''Cutoff'', [ 0.1 30], ''Design'', ''butter'', ''Filter'', ''bandpass'', ''Order'',  2 );\n' ...
+    'EEG = pop_firws(EEG, ''fcutoff'', 0.5, ''ftype'', ''highpass'', ''wtype'', ''hamming'', ''forder'', 1650, ''minphase'', 0);\n' ...
+    'EEG = pop_eegfilt( EEG, 0, 40, [], [0], 0, 0, ''fir1'', 0);\n' ...
+    'EEG = pop_iirfilt( EEG, 0.05, 0, [], 0, 0);\n' ...
+    'EEG = pop_firma(EEG, ''forder'', 10);\n' ...
+    'EEG = pop_clean_rawdata(EEG, ''FlatlineCriterion'',5,''ChannelCriterion'',0.8,''LineNoiseCriterion'',4,' ...
+    '''Highpass'',[0.25 0.75] ,''BurstCriterion'',20,''WindowCriterion'',''off'',''BurstRejection'',''off'',''Distance'',''Euclidian'');']);
+e = pipecompare.live.History.parse(h);
+p = e(strcmp({e.fn}, 'pop_basicfilter')).params;
+verifyEqual(tc, [p.locutoff p.hicutoff], [0.1 30]); verifyFalse(tc, p.revfilt);
+verifyEqual(tc, e(strcmp({e.fn}, 'pop_firws')).params.locutoff, 0.5);
+p = e(strcmp({e.fn}, 'pop_eegfilt')).params;
+verifyTrue(tc, isnan(p.locutoff)); verifyEqual(tc, p.hicutoff, 40);   % 0: no edge on that side
+verifyEqual(tc, e(strcmp({e.fn}, 'pop_iirfilt')).params.locutoff, 0.05);
+verifyTrue(tc, contains(e(strcmp({e.fn}, 'pop_firma')).note, 'not parsed'));
+EEG = nqc_synth(struct('seconds', 20, 'nPerCond', 5));
+EEG.history = h;
+f = pipecompare.live.DataState.fromEEG(EEG).filters;
+verifyEqual(tc, f.highpass, [0.1 0.5 0.05 0.75]);              % clean_rawdata: the end of its transition band
+verifyEqual(tc, f.lowpass, [30 40]);
+verifyEqual(tc, f.other, 1);                                    % pop_firma only
+end
+
 function testIcaFittedOnAFilteredCopy(tc)
 % The line PipeCompare writes for ICA fitted on a high-passed copy: an ICA
 % step, and no filter of the data.
