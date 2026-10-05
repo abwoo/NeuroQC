@@ -353,6 +353,14 @@ Please also cite the methods it builds on:
   open resource for human event-related potential research. *NeuroImage*, 225, 117465.
 - Zhang, G., Garrett, D. R., & Luck, S. J. (2024). Optimal filters for ERP research I: A general
   approach for selecting filter settings. *Psychophysiology*, 61(6), e14531.
+- White, H. (2000). A reality check for data snooping. *Econometrica*, 68(5), 1097–1126.
+- Romano, J. P., & Wolf, M. (2005). Stepwise multiple testing as formalized data snooping.
+  *Econometrica*, 73(4), 1237–1282.
+
+The pipelines run on EEGLAB (Delorme, A., & Makeig, S. (2004). *Journal of Neuroscience Methods*,
+134(1), 9–21); when the chosen pipeline removes components with ICLabel, cite it too
+(Pion-Tonachini, L., Kreutz-Delgado, K., & Makeig, S. (2019). *NeuroImage*, 198, 181–197). The
+complete reference list is in [docs/METHODS.md](docs/METHODS.md#references).
 
 ## License
 
