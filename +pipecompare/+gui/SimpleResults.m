@@ -164,7 +164,9 @@ classdef SimpleResults < handle
                 pipecompare.PipeCompare.adopt(obj.Result, k, force);
                 close(dlg);
                 uialert(obj.Fig, sprintf(['Pipeline %d is now the current EEGLAB dataset. It is not saved yet: ', ...
-                    'use File > Save current dataset as.'], k), 'Done', 'Icon', 'success');
+                    'use File > Save current dataset as. Its preprocessing is complete: average it (or compute the ', ...
+                    'band power) and measure. Filtering, re-referencing or rejecting epochs again would change ', ...
+                    'what was compared.'], k), 'Done', 'Icon', 'success');
             catch ME
                 if ~isempty(dlg) && isvalid(dlg), close(dlg); end
                 uialert(obj.Fig, ME.message, 'PipeCompare');

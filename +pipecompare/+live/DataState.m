@@ -132,15 +132,17 @@ names = names(:)';
 end
 
 function idx = restorableIdx(EEG)
-% Removed data channels with a location: they can be restored by spherical
-% interpolation (fiducials and unlocated channels cannot).
+% Removed EEG channels with a location: they can be restored by spherical
+% interpolation (fiducials, unlocated channels and non-EEG channels such
+% as EOG or ECG, which the scalp cannot predict, cannot).
 idx = [];
 if ~isfield(EEG, 'chaninfo') || ~isfield(EEG.chaninfo, 'removedchans') || isempty(EEG.chaninfo.removedchans), return; end
 rc = EEG.chaninfo.removedchans;
 if ~isfield(rc, 'X') || ~isfield(rc, 'labels'), return; end
+nonEeg = pipecompare.simple.Presets.isNonEeg(rc);
 for k = 1:numel(rc)
     ty = ''; if isfield(rc, 'type') && ~isempty(rc(k).type), ty = char(string(rc(k).type)); end
-    if ~isempty(rc(k).X) && ~strcmpi(ty, 'FID'), idx(end+1) = k; end %#ok<AGROW>
+    if ~isempty(rc(k).X) && ~strcmpi(ty, 'FID') && ~nonEeg(k), idx(end+1) = k; end %#ok<AGROW>
 end
 end
 

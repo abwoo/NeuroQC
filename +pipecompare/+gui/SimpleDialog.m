@@ -66,7 +66,7 @@ classdef SimpleDialog < handle
             obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', [200 200 620 470], ...
                 'CloseRequestFcn', @(~, ~) obj.close());
             g = uigridlayout(obj.Fig, [10 2]); obj.Grid = g;
-            g.RowHeight = {22, 22, 0, '1x', 22, 22, 22, 22, 44, 30};
+            g.RowHeight = {'fit', 22, 0, '1x', 22, 22, 22, 22, 44, 30};
             g.ColumnWidth = {150, '1x'};
             uilabel(g, 'Text', '1. Data', 'FontWeight', 'bold');
             obj.TypeWhy = uilabel(g, 'Text', obj.typeReason(), 'FontColor', [0.3 0.3 0.3], 'WordWrap', 'on');
@@ -129,6 +129,8 @@ classdef SimpleDialog < handle
             else
                 t = 'Continuous data without events: band power.';
             end
+            % where PipeCompare starts, and what was done before it
+            t = strjoin([{t} pipecompare.simple.Presets.dataAdvice(s)], ' ');
         end
 
         function [items, data] = measures(obj)

@@ -20,6 +20,15 @@ release has a git tag `vX.Y.Z`.
   filtered at those edges; when that alone changes it beyond a pipeline's limit (e.g. a 1 Hz
   high-pass on a P3), the result window and the Command Window say so and suggest starting from
   the unfiltered data. Continuous data only (epoched data no longer hold what was filtered).
+- Simple mode: with the average reference, EEG channels removed before PipeCompare (with a
+  location) are interpolated back first, so the average covers the whole montage. Non-EEG channels
+  (EOG, ECG, ...) are no longer offered for restoring anywhere: the scalp cannot predict them.
+- The dialog says where PipeCompare starts (the raw continuous data with channel locations), which
+  steps were already done to the data (they are not compared), that *Standard* fits an ICA in the
+  data again (and does not use the components marked in it), and the inconsistencies between the
+  data and their history that only the panel showed before. The Command Window gets the same
+  lines. After *Use this pipeline*, the message says the data are ready to average and should not
+  be filtered, re-referenced or rejected again.
 - The panel's *Run search* shows the same progress window as the dialog, with *Stop* (the
   pipelines already finished are ranked); before, a panel search could only be interrupted from the
   Command Window. The panel also has *Save script…*, which writes the selected pipeline as a

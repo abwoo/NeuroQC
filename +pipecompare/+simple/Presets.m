@@ -38,7 +38,9 @@ classdef Presets
     %   step in every pipeline, after the bad channels are interpolated (a
     %   bad channel would otherwise spread into every channel) and before
     %   ICA, in either recipe. Data already average-referenced are averaged
-    %   again after the interpolation. It is not searched: the reference
+    %   again after the interpolation. EEG channels removed before
+    %   PipeCompare are interpolated back before the average (when they
+    %   have locations). It is not searched: the reference
     %   changes the measured quantity, so it is chosen for the analysis,
     %   not by noise.
     %
@@ -182,17 +184,62 @@ classdef Presets
         end
 
         function roi = eegChannels(EEG)
-            % all channels except non-EEG ones (EOG, ECG, EMG, ...), by
-            % type or, when the type is not set, by name (VEOG, HEOG, ECG1,
-            % EYEL; with the POL prefix of some EDF exports: POL EYEL)
+            % all channels except non-EEG ones (EOG, ECG, EMG, ...)
             labels = {EEG.chanlocs.labels};
             roi = labels;
-            keep = cellfun(@isempty, regexpi(labels, '^(POL\s+)?([VH]?EOG|ECG|EKG|EMG|EYE)', 'once'));
-            if isfield(EEG.chanlocs, 'type')
-                ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), EEG.chanlocs(:)', 'UniformOutput', false);
-                keep = keep & ~ismember(ty, {'EOG', 'HEOG', 'VEOG', 'ECG', 'EKG', 'EMG', 'MISC', 'TRIG', 'STIM'});
-            end
+            keep = ~pipecompare.simple.Presets.isNonEeg(EEG.chanlocs);
             if any(keep), roi = labels(keep); end
+        end
+
+        function tf = isNonEeg(chanlocs)
+            % non-EEG channels (EOG, ECG, EMG, ...), by type or, when the
+            % type is not set, by name (VEOG, HEOG, ECG1, EYEL; with the
+            % POL prefix of some EDF exports: POL EYEL)
+            labels = {chanlocs.labels};
+            tf = ~cellfun(@isempty, regexpi(labels, '^(POL\s+)?([VH]?EOG|ECG|EKG|EMG|EYE)', 'once'));
+            if isfield(chanlocs, 'type')
+                ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), chanlocs(:)', 'UniformOutput', false);
+                tf = tf | ismember(ty, {'EOG', 'HEOG', 'VEOG', 'ECG', 'EKG', 'EMG', 'MISC', 'TRIG', 'STIM'});
+            end
+        end
+
+        function lines = dataAdvice(state)
+            % What to know about the data before comparing, in words: where
+            % PipeCompare starts (the raw continuous data), the steps done
+            % before it (not compared), an ICA in the data that Standard
+            % fits again, and the inconsistencies found between the data
+            % and their history.
+            lines = {};
+            steps = {state.process.step};
+            words = {'highpass', 'filtered'; 'lowpass', 'filtered'; 'bandpass', 'filtered'; 'filter_other', 'filtered';
+                'clean_rawdata', 'cleaned with clean_rawdata'; 'badchannels', 'bad channels handled';
+                'interpolate', 'bad channels handled'; 'reref', 're-referenced'; 'ica', 'ICA';
+                'icremove', 'ICA components removed'; 'epoch', 'epoched'};
+            done = unique(words(ismember(words(:, 1), steps), 2), 'stable');
+            if state.isEpoched && ~ismember('epoched', done), done{end+1} = 'epoched'; end
+            if isempty(done)
+                lines{end+1} = ['Start from the raw continuous data (channel locations added): each pipeline ', ...
+                    'filters, references, runs ICA and epochs it.'];
+            else
+                lines{end+1} = sprintf(['Already done to these data: %s. Those steps are not compared; to compare ', ...
+                    'them, start from the raw continuous data (channel locations added).'], strjoin(done, ', '));
+            end
+            icaAt = find(strcmp(steps, 'ica'), 1, 'last');
+            removed = ~isempty(icaAt) && any(strcmp(steps(icaAt+1:end), 'icremove'));
+            if state.ica.present && ~removed
+                t = 'Standard fits ICA again (after the bad channels), so the ICA in these data is not used';
+                if ~isempty(state.ica.flagged)
+                    t = sprintf('%s, nor the %d component(s) marked in it', t, numel(state.ica.flagged));
+                end
+                if isempty(icaAt)
+                    t = [t '. The history does not show where it came from: if components were already ', ...
+                        'removed, choose Filters only'];
+                end
+                lines{end+1} = [t '.'];
+            end
+            % PipeCompare handles these itself on its copy
+            w = state.warnings(~contains(state.warnings, {'urevent', 'EEG.srate'}));
+            lines = [lines w(:)'];
         end
 
         function t = nextStep(result)
@@ -287,6 +334,12 @@ classdef Presets
                         'reference, so a bad channel spreads into every channel'];
                 end
             elseif standard || strcmp(reference, 'average')
+                % channels removed before PipeCompare (EEG data channels with
+                % a location) are interpolated back before an average: an
+                % average over fewer channels is a different reference
+                if strcmp(reference, 'average') && ~isempty(pipecompare.utils.fieldOr(state, 'restorableChannels', []))
+                    plan = plan.add('restore');
+                end
                 % fixed: a searched step before ICA would multiply the
                 % decompositions; kurtosis flags spiky channels, joint
                 % probability noisy ones (e.g. poor contact), so either

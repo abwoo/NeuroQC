@@ -233,6 +233,41 @@ verifyEqual(tc, numel(p.Slots(2).alternatives), 1);                  % no low-pa
 verifyTrue(tc, any(contains(notes, 'high-pass 0.1, 0.3, 0.5 Hz (the data are already high-pass-filtered at 0.5 Hz)')));
 end
 
+function testChannelsRemovedBeforeAreRestoredForTheAverage(tc)
+% EEG channels removed before PipeCompare are interpolated back before an
+% average reference (an average over fewer channels is another reference);
+% non-EEG channels (e.g. VEOG) are never interpolated from the scalp.
+EEG = tc.TestData.EEG;
+c = pipecompare.simple.Presets.contract(EEG, 'P3', {'11'});
+ids = @(p) {p.Slots.id};
+R = pop_select(EEG, 'rmchannel', {'O1', 'O2'});
+st = pipecompare.live.DataState.fromEEG(R);
+verifyTrue(tc, all(ismember({'O1', 'O2'}, st.removedChannels(st.restorableChannels))));
+verifyEqual(tc, ids(pipecompare.simple.Presets.recipe('standard', st, c, 'average')), ...
+    {'restore', 'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
+verifyFalse(tc, ismember('restore', ids(pipecompare.simple.Presets.recipe('standard', st, c))));   % as recorded
+V = EEG; V.chanlocs(1).labels = 'VEOG';
+V = pop_select(V, 'rmchannel', {'VEOG'});
+verifyEmpty(tc, pipecompare.live.DataState.fromEEG(V).restorableChannels);
+end
+
+function testDataAdviceSaysWhereToStart(tc)
+% The dialog says where PipeCompare starts, what was done before it, and
+% that Standard fits an ICA in the data again.
+EEG = tc.TestData.EEG;
+a = pipecompare.simple.Presets.dataAdvice(pipecompare.live.DataState.fromEEG(EEG));
+verifyTrue(tc, startsWith(a{1}, 'Start from the raw continuous data'), a{1});
+H = EEG; H.history = sprintf(['%s\nEEG = pop_eegfiltnew(EEG, ''locutoff'',0.5,''plotfreqz'',0);', ...
+    '\nEEG = pop_reref(EEG, []);'], EEG.history);
+a = pipecompare.simple.Presets.dataAdvice(pipecompare.live.DataState.fromEEG(H));
+verifyTrue(tc, contains(a{1}, 'Already done to these data: filtered, re-referenced'), a{1});
+st = pipecompare.live.DataState.fromEEG(EEG);
+st.ica.present = true; st.ica.flagged = [1 2];
+a = strjoin(pipecompare.simple.Presets.dataAdvice(st), ' ');
+verifyTrue(tc, contains(a, 'Standard fits ICA again') && contains(a, 'the 2 component(s) marked') && ...
+    contains(a, 'choose Filters only'), a);
+end
+
 function testFiltersBeforePipeCompareAreChecked(tc)
 % Filters applied before PipeCompare are outside the pipelines' signal
 % check; the same known signal is filtered at the history's edges and a

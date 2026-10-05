@@ -68,6 +68,10 @@ cur = pipecompare.live.Session.current();
 assert(~isempty(cur) && strcmp(pipecompare.live.Session.fingerprint(cur), pipecompare.live.Session.fingerprint(EEG)), ...
     'PipeCompare:Simple', 'pop_pipecompare works on the current EEGLAB dataset; make this dataset current first.');
 state = pipecompare.live.DataState.fromEEG(EEG);
+% what was done to the data before (the hint for raw data is the dialog's)
+advice = pipecompare.simple.Presets.dataAdvice(state);
+advice = advice(~startsWith(advice, 'Start from the raw'));
+for k = 1:numel(advice), pipecompare.utils.log('%s', advice{k}); end
 assert(~(state.isEpoched && pipecompare.simple.Presets.isBand(opts.measure)), 'PipeCompare:Simple', ['Band power is ', ...
     'compared on continuous recordings (e.g. resting state); this dataset is already cut into epochs. Choose an ERP ', ...
     'measure, or use the continuous data.']);
