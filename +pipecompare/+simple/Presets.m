@@ -141,7 +141,7 @@ classdef Presets
                 roi = P.channels(labels, custom.channels);
                 assert(~isempty(roi), 'PipeCompare:Simple', 'Choose the electrodes of your own window.');
                 p = struct('name', 'ERP', 'lockedTo', 'stimulus', 'epoch', [-0.2 max(0.8, w(2) + 0.2)], ...
-                    'baseline', [-0.2 0], 'sites', {roi}, 'window', w, 'polarity', 'positive');
+                    'baseline', [-0.2 0], 'sites', {roi}, 'window', w, 'polarity', 'positive', 'contra', {{}}, 'side', '');
             else
                 p = P.component(measure);
             end
