@@ -23,6 +23,12 @@ classdef Presets
     %   unmixing are both linear, so their order does not change the data).
     %   ASR is compared from the panel or a script (it multiplies the
     %   search beyond the simple mode's limit).
+    %
+    %   Reference: kept as recorded, or the average reference as a fixed
+    %   step in every pipeline, after the bad channels are interpolated (a
+    %   bad channel would otherwise spread into every channel) and before
+    %   ICA. It is not searched: the reference changes the measured
+    %   quantity, so it is chosen for the analysis, not by noise.
 
     methods (Static)
         function names = componentNames()
@@ -137,6 +143,11 @@ classdef Presets
             roi = labels(at);
         end
 
+        function labels = nonEegChannels(EEG)
+            % channels typed as non-EEG (EOG, ECG, ...): left out of an average reference
+            labels = setdiff({EEG.chanlocs.labels}, pipecompare.simple.Presets.eegChannels(EEG), 'stable');
+        end
+
         function roi = eegChannels(EEG)
             % all channels except those typed as non-EEG (EOG, ECG, EMG, ...)
             labels = {EEG.chanlocs.labels};
@@ -148,8 +159,14 @@ classdef Presets
             end
         end
 
-        function [plan, notes] = recipe(name, state, contract)
-            % The plan of a recipe for these data, and why a step was left out.
+        function [plan, notes] = recipe(name, state, contract, reference, exclude)
+            % The plan of a recipe for these data, and why a step was left
+            % out. reference: 'asis' (default) or 'average'; exclude: the
+            % channels left out of the average (e.g. EOG, ECG).
+            if nargin < 4 || isempty(reference), reference = 'asis'; end
+            if nargin < 5, exclude = {}; end
+            assert(any(strcmp(reference, {'asis', 'average'})), 'PipeCompare:Simple', ...
+                'reference must be asis or average.');
             pipecompare.simple.Presets.recipeLabel(name);           % validates the name
             notes = {};
             plan = pipecompare.plan.Plan();
@@ -163,6 +180,7 @@ classdef Presets
                     % the catalog defaults, fixed: a searched step before
                     % ICA would multiply the decompositions
                     plan = plan.add('badchannels', 'measure', 'kurt', 'threshold', 5);
+                    plan = addReference(plan, reference, exclude);
                     if exist('pop_iclabel', 'file') ~= 2
                         notes{end+1} = 'ICLabel is not installed: ICA and IC removal left out';
                     else
@@ -170,6 +188,7 @@ classdef Presets
                     end
                 end
             end
+            if ~any(strcmp({plan.Slots.id}, 'reref')), plan = addReference(plan, reference, exclude); end
             if continuous
                 % filter edges the data already have are not alternatives:
                 % they leave the data unchanged but filter the known
@@ -185,6 +204,13 @@ classdef Presets
             if standard, plan = plan.add('reject_threshold'); end
         end
     end
+end
+
+function plan = addReference(plan, reference, exclude)
+if ~strcmp(reference, 'average'), return; end
+args = {'mode', 'average'};
+if ~isempty(exclude), args = [args {'exclude', cellstr(exclude)}]; end
+plan = plan.add('reref', args{:});
 end
 
 function [plan, notes] = addFilter(plan, notes, type, earlier, keep, edge)

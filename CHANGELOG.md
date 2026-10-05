@@ -5,6 +5,11 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Simple mode: *Reference* (as recorded, or average reference) as a fixed step of every pipeline,
+  after the bad channels and before ICA (`pop_pipecompare(..., 'reference', 'average')`).
+  Previously re-referencing had to be done before PipeCompare, which spread bad channels into
+  the average.
+
 - Simple mode reads the data unit from the amplitude scale, as the panel does: on data stored in
   volts the epoch-rejection thresholds previously removed nothing.
 - Simple mode no longer compares filter edges the data already have (from the history): they left

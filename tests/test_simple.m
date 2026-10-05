@@ -70,6 +70,13 @@ verifyEqual(tc, ids(p), {'highpass', 'lowpass', 'epoch', 'baseline'});
 [p, notes] = pipecompare.simple.Presets.recipe('standard', st, c);
 verifyEqual(tc, ids(p), {'badchannels', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
 verifyEmpty(tc, notes);                                          % ICA first: one decomposition for every filter choice
+% the average reference: fixed, after the bad channels (a bad channel
+% would spread into every channel) and before ICA
+p = pipecompare.simple.Presets.recipe('standard', st, c, 'average', {'VEOG'});
+verifyEqual(tc, ids(p), {'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
+verifyEqual(tc, p.Slots(2).alternatives{1}.params.exclude, {'VEOG'});   % non-EEG channels left out of the average
+p = pipecompare.simple.Presets.recipe('filters', st, c, 'average');
+verifyEqual(tc, ids(p), {'reref', 'highpass', 'lowpass', 'epoch', 'baseline'});
 noloc = st; noloc.nLocated = 0;
 [p, notes] = pipecompare.simple.Presets.recipe('standard', noloc, c);
 verifyFalse(tc, any(ismember({'badchannels', 'ica', 'icremove'}, ids(p))));
@@ -109,6 +116,12 @@ d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged()
 verifyEqual(tc, n, 4 * 3 * 3 * 3);                              % filters x ICLabel threshold x rejection threshold
 verifyTrue(tc, contains(msg, '(1 ICA decomposition)'));
 verifyEqual(tc, char(d.RunButton.Enable), 'on');
+verifyEqual(tc, d.RefDrop.Value, 'asis');                       % the reference as recorded unless chosen
+d.RefDrop.Value = 'average';
+verifyEqual(tc, d.update(), 4 * 3 * 3 * 3);                     % fixed: no more pipelines
+o = d.options();
+verifyEqual(tc, o.reference, 'average');
+d.RefDrop.Value = 'asis';
 d.RecipeDrop.Value = 'filters';
 [n, msg] = d.update();
 verifyEqual(tc, n, 12);                                         % 4 high-pass x 3 low-pass edges
