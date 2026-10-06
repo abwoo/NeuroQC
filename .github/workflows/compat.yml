@@ -1,0 +1,58 @@
+name: compatibility
+
+# Runs the suites that open windows or run whole searches on older MATLAB
+# releases (with the current EEGLAB) and on older EEGLAB releases (with
+# the latest MATLAB), so the versions stated in the README are tested.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  compat:
+    name: MATLAB ${{ matrix.matlab }} + EEGLAB ${{ matrix.eeglab }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { matlab: R2021b, eeglab: 2026.0.0 }
+          - { matlab: R2022b, eeglab: 2026.0.0 }
+          - { matlab: R2023b, eeglab: 2026.0.0 }
+          - { matlab: R2024b, eeglab: 2026.0.0 }
+          - { matlab: latest, eeglab: 2024.2.1 }
+          - { matlab: latest, eeglab: 2025.1.0 }
+    env:
+      DISPLAY: ":99"
+    steps:
+      - name: Checkout PipeCompare
+        uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+
+      - name: Checkout EEGLAB ${{ matrix.eeglab }}
+        run: git clone --depth 1 --branch ${{ matrix.eeglab }} --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+
+      - name: Start a virtual display
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q xvfb
+          Xvfb :99 -screen 0 1920x1080x24 &
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: ${{ matrix.matlab }}
+          products: Signal_Processing_Toolbox
+
+      - name: Run tests
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            disp(version); addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
+            cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
+            r = run_all({'test_history', 'test_plan', 'test_panel_text', 'test_statistics', 'test_invariants', ...
+                         'test_simple', 'test_eeglab', 'test_signal', 'test_engine'});
+            assert(~any([r.Failed]), 'PipeCompare:CI', '%d test(s) failed', sum([r.Failed]));
