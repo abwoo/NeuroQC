@@ -12,7 +12,7 @@ jobs:
       - run: sudo apt-get install -y -q xvfb && (Xvfb :99 -screen 0 1920x1080x24 &)
       - uses: matlab-actions/setup-matlab@v2
         with: { release: R2022b, products: Signal_Processing_Toolbox }
-      - name: plain uialert
+      - name: no panel
         uses: matlab-actions/run-command@v2
         timeout-minutes: 3
         continue-on-error: true
@@ -20,8 +20,13 @@ jobs:
           command: |
             addpath(fullfile(pwd, 'eeglab')); eeglab nogui; cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
             M = @(s) fprintf(2, '#### %s\n', s);
-            f = uifigure; uialert(f, 'x', 'y'); M('done plain');
-      - name: uialert after drawnow
+            EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30, 'alphaUv', 10)); nqc_setBase(EEG);
+            [~, noPz] = evalc('pop_select(EEG, ''rmchannel'', {''Pz''})');
+            d2 = pipecompare.gui.SimpleDialog(noPz); d2.EventList.Value = {'11'}; d2.MeasureDrop.Value = 'P3'; d2.measureChanged(); M('P');
+            o = d2.options(); M('opts');
+            try, c = d2.contract(o); M('no error'); catch ME, M(['err: ' ME.message]); end
+            uialert(d2.Fig, 'x', 'y'); M('alert done');
+      - name: with panel
         uses: matlab-actions/run-command@v2
         timeout-minutes: 3
         continue-on-error: true
@@ -29,22 +34,10 @@ jobs:
           command: |
             addpath(fullfile(pwd, 'eeglab')); eeglab nogui; cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
             M = @(s) fprintf(2, '#### %s\n', s);
-            f = uifigure; drawnow; uialert(f, 'x', 'y'); M('done drawnow');
-      - name: uialert on dialog
-        uses: matlab-actions/run-command@v2
-        timeout-minutes: 3
-        continue-on-error: true
-        with:
-          command: |
-            addpath(fullfile(pwd, 'eeglab')); eeglab nogui; cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
-            M = @(s) fprintf(2, '#### %s\n', s);
-            EEG = nqc_synth(struct('seconds', 60)); [~, E] = evalc('pop_select(EEG, ''rmchannel'', {''Pz''})'); d = pipecompare.gui.SimpleDialog(E); M('made'); drawnow; M('drawn'); uialert(d.Fig, 'x', 'y'); M('done dialog');
-      - name: uialert on dialog no drawnow
-        uses: matlab-actions/run-command@v2
-        timeout-minutes: 3
-        continue-on-error: true
-        with:
-          command: |
-            addpath(fullfile(pwd, 'eeglab')); eeglab nogui; cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
-            M = @(s) fprintf(2, '#### %s\n', s);
-            EEG = nqc_synth(struct('seconds', 60)); d = pipecompare.gui.SimpleDialog(EEG); M('made'); uialert(d.Fig, 'x', 'y'); M('done dialog2');
+            EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30, 'alphaUv', 10)); nqc_setBase(EEG);
+            app = pipecompare.gui.Panel(); M('panel');
+            [~, noPz] = evalc('pop_select(EEG, ''rmchannel'', {''Pz''})');
+            d2 = pipecompare.gui.SimpleDialog(noPz); d2.EventList.Value = {'11'}; d2.MeasureDrop.Value = 'P3'; d2.measureChanged(); M('P');
+            o = d2.options(); M('opts');
+            try, c = d2.contract(o); M('no error'); catch ME, M(['err: ' ME.message]); end
+            uialert(d2.Fig, 'x', 'y'); M('alert done');
