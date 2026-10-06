@@ -273,7 +273,7 @@ classdef Presets
                 end
             end
             reref = any(cellfun(@(e) strcmp(e.type, 'reref'), result.leaves(1).path));
-            if reref || strcmpi(result.state.reference, 'average'), return; end
+            if reref || any(strcmpi(result.state.reference, {'average', 'averef'})), return; end   % (pop_averef writes averef)
             t = strtrim([t ' Most pipelines lost too many epochs to the rejection thresholds, and the data keep their ', ...
                 'recorded reference, which often makes amplitudes large. Try the average reference (', how, ').']);
         end

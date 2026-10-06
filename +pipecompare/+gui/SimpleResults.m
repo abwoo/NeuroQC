@@ -108,13 +108,30 @@ classdef SimpleResults < handle
         function t = name(obj, k)
             % Pipeline k by the settings that differ between pipelines, in
             % words (the full key is in the Command Window and the script).
+            % A step that some pipelines skip is named in all of them: by its
+            % setting where it has one, and as skipped where it is not in the
+            % pipeline (a skipped step leaves no entry in the path).
             parts = {};
-            for e = obj.Result.leaves(k).path
+            path = obj.Result.leaves(k).path;
+            skippable = obj.skippable();
+            for e = path
                 i = e{1};
-                if strcmp(i.type, 'none'), parts{end+1} = noneText(i.slot, obj.Result.state); continue; end %#ok<AGROW>
                 for f = i.searched, parts{end+1} = settingText(i.type, f{1}, i.params.(f{1})); end %#ok<AGROW>
+                if isempty(i.searched) && ismember(i.slot, skippable)
+                    if isfield(i.params, 'cutoff'), parts{end+1} = settingText(i.type, 'cutoff', i.params.cutoff); %#ok<AGROW>
+                    else, parts{end+1} = stepText(i.type); end %#ok<AGROW>
+                end
             end
+            here = cellfun(@(e) e.slot, path, 'UniformOutput', false);
+            skipped = setdiff(skippable, here, 'stable');   % (by index: an empty result can be 0x1)
+            for q = 1:numel(skipped), parts{end+1} = noneText(skipped{q}, obj.Result.state); end %#ok<AGROW>
             if isempty(parts), t = obj.Result.labels{k}; else, t = strjoin(parts, ', '); end
+        end
+
+        function ids = skippable(obj)
+            % the plan's steps that some pipelines skip
+            S = obj.Result.plan.Slots;
+            ids = {S(arrayfun(@(s) any(cellfun(@(a) strcmp(a.type, 'none'), s.alternatives)), S)).id};
         end
 
         function t = shared(obj)
@@ -122,7 +139,7 @@ classdef SimpleResults < handle
             names = {};
             for e = obj.Result.leaves(1).path
                 i = e{1};
-                if strcmp(i.type, 'none') || ~isempty(i.searched), continue; end
+                if ~isempty(i.searched) || ismember(i.slot, obj.skippable()), continue; end
                 names{end+1} = stepText(i.type); %#ok<AGROW>
             end
             t = '';
@@ -173,10 +190,21 @@ classdef SimpleResults < handle
             end
         end
 
-        function saveScript(obj, file)
+        function saveScript(obj, file, answer)
+            % As adopt: a pipeline that did not pass the checks is saved only
+            % after a confirmation that says why (answer: for scripts).
             try
                 k = pipecompare.run.Executor.pickCandidate(obj.Result, obj.chosen());
-                if nargin < 2
+                T = obj.Result.ranking.table;
+                if ~strcmp(T.status{k}, 'feasible')
+                    if nargin < 3
+                        answer = uiconfirm(obj.Fig, sprintf('Pipeline %d did not pass the checks: %s. Save it anyway?', ...
+                            k, char(T.reason{k})), 'PipeCompare', 'Options', {'Save anyway', 'Cancel'}, ...
+                            'DefaultOption', 2, 'CancelOption', 2, 'Icon', 'warning');
+                    end
+                    if ~strcmp(answer, 'Save anyway'), return; end
+                end
+                if nargin < 2 || isempty(file)
                     [f, p] = uiputfile('*.m', 'Save the pipeline as an EEGLAB function', sprintf('pipeline%d.m', k));
                     if isequal(f, 0), return; end
                     file = fullfile(p, f);
@@ -217,7 +245,7 @@ end
 
 function t = noneText(slot, state)
 % A skipped step in words; a filter the data already had is kept.
-t = sprintf('no %s', slot);
+t = sprintf('no %s', strrep(slot, 'pass', '-pass'));
 if ~any(strcmp(slot, {'highpass', 'lowpass'})) || ~isfield(state, 'filters') || isempty(state.filters.(slot)), return; end
 edge = pipecompare.utils.ternary(strcmp(slot, 'highpass'), max(state.filters.(slot)), min(state.filters.(slot)));
 t = sprintf('%s as in the data (%g Hz)', strrep(slot, 'pass', '-pass'), edge);

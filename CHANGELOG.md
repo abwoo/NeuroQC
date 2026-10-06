@@ -5,7 +5,8 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
-Small fixes; scores and recommendations are unchanged.
+Small fixes. Scores and recommendations are unchanged, except on data cleaned with clean_rawdata
+from a script whose high-pass PipeCompare now sees (see below).
 
 - *Save script…* for ERPs now writes the components (name, window, electrodes, measure) into the
   script's analysis contract, so that contract can be used to score data again. The script's steps
@@ -22,6 +23,20 @@ Small fixes; scores and recommendations are unchanged.
 - Event-related band power: a baseline outside the epoch is reported before the run. A band-power
   contract given both `segment` and `conditions`/`epoch`/`baseline` is an error, since one of them
   would be ignored.
+- Filters applied before PipeCompare: clean_rawdata's own high-pass is now recognised in every form
+  a history can hold: option names in any case or as `highpass_band`, the option left out (it then
+  uses its default, a high-pass at 0.75 Hz), and switched off. Before, only the form the EEGLAB
+  dialog writes was read, so a high-pass done this way was not taken into account (the choice of
+  high-pass values and the warning about filters applied before PipeCompare use it).
+- Results window: a step that only some pipelines have (e.g. the high-pass when the data were
+  already filtered) is now named in every pipeline: "high-pass 0.5 Hz" or "high-pass as in the
+  data". Before, two such pipelines could have the same name.
+- Data re-referenced with `pop_averef` (EEG.ref = 'averef') are recognised as average-referenced,
+  so the results no longer suggest trying the average reference.
+- *Save script…* of a pipeline that did not pass the checks asks first, as *Use this pipeline*
+  does, in the simple mode and in the panel.
+- Parallel search: the progress window counts the pipelines finished on the pool, and *Stop* stops
+  the pool's work too (it used to take effect only after the parallel part).
 
 ## 0.9.2 (2026-10-06)
 

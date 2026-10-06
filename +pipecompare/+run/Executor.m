@@ -248,7 +248,22 @@ classdef Executor
             kids = tree(node).children;
             if isempty(kids), return; end
             pipecompare.utils.log('Parallel: %d independent subtrees on the pool.', numel(kids));
-            env.opts.progress = [];   % a caller's window cannot be reached from the workers
+            % The caller's progress window cannot be reached from the workers:
+            % they report to it through a DataQueue (each finished pipeline,
+            % and each check for Stop), and its Stop reaches them as a file
+            % they look for (the pool's workers run on this computer).
+            prog = env.opts.progress; env.opts.progress = [];
+            stopFile = [tempname '_pipecompare_stop'];
+            cleanStop = onCleanup(@() deleteIfThere(stopFile)); %#ok<NASGU>
+            if ~isempty(prog)
+                try
+                    q = parallel.pool.DataQueue;
+                    afterEach(q, @(n) relayProgress(prog, n, stopFile));
+                    env.opts.progress = @(n) workerProgress(q, n, stopFile);
+                catch ME
+                    pipecompare.utils.log('Progress and Stop are not available while the pool runs (%s).', ME.message);
+                end
+            end
             parts = cell(1, numel(kids));
             parfor k = 1:numel(kids)
                 sub = env;
@@ -701,6 +716,22 @@ function stop = tick(env, n)
 % return its request to stop.
 stop = false;
 if isfield(env.opts, 'progress') && ~isempty(env.opts.progress), stop = env.opts.progress(n); end
+end
+
+function relayProgress(prog, n, stopFile)
+% client side of a parallel run: show the workers' progress; Stop pressed
+% there leaves the file the workers look for
+if prog(n) && ~isfile(stopFile), fclose(fopen(stopFile, 'w')); end
+end
+
+function stop = workerProgress(q, n, stopFile)
+% worker side of a parallel run (the progress callback tick() calls)
+send(q, n);
+stop = isfile(stopFile);
+end
+
+function deleteIfThere(file)
+if isfile(file), delete(file); end
 end
 
 function saveLeaf(env, cand)
