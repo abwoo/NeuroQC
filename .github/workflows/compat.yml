@@ -13,13 +13,16 @@ on:
 jobs:
   compat:
     name: MATLAB ${{ matrix.matlab }} + EEGLAB ${{ matrix.eeglab }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os || 'ubuntu-latest' }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { matlab: R2021b, eeglab: 2026.0.0 }
-          - { matlab: R2022b, eeglab: 2026.0.0 }
+          # MathWorks supports these releases on Ubuntu 22.04, not on 24.04
+          # (there, R2022b hung inside MATLAB's uialert)
+          - { matlab: R2021b, eeglab: 2026.0.0, os: ubuntu-22.04 }
+          - { matlab: R2022b, eeglab: 2026.0.0, os: ubuntu-22.04 }
           - { matlab: R2023b, eeglab: 2026.0.0 }
           - { matlab: R2024b, eeglab: 2026.0.0 }
           - { matlab: latest, eeglab: 2024.2.1 }
