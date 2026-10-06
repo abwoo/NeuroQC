@@ -804,6 +804,16 @@ ok = pipecompare.eval.Contract('analysis', 'bandpower', 'segment', 2, 'bands', {
 ok.validate(st);
 [~, Ep] = evalc('pop_epoch(EEG, {''11''}, [-0.2 0.8])');
 verifyError(tc, @() ok.validate(pipecompare.live.DataState.fromEEG(Ep)), 'PipeCompare:Contract');   % segments need continuous data
+% event-related band power: a baseline outside the epoch is caught before the run
+ev = {'analysis', 'bandpower', 'conditions', {'t', {'11'}}, 'epoch', [-0.5 1.5], 'bands', {'theta', [4 8], {'Fz'}}};
+noBase = pipecompare.eval.Contract(ev{:}); noBase.validate(st);
+inside = pipecompare.eval.Contract(ev{:}, 'baseline', [-0.5 0]); inside.validate(st);
+outside = pipecompare.eval.Contract(ev{:}, 'baseline', [-1 0]);
+verifyError(tc, @() outside.validate(st), 'PipeCompare:Contract');
+reversed = pipecompare.eval.Contract(ev{:}, 'baseline', [0 -0.2]);
+verifyError(tc, @() reversed.validate(st), 'PipeCompare:Contract');
+% segment together with conditions: one of them would be ignored, so it is an error
+verifyError(tc, @() pipecompare.eval.Contract(ev{:}, 'segment', 2), 'PipeCompare:Contract');
 end
 
 function testEventRelatedBandPower(tc)
@@ -838,6 +848,29 @@ for i = 1:numel(cs)
     out = feval(name, EEG);
     m = pipecompare.eval.Measure.candidate(out, r.contract, r.ref);
     verifyEqual(tc, [m.objectives.agg], [r.cands(1).m.objectives.agg], 'RelTol', 1e-6);
+end
+end
+
+function testErpScriptKeepsTheComponents(tc)
+% NQC-034: writeScript left the components out of an ERP contract, so the
+% contract in the saved script could not be scored again.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0));
+nqc_setBase(EEG);
+base = {'epoch', [-0.2 1], 'baseline', [-0.2 0]};
+cs = {pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, base{:}, 'components', ...
+          {'P3', [0.3 0.5], {'Pz', 'P3', 'P4'}, {'peakAmplitude', 'negative'}; 'N1', [0.08 0.12], {'Cz'}, 'mean'}), ...
+      pipecompare.eval.Contract('conditions', {'l', {'11'}; 'r', {'31'}}, base{:}, 'components', ...
+          {'LAT', [0.2 0.4], {'P3', 'P4'}, 'mean', {'P4', 'P3'}})};   % contralateral minus ipsilateral
+d = tempname; mkdir(d); cleanup = onCleanup(@() rmdir(d, 's')); %#ok<NASGU>
+for i = 1:numel(cs)
+    p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('epoch'); p = p.add('baseline');
+    r = pipecompare.PipeCompare.optimize(p, cs{i});
+    f = fullfile(d, sprintf('nqc_erp_script%d.m', i));
+    pipecompare.PipeCompare.writeScript(r, 1, f);
+    L = strtrim(strsplit(fileread(f), newline));
+    contract = []; eval(L{startsWith(L, 'contract = ')});
+    verifyEqual(tc, contract.toStruct(), r.contract.toStruct());
+    contract.validate(r.state);
 end
 end
 

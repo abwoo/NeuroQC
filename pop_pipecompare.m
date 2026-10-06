@@ -147,6 +147,7 @@ elseif ~pipecompare.simple.Presets.isBand(opts.measure)
 elseif opts.segment ~= 2, args = [args {'segment', opts.segment}]; end
 args = [args {'recipe', opts.recipe}];
 if strcmp(opts.reference, 'average'), args = [args {'reference', 'average'}]; end
+if strcmp(opts.show, 'off'), args = [args {'show', 'off'}]; end
 com = sprintf('EEG = pop_pipecompare(EEG, %s);', vararg2str(args));
 if ~strcmp(opts.show, 'off'), pipecompare.gui.SimpleResults(result); end
 end

@@ -76,6 +76,14 @@ classdef PipeCompare
             if strcmp(c.analysis, 'bandpower')
                 args = {'analysis', 'bandpower', 'bands', [{c.bands.name}' {c.bands.freq}' {c.bands.roi}']};
                 if c.isSegmented(), args = [args {'segment', c.segment}]; end
+            elseif ~isempty(c.components)
+                % what is measured: name, window, ROI, {measure, polarity}
+                % and, for contralateral minus ipsilateral, the contra column
+                comps = c.components;
+                rows = arrayfun(@(m) {m.name, m.window, m.roi, {m.measure, m.polarity}}, comps, 'UniformOutput', false);
+                rows = vertcat(rows{:});
+                if isfield(comps, 'contra'), rows(:, 5) = {comps.contra}'; end
+                args = {'components', rows};
             end
             if ~c.isSegmented() && ~isempty(c.epoch)
                 conds = [{c.conditions.name}' {c.conditions.events}'];

@@ -406,6 +406,9 @@ d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged()
 verifyEqual(tc, char(d.AdvancedButton.Enable), 'on');
 app = d.advanced(); ca = onCleanup(@() delete(app)); %#ok<NASGU>
 verifyTrue(tc, ismember('ica', {app.Plan.Slots.id}));           % the Standard recipe
+plan = app.PlanTable.Data(:, 3);                                % the epoch row shows the epoch set above it
+verifyFalse(tc, any(cellfun(@(s) contains(char(s), 'not set yet'), plan)));
+verifyTrue(tc, any(cellfun(@(s) contains(char(s), sprintf('window [%s] s', app.EpochField.Value)), plan)));
 [~, noPz] = evalc('pop_select(EEG, ''rmchannel'', {''Pz''})');
 d2 = pipecompare.gui.SimpleDialog(noPz); c2 = onCleanup(@() delete(d2)); %#ok<NASGU>
 d2.EventList.Value = {'11'}; d2.MeasureDrop.Value = 'P3'; d2.measureChanged();
@@ -439,10 +442,12 @@ verifyTrue(tc, contains(txt, '12 pipelines compared'));
 verifyTrue(tc, contains(fileread(fullfile(tempdir, 'pipecompare_last_run.log')), 'pop_eegfiltnew'));   % the full log
 verifyEqual(tc, out, EEG);                                      % the dataset is not modified
 verifyEqual(tc, numel(r.cands), 12);
-verifyEqual(tc, com, 'EEG = pop_pipecompare(EEG, ''measure'',''P3'',''events'',{''11'',''31''},''recipe'',''filters'');');
+verifyEqual(tc, com, ['EEG = pop_pipecompare(EEG, ''measure'',''P3'',''events'',{''11'',''31''},''recipe'',''filters'',', ...
+    '''show'',''off'');']);                                      % 'show','off' is repeated too
 evalin('base', 'clear pipecompare_result');
+nFig = numel(findall(groot, 'Type', 'figure'));
 evalc(com);                                                     % the command repeats the comparison
-delete(findall(groot, 'Type', 'figure', 'Name', 'Pipeline comparison'));
+verifyEqual(tc, numel(findall(groot, 'Type', 'figure')), nFig); % without opening windows
 verifyEqual(tc, evalin('base', 'pipecompare_result.labels'), r.labels);
 verifyEqual(tc, evalin('base', 'pipecompare_result.labels'), r.labels);
 [~, ~, rb] = pop_pipecompare(EEG, 'measure', 'alpha', 'recipe', 'filters', 'show', 'off');

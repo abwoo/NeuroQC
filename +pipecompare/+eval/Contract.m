@@ -114,6 +114,9 @@ classdef Contract
                 end
             end
             if obj.isSegmented()
+                given = intersect(cellfun(@char, varargin(1:2:end), 'UniformOutput', false), {'conditions', 'epoch', 'baseline'});
+                assert(isempty(given), 'PipeCompare:Contract', ['Band power takes either segment (continuous data) or ', ...
+                    'conditions and epoch (event-related), not both; %s would be ignored.'], strjoin(given, ', '));
                 % the segments are the trials: one condition, time-locked to
                 % the segment events, window = the segment
                 obj.conditions = struct('name', 'segments', 'events', {{pipecompare.eval.Contract.SegmentEvent}});
@@ -239,6 +242,9 @@ classdef Contract
             else
                 assert(~isempty(obj.conditions) && numel(obj.epoch) == 2 && obj.epoch(1) < obj.epoch(2), ...
                     'PipeCompare:Contract', 'Band power needs either segment (continuous data) or conditions and epoch.');
+                bl = obj.baseline;   % optional here; when given, as for ERPs
+                assert(isempty(bl) || (numel(bl) == 2 && bl(1) < bl(2) && bl(1) >= obj.epoch(1) && bl(2) <= obj.epoch(2)), ...
+                    'PipeCompare:Contract', 'baseline must lie inside the epoch.');
             end
             obj.validateTrialRule();
             if ~haveState, return; end

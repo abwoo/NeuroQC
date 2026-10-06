@@ -340,7 +340,7 @@ classdef SimpleDialog < handle
             if ~isempty(c)
                 [plan, notes] = pipecompare.simple.Presets.recipe(o.recipe, obj.State, c, o.reference, ...
                     pipecompare.simple.Presets.nonEegChannels(obj.EEG));
-                app.Plan = plan; app.showPlan();
+                app.Plan = plan;
                 if strcmp(c.analysis, 'bandpower')
                     app.AnalysisDrop.Value = 'bandpower'; app.SegField.Value = c.segment; app.analysisChanged();
                     b = c.bands(1);
@@ -352,6 +352,7 @@ classdef SimpleDialog < handle
                     if c.isLateral(1), contra = comp.contra; end
                     app.addComponent(comp.name, comp.window, comp.roi, comp.measure, comp.polarity, contra);
                 end
+                app.showPlan();   % after the fields: the epoch and baseline rows show them
                 app.settingsChanged();
                 for k = 1:numel(notes), pipecompare.utils.log('Recipe %s: %s.', o.recipe, notes{k}); end
             end

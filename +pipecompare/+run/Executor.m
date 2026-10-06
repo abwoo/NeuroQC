@@ -200,15 +200,11 @@ classdef Executor
                         fprintf('    %s\n', coms{q});
                         E2 = eeg_hist(E2, coms{q});
                     end
-                    S2 = []; unmatched = {};
-                    if ~isempty(S)
-                        [~, S2, matched] = evalc('pipecompare.run.Steps.replayDecision(in, S, info, ctx)');
-                        if ~matched, unmatched = {in.type}; end
-                    end
                 catch ME
                     out = [out; failUnder(env, under, in, ME)]; %#ok<AGROW>
                     continue;
                 end
+                [S2, unmatched] = replayCopy(in, S, info, ctx);
                 [ctx2, acc2] = advance(in, ctx, acc, info, coms, unmatched, toc(t0));
                 for li = tree(child).leaves
                     if env.done(li), continue; end
@@ -236,15 +232,11 @@ classdef Executor
                 try
                     [E, coms, info] = runStep(in, E, ctx, env.opts.verbose);
                     for q = 1:numel(coms), fprintf('    %s\n', coms{q}); E = eeg_hist(E, coms{q}); end
-                    unmatched = {};
-                    if ~isempty(S)
-                        [~, S, matched] = evalc('pipecompare.run.Steps.replayDecision(in, S, info, ctx)');
-                        if ~matched, unmatched = {in.type}; end
-                    end
                 catch ME   % same handling as runSubtree: the candidates below fail, the search goes on
                     out = [out; failUnder(env, leavesUnder(tree, child), in, ME)];
                     return;
                 end
+                [S, unmatched] = replayCopy(in, S, info, ctx);
                 [ctx, acc] = advance(in, ctx, acc, info, coms, unmatched, toc(t0));
                 for li = tree(child).leaves
                     if env.done(li), continue; end
@@ -641,6 +633,22 @@ if isfield(info, 'ica'), acc.ica{end+1} = info.ica; end
 if isfield(info, 'overLimit') && ~isempty(info.overLimit.counts)
     [labels, ~, j] = unique([acc.overLimit.labels(:); info.overLimit.labels(:)]);
     acc.overLimit = struct('labels', {labels(:)'}, 'counts', accumarray(j(:), [acc.overLimit.counts(:); info.overLimit.counts(:)])');
+end
+end
+
+function [S, unmatched] = replayCopy(in, S, info, ctx)
+% The step's decisions applied to the signal-check copy. An error here
+% costs only the signal check of the candidates below (they are excluded
+% with 'signal check missing'), not the candidates: their real data ran.
+unmatched = {};
+if isempty(S), return; end
+try
+    [~, S, matched] = evalc('pipecompare.run.Steps.replayDecision(in, S, info, ctx)');
+    if ~matched, unmatched = {in.type}; end
+catch ME
+    pipecompare.utils.log('Signal check: the copy failed at step %s (%s); the pipelines below have no signal check.', ...
+        in.label, ME.message);
+    S = [];
 end
 end
 
