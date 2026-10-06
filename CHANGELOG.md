@@ -3,6 +3,20 @@
 All notable changes. Versions follow `PipeCompare.Version` (`NeuroQC.Version` up to 0.7.1); each
 release has a git tag `vX.Y.Z`.
 
+## 0.9.2 (2026-10-06)
+
+In short: PipeCompare is now tested on older MATLAB and EEGLAB releases, and parallel execution
+works on MATLAB R2021b. Results are unchanged.
+
+- The full test suite runs automatically on MATLAB R2021b, R2023b, R2024b and the latest release,
+  and on EEGLAB 2024.2.1, 2025.1.0 and 2026.0.0. The README lists the tested versions.
+- Parallel execution on MATLAB releases before R2022b: the pool profile there is called `local`
+  (from R2022b on, `Processes`). The search used to fall back to running one pipeline at a time
+  without saying so.
+- A test compared volt-converted ICA weights exactly; EEGLAB 2024 and 2025 scale each component to
+  RMS microvolts (EEGLAB's own option), which changes the weights but not the cleaned data. The
+  test now checks the volt-to-microvolt conversion it was written for.
+
 ## 0.9.1 (2026-10-06)
 
 In short: PipeCompare now takes into account what was done to the data before it (filters,

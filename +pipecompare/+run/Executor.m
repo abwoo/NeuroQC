@@ -752,7 +752,8 @@ function tf = canParallel()
 tf = license('test', 'Distrib_Computing_Toolbox') && ~isempty(ver('parallel'));
 if tf
     try
-        p = gcp('nocreate'); if isempty(p), parpool('Processes'); end
+        % 'Processes' is the profile's name from R2022b on, 'local' before
+        p = gcp('nocreate'); if isempty(p), try, parpool('Processes'); catch, parpool('local'); end, end
     catch
         tf = false;
     end

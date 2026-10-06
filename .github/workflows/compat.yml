@@ -19,10 +19,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # MathWorks supports these releases on Ubuntu 22.04, not on 24.04
-          # (there, R2022b hung inside MATLAB's uialert)
+          # R2021b on Ubuntu 22.04, the newest Ubuntu MathWorks supports for it.
+          # R2022b is not in the list: on this virtual display a dialog test
+          # hangs inside MATLAB's own uialert (on Ubuntu 22.04 and 24.04)
           - { matlab: R2021b, eeglab: 2026.0.0, os: ubuntu-22.04 }
-          - { matlab: R2022b, eeglab: 2026.0.0, os: ubuntu-22.04 }
           - { matlab: R2023b, eeglab: 2026.0.0 }
           - { matlab: R2024b, eeglab: 2026.0.0 }
           - { matlab: latest, eeglab: 2024.2.1 }
