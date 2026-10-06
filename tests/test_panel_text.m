@@ -68,6 +68,16 @@ verifyError(tc, @() V.parseValues('disp(1)', 'number'), 'PipeCompare:Plan');   %
 verifyEqual(tc, V.parseValues('', 'number'), {});
 end
 
+function testTimeText(tc)
+% NQC-038: 7170 s read '1 h 60 min'
+T = @pipecompare.gui.Progress.timeText;
+verifyEqual(tc, T(40), '40 s');
+verifyEqual(tc, T(720), '12 min');
+verifyEqual(tc, T(3570), '1 h 0 min');
+verifyEqual(tc, T(7170), '2 h 0 min');
+verifyEqual(tc, T(7800), '2 h 10 min');
+end
+
 function testValuesEditTextRoundTrip(tc)
 V = pipecompare.gui.PanelValues;
 L = {0.1, [1 2], {'Pz', 'POL EYEL'}};

@@ -3,6 +3,26 @@
 All notable changes. Versions follow `PipeCompare.Version` (`NeuroQC.Version` up to 0.7.1); each
 release has a git tag `vX.Y.Z`.
 
+## Unreleased
+
+Small fixes; scores and recommendations are unchanged.
+
+- *Save script…* for ERPs now writes the components (name, window, electrodes, measure) into the
+  script's analysis contract, so that contract can be used to score data again. The script's steps
+  were already complete.
+- The EEGLAB history command of `pop_pipecompare` keeps `'show', 'off'`, so repeating it does not
+  open windows.
+- When the signal-check copy fails at a step, only the signal check of the pipelines below is
+  missing (they are excluded with "signal check missing" and still scored); the pipelines are no
+  longer marked as failed although their data ran.
+- *Advanced…* from the simple dialog: the plan table shows the epoch and baseline taken over from
+  the dialog instead of "not set yet".
+- The progress window's time reads "2 h 0 min" instead of "1 h 60 min" (and "1 h 0 min" instead of
+  "60 min").
+- Event-related band power: a baseline outside the epoch is reported before the run. A band-power
+  contract given both `segment` and `conditions`/`epoch`/`baseline` is an error, since one of them
+  would be ignored.
+
 ## 0.9.2 (2026-10-06)
 
 In short: PipeCompare is now tested on older MATLAB and EEGLAB releases, and parallel execution

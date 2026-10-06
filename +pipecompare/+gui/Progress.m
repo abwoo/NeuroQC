@@ -60,9 +60,11 @@ classdef Progress < handle
     methods (Static)
         function t = timeText(sec)
             % 'about 40 s', '12 min', '2 h 10 min'
+            % (whole minutes first, so 59.5 min reads 1 h 0 min, not 60 min)
+            m = round(sec / 60);
             if sec < 90, t = sprintf('%.0f s', sec);
-            elseif sec < 3600, t = sprintf('%.0f min', sec / 60);
-            else, t = sprintf('%d h %d min', floor(sec / 3600), round(mod(sec, 3600) / 60)); end
+            elseif m < 60, t = sprintf('%d min', m);
+            else, t = sprintf('%d h %d min', floor(m / 60), mod(m, 60)); end
         end
     end
 end
