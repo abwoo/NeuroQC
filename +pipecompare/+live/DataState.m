@@ -240,9 +240,12 @@ for k = 1:numel(h)
             end
         case 'clean_rawdata'
             % its own high-pass: a transition band [start end] whose end is
-            % the pass-band edge ('off' when not used)
-            hp = pipecompare.utils.fieldOr(e.params, 'Highpass', []);
-            if isnumeric(hp) && numel(hp) == 2 && all(isfinite(hp)) && hp(2) > 0
+            % the pass-band edge ('off', or -1 in clean_rawdata's positional
+            % form, when not used)
+            hp = cleanRawdataHighpass(e.params);
+            if (ischar(hp) && strcmpi(hp, 'off')) || isequal(hp, -1)
+                parts{end+1} = sprintf('%s (no high-pass)', e.fn); %#ok<AGROW>
+            elseif isnumeric(hp) && numel(hp) == 2 && all(isfinite(hp)) && hp(2) > 0
                 f.highpass(end+1) = hp(2); parts{end+1} = sprintf('HP %g Hz (%s)', hp(2), e.fn); %#ok<AGROW>
             else
                 f.other = f.other + 1; parts{end+1} = sprintf('%s (not parsed)', e.fn); %#ok<AGROW>
@@ -250,6 +253,18 @@ for k = 1:numel(h)
     end
 end
 f.text = strjoin(parts, ' > ');
+end
+
+function hp = cleanRawdataHighpass(p)
+% The Highpass option of a clean_rawdata call as read from the history.
+% clean_artifacts takes its option names in any case, also as
+% highpass_band, and uses [0.25 0.75] when the option is left out or [];
+% '' when the call's options could not be read.
+names = fieldnames(p);
+at = find(strcmpi(names, 'Highpass') | strcmpi(names, 'highpass_band'), 1);
+if ~isempty(at), hp = p.(names{at}); if isempty(hp), hp = [0.25 0.75]; end
+elseif ~isempty(names), hp = [0.25 0.75];
+else, hp = ''; end
 end
 
 function s = checkConsistency(s, EEG)
@@ -352,7 +367,7 @@ end
 if ~isempty(s.removedChannels) && ~any(strcmp(steps, 'channels')) && ~any(strcmp(steps, 'badchannels'))
     P(end+1) = row('inferred from the data', 'channels', ['removed (chaninfo.removedchans): ' strjoin(s.removedChannels, ', ')]);
 end
-if strcmpi(s.reference, 'average') && ~any(strcmp(steps, 'reref'))
+if any(strcmpi(s.reference, {'average', 'averef'})) && ~any(strcmp(steps, 'reref'))   % (pop_averef writes averef)
     P(end+1) = row('inferred from the data', 'reref', 'EEG.ref says average; no pop_reref in the history');
 end
 if isempty(h)

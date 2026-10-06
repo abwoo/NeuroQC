@@ -77,6 +77,28 @@ verifyEqual(tc, f.lowpass, [30 40]);
 verifyEqual(tc, f.other, 1);                                    % pop_firma only
 end
 
+function testCleanRawdataHighpassForms(tc)
+% clean_rawdata's own high-pass in the other forms a history can hold:
+% option names in any case or as highpass_band, the option left out (its
+% default [0.25 0.75]), and switched off.
+EEG = nqc_synth(struct('seconds', 20, 'nPerCond', 5));
+forms = {'EEG = clean_artifacts(EEG, ''highpass'', [0.5 1]);', 1; ...
+    'EEG = clean_artifacts(EEG, ''highpass_band'', [0.25 0.5]);', 0.5; ...
+    'EEG = pop_clean_rawdata(EEG, ''FlatlineCriterion'',5,''BurstCriterion'',20);', 0.75; ...
+    'EEG = pop_clean_rawdata(EEG, ''FlatlineCriterion'',5,''Highpass'',''off'',''BurstCriterion'',20);', []; ...
+    'EEG = clean_rawdata(EEG, 5, -1, 0.8, 4, 20, 0.25);', []};
+for i = 1:size(forms, 1)
+    EEG.history = forms{i, 1};
+    f = pipecompare.live.DataState.fromEEG(EEG).filters;
+    verifyEqual(tc, f.highpass, forms{i, 2}, forms{i, 1});
+    verifyEqual(tc, f.other, 0, forms{i, 1});
+end
+EEG.history = 'EEG = pop_clean_rawdata(EEG, opts{:});';          % options not readable: no guess
+f = pipecompare.live.DataState.fromEEG(EEG).filters;
+verifyEmpty(tc, f.highpass);
+verifyEqual(tc, f.other, 1);
+end
+
 function testIcaFittedOnAFilteredCopy(tc)
 % The line PipeCompare writes for ICA fitted on a high-passed copy: an ICA
 % step, and no filter of the data.

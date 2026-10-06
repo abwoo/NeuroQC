@@ -863,7 +863,7 @@ verifyEmpty(tc, findall(groot, 'Type', 'figure', 'Name', 'PipeCompare'));   % it
 % the selected pipeline as a function for any recording, as in the simple mode
 app.ResultTable.Selection = [2 1];
 f = [tempname '.m']; c2 = onCleanup(@() delete(f)); %#ok<NASGU>
-app.saveScript(f);
+app.saveScript(f, 'Save anyway');                     % (the answer, should this one not have passed)
 verifyTrue(tc, contains(fileread(f), 'pipecompare.PipeCompare.apply(EEG, steps, contract)'));
 % a latency objective through the panel syntax
 app.CompField.Value = 'P3: 0.3 0.5 @ Pz # peakLatency positive';

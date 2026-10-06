@@ -1464,13 +1464,23 @@ classdef Panel < handle
             pipecompare.PipeCompare.script(obj.Result, k);
         end
 
-        function saveScript(obj, file)
+        function saveScript(obj, file, answer)
             % The selected candidate as a function for any recording (as the
             % simple mode's Save script...); Print script shows the exact
-            % commands of this dataset instead.
+            % commands of this dataset instead. A candidate that did not pass
+            % the checks is saved only after a confirmation (answer: for scripts).
             k = obj.selectedResult(); if isempty(k), return; end
             try
-                if nargin < 2
+                T = obj.Result.ranking.table;
+                if ~strcmp(T.status{k}, 'feasible')
+                    if nargin < 3
+                        answer = uiconfirm(obj.Fig, sprintf('Candidate %d did not pass the checks: %s. Save it anyway?', ...
+                            k, char(T.reason{k})), 'PipeCompare', 'Options', {'Save anyway', 'Cancel'}, ...
+                            'DefaultOption', 2, 'CancelOption', 2, 'Icon', 'warning');
+                    end
+                    if ~strcmp(answer, 'Save anyway'), return; end
+                end
+                if nargin < 2 || isempty(file)
                     [f, p] = uiputfile('*.m', 'Save the pipeline as an EEGLAB function', sprintf('pipeline%d.m', k));
                     if isequal(f, 0), return; end
                     file = fullfile(p, f);

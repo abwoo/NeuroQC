@@ -162,6 +162,9 @@ verifyTrue(tc, contains(pipecompare.simple.Presets.nextStep(r), 'average referen
 r.leaves = struct('path', {{struct('type', 'reref'), struct('type', 'highpass')}});
 verifyEmpty(tc, pipecompare.simple.Presets.nextStep(r));        % already re-referenced
 r.leaves = struct('path', {{struct('type', 'highpass')}});
+r.state.reference = 'averef';                                   % what pop_averef writes
+verifyEmpty(tc, pipecompare.simple.Presets.nextStep(r));        % already average
+r.state.reference = 'common';
 r.ranking.whyList = {{'signal: amplitude changed by 17%'}; {'signal: amplitude changed by 20%'}};
 verifyEmpty(tc, pipecompare.simple.Presets.nextStep(r));        % excluded for another reason
 % the channels most often over the limit are named (likely bad channels
@@ -515,6 +518,23 @@ verifyTrue(tc, isfile(f));
 verifyTrue(tc, contains(fileread(f), 'pop_eegfiltnew'));
 end
 
+function testSkippedStepIsNamed(tc)
+% NQC-027: a step some pipelines skip was missing from their names, so a
+% pipeline with the step and one without it could read the same.
+EEG = tc.TestData.EEG;
+nqc_setBase(EEG);
+c = pipecompare.simple.Presets.contract(EEG, 'P3', {'11', '31'});
+p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', 0.5); p = p.setSkippable('highpass', true);
+p = p.add('lowpass', 'cutoff', {30, 40}); p = p.add('epoch'); p = p.add('baseline');
+r = pipecompare.PipeCompare.optimize(p, c);
+w = pipecompare.gui.SimpleResults(r); cw = onCleanup(@() delete(w.Fig)); %#ok<NASGU>
+names = arrayfun(@(k) w.name(k), 1:numel(r.cands), 'UniformOutput', false);
+verifyEqual(tc, numel(unique(names)), 4);
+verifyEqual(tc, sum(contains(names, 'high-pass 0.5 Hz')), 2);
+verifyEqual(tc, sum(contains(names, 'no high-pass')), 2);
+verifyFalse(tc, contains(w.shared(), 'high-pass'));             % not a step every pipeline has
+end
+
 function testProgressReportsAndStopKeepsTheFinished(tc)
 EEG = tc.TestData.EEG;
 nqc_setBase(EEG);
@@ -555,6 +575,11 @@ end
 w = pipecompare.gui.SimpleResults(r); c = onCleanup(@() delete(w.Fig)); %#ok<NASGU>
 w.AllBox.Value = true; w.showRows();
 w.Table.Selection = [find(strcmp(strrep(w.Table.Data(:, 1), '*', ''), sprintf('%d', k))) 1];
+f = [tempname '.m']; cf = onCleanup(@() delete([f '*'])); %#ok<NASGU>
+w.saveScript(f, 'Cancel');
+verifyFalse(tc, isfile(f));                                     % Save script asks as well
+w.saveScript(f, 'Save anyway');
+verifyTrue(tc, isfile(f));
 n0 = evalin('base', 'numel(ALLEEG)');
 w.adopt('Cancel');
 verifyEqual(tc, evalin('base', 'numel(ALLEEG)'), n0);           % nothing stored
