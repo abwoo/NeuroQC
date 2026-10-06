@@ -374,7 +374,12 @@ pipecompare.PipeCompare.writeScript(r, 1, fullfile(d, 'nqc_volt_script.m'));
 addpath(d); c2 = onCleanup(@() rmpath(d)); %#ok<NASGU>
 out = nqc_volt_script(V);
 ref = pipecompare.run.Executor.replay(r, 1);           % the search's own in-memory path
-verifyEqual(tc, out.icaweights, ref.icaweights, 'RelTol', 1e-9);
+% equal up to the per-component scale EEGLAB may set (option_scaleicarms:
+% eeg_checkset rescales each row to RMS microvolts in some EEGLAB versions);
+% a missing volts -> microvolts conversion would be a factor of 1e6
+ratio = out.icaweights ./ ref.icaweights;
+verifyEqual(tc, ratio, repmat(ratio(:, 1), 1, size(ratio, 2)), 'RelTol', 1e-6);
+verifyLessThan(tc, max(abs(log10(abs(ratio(:, 1))))), 2);
 m = pipecompare.eval.Measure.candidate(out, r.contract, r.ref);
 verifyEqual(tc, [m.objectives.agg], [r.cands(1).m.objectives.agg], 'RelTol', 1e-6);
 end
