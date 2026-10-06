@@ -123,7 +123,8 @@ classdef SimpleResults < handle
                 end
             end
             here = cellfun(@(e) e.slot, path, 'UniformOutput', false);
-            for s = setdiff(skippable, here, 'stable'), parts{end+1} = noneText(s{1}, obj.Result.state); end %#ok<AGROW>
+            skipped = setdiff(skippable, here, 'stable');   % (by index: an empty result can be 0x1)
+            for q = 1:numel(skipped), parts{end+1} = noneText(skipped{q}, obj.Result.state); end %#ok<AGROW>
             if isempty(parts), t = obj.Result.labels{k}; else, t = strjoin(parts, ', '); end
         end
 
