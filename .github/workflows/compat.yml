@@ -2,7 +2,8 @@ name: compatibility
 
 # Runs the suites that open windows or run whole searches on older MATLAB
 # releases (with the current EEGLAB) and on older EEGLAB releases (with
-# the latest MATLAB), so the versions stated in the README are tested.
+# the latest MATLAB), so the versions stated in the README are tested;
+# and on Windows and macOS, oldest and newest supported versions.
 
 on:
   push:
@@ -12,7 +13,7 @@ on:
 
 jobs:
   compat:
-    name: MATLAB ${{ matrix.matlab }} + EEGLAB ${{ matrix.eeglab }}
+    name: MATLAB ${{ matrix.matlab }} + EEGLAB ${{ matrix.eeglab }}${{ matrix.label }}
     runs-on: ${{ matrix.os || 'ubuntu-latest' }}
     timeout-minutes: 60
     strategy:
@@ -54,8 +55,11 @@ jobs:
           - { matlab: R2022a, eeglab: '2024.2.1', os: ubuntu-22.04 }
           - { matlab: R2022a, eeglab: '2025.0.0', os: ubuntu-22.04 }
           - { matlab: R2022a, eeglab: '2025.1.0', os: ubuntu-22.04 }
-    env:
-      DISPLAY: ":99"
+          # Windows and macOS (Apple silicon: MATLAB R2023b or later)
+          - { matlab: latest, eeglab: 2026.0.0, os: windows-latest, label: ' (Windows)' }
+          - { matlab: R2022a, eeglab: '2022.0', os: windows-latest, label: ' (Windows)' }
+          - { matlab: latest, eeglab: 2026.0.0, os: macos-latest, label: ' (macOS)' }
+          - { matlab: R2023b, eeglab: '2022.0', os: macos-latest, label: ' (macOS)' }
     steps:
       - name: Checkout PipeCompare
         uses: actions/checkout@v4
@@ -74,10 +78,12 @@ jobs:
           git -C eeglab/plugins/ICLabel checkout FETCH_HEAD
 
       - name: Start a virtual display
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q xvfb
           Xvfb :99 -screen 0 1920x1080x24 &
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
 
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v2
