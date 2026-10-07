@@ -211,6 +211,35 @@ For any EEGLAB step, order search, several components or different constraints, 
 same measures as the dialog (ERP components, N2pc and LRP contralateral minus ipsilateral, band
 power). See [docs/PANEL.md](docs/PANEL.md) for a description of every control.
 
+### Ear and mastoid channels
+
+Electrodes on the earlobes or mastoids are reference sites, not scalp electrodes. PipeCompare
+recognises them automatically, in any dataset, by their standard names: **A1** and **A2** (10-20
+earlobes) and **M1** and **M2** (mastoids), in any upper or lower case and also with the `POL `
+prefix some EDF exports add (`POL A1`). A channel whose type is set to `REF` in the channel
+locations counts too. These channels:
+
+- stay in the data, unchanged;
+- are not tested as bad channels, so they are never interpolated (the scalp cannot predict them);
+- do not count in epoch rejection;
+- are left out of an average reference, as EOG channels are;
+- are not interpolated back when they were removed before PipeCompare.
+
+This also covers data already referenced to linked ears or mastoids, where A1 and A2 are flat or
+mirror each other and a bad-channel test would wrongly flag them. The dialog (step 1, *Data*),
+the Command Window log and the advanced panel's dataset summary list them, e.g. *Ear/mastoid
+channels left out: A1, A2*; in the panel they are filled into each step's *exclude* list, where
+you can edit them.
+
+Some channels with these names are not ears, and are left as scalp channels:
+
+- caps numbered by letter, such as BioSemi's A1-A32: when the data also have A3 (or M3), A1 and A2
+  are scalp electrodes there;
+- TP9 and TP10, which sit near the mastoids but are scalp electrodes in the 10-10 system;
+- a channel you set to type `EEG` in **Edit > Channel locations** while other channels have other
+  types. Use this to keep A1 and A2 as scalp channels. (When every channel has type `EEG`, that is
+  the importer's default, not a choice, and the names decide.)
+
 ### From the command line
 
 The menu dialog records an equivalent command in EEGLAB's command history (`ALLCOM`):

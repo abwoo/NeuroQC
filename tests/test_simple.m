@@ -152,6 +152,55 @@ C.chanlocs(1).labels = 'POL EYEL';   % an EDF export's eye channel
 verifyTrue(tc, ismember('POL EYEL', pipecompare.simple.Presets.nonEegChannels(C)));
 end
 
+function testEarAndMastoidChannelsAreNotScalp(tc)
+% Ear and mastoid electrodes (A1, A2, M1, M2; POL prefix of EDF exports;
+% any case) or channels typed REF are reference sites, left out like EOG;
+% not the letters of a numbered cap (BioSemi A1-A32), not TP9/TP10, and
+% not a channel deliberately typed EEG.
+EEG = tc.TestData.EEG;
+P = pipecompare.simple.Presets;
+E = EEG; L = {E.chanlocs.labels};
+E.chanlocs(strcmp(L, 'F3')).labels = 'A1';
+E.chanlocs(strcmp(L, 'F4')).labels = 'POL A2';
+E.chanlocs(strcmp(L, 'C3')).labels = 'm1';
+E.chanlocs(strcmp(L, 'C4')).labels = 'TP9';
+ex = P.nonEegChannels(E);
+verifyTrue(tc, all(ismember({'A1', 'POL A2', 'm1', 'EOG1', 'EOG2'}, ex)), strjoin(ex, ' '));
+verifyFalse(tc, ismember('TP9', ex));
+verifyFalse(tc, any(ismember({'A1', 'POL A2', 'm1'}, P.eegChannels(E))));
+B = E; B.chanlocs(strcmp(L, 'Cz')).labels = 'A3';                 % a numbered cap: A1 is scalp there
+verifyFalse(tc, any(P.isRefSite(B.chanlocs)));
+T = E; [T.chanlocs.type] = deal('');
+T.chanlocs(strcmp(L, 'F3')).type = 'EEG';                        % typed EEG on purpose: scalp
+T.chanlocs(strcmp(L, 'Pz')).type = 'REF';                        % typed REF: a reference site
+verifyEqual(tc, {T.chanlocs(P.isRefSite(T.chanlocs)).labels}, {'POL A2', 'm1', 'Pz'});
+[T.chanlocs.type] = deal('EEG');                                 % EEG on every channel: an importer's default
+verifyTrue(tc, all(ismember({'A1', 'POL A2', 'm1'}, {T.chanlocs(P.isRefSite(T.chanlocs)).labels})));
+% named in the dialog and the log; left out of the bad channels, the
+% average and the epoch threshold
+st = pipecompare.live.DataState.fromEEG(E);
+verifyEqual(tc, st.refSites, {'A1', 'POL A2', 'm1'});
+a = strjoin(P.dataAdvice(st), ' ');
+verifyTrue(tc, contains(a, 'Ear/mastoid channels left out: A1, POL A2, m1'), a);
+verifyFalse(tc, contains(strjoin(P.dataAdvice(pipecompare.live.DataState.fromEEG(EEG)), ' '), 'Ear/mastoid'));
+c = P.contract(E, 'P3', {'11'});
+p = P.recipe('standard', st, c, 'average', ex);
+for k = [1 2 numel(p.Slots)]   % badchannels, reref, reject_threshold
+    verifyTrue(tc, all(ismember({'A1', 'POL A2', 'm1'}, p.Slots(k).alternatives{1}.params.exclude)), p.Slots(k).id);
+end
+% data already referenced to linked ears: A1 and A2 near flat and mirrored,
+% which a bad-channel test could flag; they are not tested and kept as they are
+F = E; a1 = strcmp({F.chanlocs.labels}, 'A1'); a2 = strcmp({F.chanlocs.labels}, 'POL A2');
+F.data(a1, :) = 0.01 * randn(1, F.pnts); F.data(a2, :) = -F.data(a1, :);
+q = struct('measure', 'kurt+prob', 'threshold', 5, 'exclude', {P.nonEegChannels(F)}, 'detectHighpass', 1, 'action', 'interpolate');
+[G, ~, info] = pipecompare.run.Steps.badChannels(F, q, struct('highpass', 0));
+verifyFalse(tc, any(ismember({'A1', 'POL A2', 'm1'}, info.badChannels)));
+verifyEqual(tc, G.data(a1 | a2, :), F.data(a1 | a2, :));
+% removed before PipeCompare: not interpolated back for the average
+R = pop_select(E, 'rmchannel', {'A1'});
+verifyEmpty(tc, pipecompare.live.DataState.fromEEG(R).restorableChannels);
+end
+
 function testNextStepWhenRejectionRemovesTooMuch(tc)
 % Every pipeline lost too many epochs and the data keep their recorded
 % reference: the average reference is suggested.

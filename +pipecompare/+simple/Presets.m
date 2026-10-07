@@ -178,8 +178,9 @@ classdef Presets
         end
 
         function labels = nonEegChannels(EEG)
-            % non-EEG channels (EOG, ECG, ...): not tested for bad channels
-            % or epoch rejection, and left out of an average reference
+            % non-EEG channels (EOG, ECG, ...) and ear/mastoid reference
+            % sites (A1, A2, M1, M2): not tested for bad channels or epoch
+            % rejection, and left out of an average reference
             labels = setdiff({EEG.chanlocs.labels}, pipecompare.simple.Presets.eegChannels(EEG), 'stable');
         end
 
@@ -194,12 +195,43 @@ classdef Presets
         function tf = isNonEeg(chanlocs)
             % non-EEG channels (EOG, ECG, EMG, ...), by type or, when the
             % type is not set, by name (VEOG, HEOG, ECG1, EYEL; with the
-            % POL prefix of some EDF exports: POL EYEL)
+            % POL prefix of some EDF exports: POL EYEL); and ear/mastoid
+            % reference sites (isRefSite)
             labels = {chanlocs.labels};
             tf = ~cellfun(@isempty, regexpi(labels, '^(POL\s+)?([VH]?EOG|ECG|EKG|EMG|EYE)', 'once'));
             if isfield(chanlocs, 'type')
                 ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), chanlocs(:)', 'UniformOutput', false);
                 tf = tf | ismember(ty, {'EOG', 'HEOG', 'VEOG', 'ECG', 'EKG', 'EMG', 'MISC', 'TRIG', 'STIM'});
+            end
+            tf = tf | pipecompare.simple.Presets.isRefSite(chanlocs);
+        end
+
+        function tf = isRefSite(chanlocs)
+            % Ear and mastoid electrodes (10-20 names A1, A2 for the
+            % earlobes, M1, M2 for the mastoids; optional POL prefix of
+            % EDF exports; any case), or channels typed REF. They are
+            % reference sites, not scalp: the scalp cannot predict them
+            % (no interpolation), and a linked-ears reference leaves them
+            % flat or mirrored, which a bad-channel test would flag.
+            % Not when numbered caps use the letter for scalp channels
+            % (BioSemi A1-A32: there is an A3, ...), and not a channel
+            % typed EEG while other channels have other types (to keep A1,
+            % A2 as scalp channels, set their type to EEG in Edit > Channel
+            % locations); a type EEG on every channel is an importer's
+            % default, not a choice.
+            labels = cellfun(@(l) strtrim(char(string(l))), {chanlocs.labels}, 'UniformOutput', false);
+            tok = regexpi(labels, '^(?:POL\s+)?([AM])(\d+)$', 'tokens', 'once');
+            num = ~cellfun(@isempty, tok);
+            letter = repmat({''}, size(labels)); n = zeros(size(labels));
+            letter(num) = cellfun(@(t) upper(t{1}), tok(num), 'UniformOutput', false);
+            n(num) = cellfun(@(t) str2double(t{2}), tok(num));
+            numbered = unique(letter(num & n > 2));   % A3, M3, ...: a numbered cap
+            tf = num & ismember(n, [1 2]) & ~ismember(letter, numbered);
+            if isfield(chanlocs, 'type')
+                ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), chanlocs(:)', 'UniformOutput', false);
+                eeg = strcmp(ty, 'EEG');
+                if ~all(eeg), tf = tf & ~eeg; end
+                tf = tf | strcmp(ty, 'REF');
             end
         end
 
@@ -236,6 +268,12 @@ classdef Presets
                         'removed, choose Filters only'];
                 end
                 lines{end+1} = [t '.'];
+            end
+            ear = pipecompare.utils.fieldOr(state, 'refSites', {});
+            if ~isempty(ear)
+                lines{end+1} = sprintf(['Ear/mastoid channels left out: %s. They stay in the data but are not ', ...
+                    'tested as bad channels, interpolated, counted in epoch rejection or part of an average ', ...
+                    'reference (to treat them as scalp channels, set their type to EEG).'], strjoin(ear, ', '));
             end
             % PipeCompare handles these itself on its copy
             w = state.warnings(~contains(state.warnings, {'urevent', 'EEG.srate'}));
@@ -307,8 +345,9 @@ classdef Presets
         function [plan, notes] = recipe(name, state, contract, reference, exclude)
             % The plan of a recipe for these data, and why a step was left
             % out. reference: 'asis' (default) or 'average'; exclude: the
-            % non-EEG channels (e.g. EOG, ECG), not tested for bad channels
-            % or epoch rejection and left out of the average.
+            % non-EEG channels (e.g. EOG, ECG) and ear/mastoid sites, not
+            % tested for bad channels or epoch rejection and left out of
+            % the average.
             if nargin < 4 || isempty(reference), reference = 'asis'; end
             if nargin < 5, exclude = {}; end
             assert(any(strcmp(reference, {'asis', 'average'})), 'PipeCompare:Simple', ...

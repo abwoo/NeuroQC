@@ -6,8 +6,15 @@ release has a git tag `vX.Y.Z`.
 ## Unreleased
 
 Small fixes. Scores and recommendations are unchanged, except on data cleaned with clean_rawdata
-from a script whose high-pass PipeCompare now sees (see below).
+from a script whose high-pass PipeCompare now sees, and on data with ear or mastoid channels (see
+below).
 
+- Ear and mastoid channels (A1, A2, M1, M2, also as `POL A1` from EDF exports, or typed `REF`) are
+  recognised in any dataset and handled like EOG channels: no longer tested as bad channels and
+  interpolated, nor counted in epoch rejection or the average reference. Before, *Standard* could
+  flag and interpolate them (for example A1 and A2 that a linked-ears reference left flat). Numbered
+  caps (BioSemi A1-A32) and channels typed `EEG` on purpose stay scalp channels. Recommendations can
+  change on data with such channels.
 - While a comparison runs, the Command Window prints each step and each finished pipeline as it
   happens (in the simple mode it used to stay silent until the end); the same text is still kept
   in `pipecompare_last_run.log`.

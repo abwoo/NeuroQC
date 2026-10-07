@@ -25,7 +25,8 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %   'recipe'   'standard' (default) | 'filters': which steps are compared
 %   'reference' 'asis' (default) | 'average': the average reference as a
 %              fixed step of every pipeline, after the bad channels and
-%              before ICA (channels typed as EOG, ECG, ... are left out of
+%              before ICA (channels typed as EOG, ECG, ... and ear or
+%              mastoid channels such as A1, A2, M1, M2 are left out of
 %              the average)
 %   'segment'  band power: segment length in s (default 2)
 %   'show'     'on' (default) shows a progress window with a Stop button
