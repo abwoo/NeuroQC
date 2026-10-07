@@ -377,6 +377,7 @@ classdef Steps
             if nargin > 2 && isfield(ctx, 'iclabel') && ~isempty(ctx.iclabel)
                 EEG.etc.ic_classification = ctx.iclabel.classification; c1 = ctx.iclabel.com;
             else
+                warnIclabel15();
                 [EEG, c1] = pop_iclabel(EEG, 'default');
             end
             info.iclabel = struct('classification', EEG.etc.ic_classification, 'com', c1);
@@ -710,4 +711,19 @@ function target = rootChanlocs(EEG)
 assert(isfield(EEG, 'etc') && isfield(EEG.etc, 'pipecompare') && isfield(EEG.etc.pipecompare, 'rootChanlocs'), ...
     'PipeCompare:Restore', 'Root channel montage not recorded');
 target = EEG.etc.pipecompare.rootChanlocs;
+end
+
+function warnIclabel15()
+% ICLabel 1.5 (bundled with EEGLAB 2024.0) draws the scalp maps it
+% classifies rotated, so eye components are mostly not recognised; 1.6
+% fixed it. Said once per MATLAB session.
+persistent said
+if ~isempty(said), return; end
+said = true;
+f = which('topoplotFast');
+if ~isempty(f) && contains(fileread(f), '[xi,yi] = meshgrid(xi,yi);')
+    pipecompare.utils.log(['WARNING: this ICLabel (1.5, as bundled with EEGLAB 2024.0) misclassifies components ', ...
+        '(rotated scalp maps; eye components are mostly missed). Update ICLabel to 1.6 or later in ', ...
+        'File > Manage EEGLAB extensions.']);
+end
 end

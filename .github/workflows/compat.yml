@@ -48,6 +48,14 @@ jobs:
       - name: Checkout EEGLAB ${{ matrix.eeglab }}
         run: git clone --depth 1 --branch ${{ matrix.eeglab }} --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
 
+      - name: ICLabel 1.6 with EEGLAB 2024.0
+        # EEGLAB 2024.0 bundles ICLabel 1.5, whose rotated scalp maps leave
+        # eye components unrecognised (PipeCompare warns); users update it
+        if: matrix.eeglab == '2024.0'
+        run: |
+          git -C eeglab/plugins/ICLabel fetch --depth 1 origin 20221d80430c2c4eab86dc14bad28c1a20939913
+          git -C eeglab/plugins/ICLabel checkout FETCH_HEAD
+
       - name: Start a virtual display
         run: |
           sudo apt-get update -q
