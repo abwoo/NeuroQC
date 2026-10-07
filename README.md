@@ -13,6 +13,24 @@ an EEG recording, based on the recording itself. It compares complete preprocess
 (filters, reference, bad channels, ICA with ICLabel, epoch rejection) and recommends the one that
 measures your ERP or band power most precisely, without distorting it.
 
+## Contents
+
+- [What PipeCompare does](#what-pipecompare-does)
+- [What happens to your data](#what-happens-to-your-data)
+- [Features](#features)
+- [Where PipeCompare fits in an analysis](#where-pipecompare-fits-in-an-analysis)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Scripting interface](#scripting-interface)
+- [How a pipeline is chosen](#how-a-pipeline-is-chosen)
+- [Outputs](#outputs)
+- [Limitations](#limitations)
+- [Testing](#testing)
+- [Documentation](#documentation)
+- [Citation](#citation)
+- [License](#license)
+
 ## What PipeCompare does
 
 Before an ERP amplitude or a band power can be measured, the raw recording has to be cleaned: it
@@ -59,22 +77,69 @@ usual settings suit these data. It works on one recording at a time, and covers 
 measures; time-frequency, connectivity and source analysis are not covered (see
 [Limitations](#limitations)).
 
-## Contents
+## What happens to your data
 
-- [What PipeCompare does](#what-pipecompare-does)
-- [Features](#features)
-- [Where PipeCompare fits in an analysis](#where-pipecompare-fits-in-an-analysis)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Quick start](#quick-start)
-- [Scripting interface](#scripting-interface)
-- [How a pipeline is chosen](#how-a-pipeline-is-chosen)
-- [Outputs](#outputs)
-- [Limitations](#limitations)
-- [Testing](#testing)
-- [Documentation](#documentation)
-- [Citation](#citation)
-- [License](#license)
+With the *Standard* recipe, every pipeline runs the steps below in this order. Steps marked
+*compared* are tried with several settings; the others are done once, in the same way for every
+pipeline, so that the comparison is about the settings that matter.
+
+1. **Channels removed earlier are put back** (only with the average reference). If you deleted EEG
+   channels before PipeCompare, they are interpolated back first, so that the average is taken
+   over the whole montage.
+2. **Bad channels are found and repaired.** A channel is marked bad when its signal is much
+   spikier (kurtosis) or much noisier (joint probability, e.g. a poorly connected electrode) than
+   the other channels, more than 5 standard deviations away. The test looks at a copy of the data
+   high-passed at 1 Hz, so slow drifts are not mistaken for bad channels. Bad channels are then
+   interpolated from their neighbours (spherical interpolation), so the dataset keeps all its
+   channels. EOG, ECG and EMG channels (by channel type, or by name such as VEOG or ECG1) are never
+   tested. A pipeline that interpolates more than 20 % of the channels is excluded.
+3. **Re-reference** (if you chose the average reference). It comes after the bad channels are
+   repaired, so a bad channel cannot spread its noise into every other channel; non-EEG channels
+   are left out of the average. Data that were already average-referenced are averaged again,
+   which removes the repaired channels' share of the earlier average.
+4. **ICA is computed once** (extended Infomax, `pop_runica`) on a copy high-passed at 1 Hz, which
+   gives a cleaner decomposition. All pipelines share this one decomposition, which saves the
+   largest part of the computing time.
+5. **High-pass filter**, *compared*: 0.1, 0.3, 0.5 and 1 Hz.
+6. **Low-pass filter**, *compared*: 20, 30 and 40 Hz.
+7. **Artifact components are removed with ICLabel**, *compared*: a component is removed when
+   ICLabel gives it a probability of at least 0.7, 0.8 or 0.9 of being eye, muscle, heart, line
+   noise or channel noise.
+8. **Epochs are cut** around the events you chose, and the **baseline** is subtracted.
+9. **Noisy epochs are rejected**, *compared*: an epoch is dropped when any EEG channel exceeds
+   ±75, ±100 or ±150 µV (non-EEG channels are ignored).
+
+That makes 4 × 3 × 3 × 3 = 108 pipelines for an ERP. The *Filters only* recipe compares only
+steps 5 and 6. For band power, the data are cut into 2 s segments instead of epochs, and only the
+filter edges nearest the band, outside it, are used (a filter outside a band does not change its
+power), which leaves 9 pipelines. In the advanced panel or a script you can change every list
+above, change the order, allow a step to be skipped, and add other steps: line-noise removal (the
+50 or 60 Hz mains frequency is detected from the recording), ASR (artifact subspace
+reconstruction), resampling, rejection by joint probability or kurtosis, a reference to chosen
+channels, or any operation from EEGLAB's menus, plugins included.
+
+Along the way PipeCompare also takes care of the following, so you do not have to:
+
+- **It respects what was done before.** Processing already applied (read from `EEG.history`) is
+  listed and not repeated. A filter the data already have is kept as one of the choices
+  (e.g. *low-pass as in the data (30 Hz)*) instead of forcing a stricter one, and you are warned
+  when that earlier filter alone already distorts the signal you measure. When ICA was already run
+  and components removed, ICA is not compared again.
+- **It leaves out what the data cannot support, and says why.** Without channel locations,
+  interpolation and ICLabel are left out; without ICLabel installed, ICA is left out; on data that
+  are already epoched, filters are not compared (they must run before epoching) and the data keep
+  their own epochs as long as they hold the measurement window. A condition with too few events
+  (fewer than 10) is flagged before the run.
+- **It checks units.** Data stored in volts are recognised from their amplitude and compared in µV.
+- **It measures lateralized components correctly.** N2pc and LRP are scored as ERP CORE does,
+  contralateral minus ipsilateral, from the event types you give for each side.
+- **It handles long runs.** A progress window shows the step running and the time so far and left;
+  *Stop* keeps the pipelines already finished. A search can be saved to a checkpoint folder and
+  resumed, and can run in parallel with the Parallel Computing Toolbox.
+- **It keeps everything reproducible.** The adopted dataset's `EEG.history` contains every EEGLAB
+  command that produced it, and *Save script…* writes the same steps as a MATLAB function that makes
+  the data-driven decisions (bad channels, components, rejected epochs) anew on each recording you
+  run it on.
 
 ## Features
 
