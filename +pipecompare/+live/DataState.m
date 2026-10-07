@@ -25,6 +25,10 @@ classdef DataState
             s.isEpoched = EEG.trials > 1 || (isfield(EEG, 'epoch') && ~isempty(EEG.epoch));
             s.xmin = EEG.xmin; s.xmax = EEG.xmax;
             s.labels = channelLabels(EEG);
+            s.refSites = {};                   % ear/mastoid channels (A1, A2, M1, M2), not scalp
+            if isfield(EEG, 'chanlocs') && numel(EEG.chanlocs) == EEG.nbchan && isfield(EEG.chanlocs, 'labels')
+                s.refSites = s.labels(pipecompare.simple.Presets.isRefSite(EEG.chanlocs));
+            end
             s.nEvents = numel(pipecompare.utils.fieldOr(EEG, 'event', []));
             [s.eventTypes, s.eventCounts] = eventTypes(EEG);
             s.hasUrevent = isfield(EEG, 'urevent') && ~isempty(EEG.urevent);
@@ -134,7 +138,8 @@ end
 function idx = restorableIdx(EEG)
 % Removed EEG channels with a location: they can be restored by spherical
 % interpolation (fiducials, unlocated channels and non-EEG channels such
-% as EOG or ECG, which the scalp cannot predict, cannot).
+% as EOG or ECG, or ear/mastoid channels, which the scalp cannot predict,
+% cannot).
 idx = [];
 if ~isfield(EEG, 'chaninfo') || ~isfield(EEG.chaninfo, 'removedchans') || isempty(EEG.chaninfo.removedchans), return; end
 rc = EEG.chaninfo.removedchans;

@@ -353,7 +353,7 @@ classdef Steps
                 [EEG, c2] = pop_rejepoch(EEG, idx, 0);
                 coms{end+1} = c2;
             end
-            info.rejected = numel(idx); info.rejIdx = idx;
+            info.rejected = numel(idx); info.rejIdx = idx; info.epochsBefore = n0;
         end
 
         function [EEG, coms, info] = native(EEG, command)

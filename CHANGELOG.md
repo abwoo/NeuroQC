@@ -6,7 +6,8 @@ release has a git tag `vX.Y.Z`.
 ## Unreleased
 
 Small fixes. Scores and recommendations are unchanged, except on data cleaned with clean_rawdata
-from a script whose high-pass PipeCompare now sees (see below).
+from a script whose high-pass PipeCompare now sees, and on data with ear or mastoid channels (see
+below).
 
 - Simple mode: instead of choosing between *Standard* and *Filters only*, tick the steps to
   compare in a list shown in the order they run (bad channels, reference, ICA, high-pass,
@@ -17,7 +18,21 @@ from a script whose high-pass PipeCompare now sees (see below).
 - Simple mode: the electrodes of a preset (an ERP component, or a band) can be changed with
   *Electrodes…*; they start from the component's ERP CORE site(s) and several are averaged.
   N2pc and LRP keep their pair. `pop_pipecompare(..., 'channels', {...})` does the same.
-
+- The results window lists what the recommended (or the selected) pipeline did, step by step in
+  order: each step's settings and its decisions on the data (bad channels interpolated, ICA
+  components removed, epochs rejected), then the trials kept per condition. Also in the Command
+  Window and in the advanced panel's details of a result row.
+- The result says how large a difference the recording can show: with the recommended pipeline's
+  SME, two conditions must differ by about 2.8 x sqrt(SME_a² + SME_b²) (80% power, two-sided
+  p < .05; one condition: 2.8 x SME against 0) to be told apart. When the differences seen are
+  smaller, it adds that more trials would help more than other preprocessing. In the results
+  window, the Command Window and the advanced panel.
+- Ear and mastoid channels (A1, A2, M1, M2, also as `POL A1` from EDF exports, or typed `REF`) are
+  recognised in any dataset and handled like EOG channels: no longer tested as bad channels and
+  interpolated, nor counted in epoch rejection or the average reference. Before, *Standard* could
+  flag and interpolate them (for example A1 and A2 that a linked-ears reference left flat). Numbered
+  caps (BioSemi A1-A32) and channels typed `EEG` on purpose stay scalp channels. Recommendations can
+  change on data with such channels.
 - While a comparison runs, the Command Window prints each step and each finished pipeline as it
   happens (in the simple mode it used to stay silent until the end); the same text is still kept
   in `pipecompare_last_run.log`.

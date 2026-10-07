@@ -180,6 +180,107 @@ C.chanlocs(1).labels = 'POL EYEL';   % an EDF export's eye channel
 verifyTrue(tc, ismember('POL EYEL', pipecompare.simple.Presets.nonEegChannels(C)));
 end
 
+function testEarAndMastoidChannelsAreNotScalp(tc)
+% Ear and mastoid electrodes (A1, A2, M1, M2; POL prefix of EDF exports;
+% any case) or channels typed REF are reference sites, left out like EOG;
+% not the letters of a numbered cap (BioSemi A1-A32), not TP9/TP10, and
+% not a channel deliberately typed EEG.
+EEG = tc.TestData.EEG;
+P = pipecompare.simple.Presets;
+E = EEG; L = {E.chanlocs.labels};
+E.chanlocs(strcmp(L, 'F3')).labels = 'A1';
+E.chanlocs(strcmp(L, 'F4')).labels = 'POL A2';
+E.chanlocs(strcmp(L, 'C3')).labels = 'm1';
+E.chanlocs(strcmp(L, 'C4')).labels = 'TP9';
+ex = P.nonEegChannels(E);
+verifyTrue(tc, all(ismember({'A1', 'POL A2', 'm1', 'EOG1', 'EOG2'}, ex)), strjoin(ex, ' '));
+verifyFalse(tc, ismember('TP9', ex));
+verifyFalse(tc, any(ismember({'A1', 'POL A2', 'm1'}, P.eegChannels(E))));
+B = E; B.chanlocs(strcmp(L, 'Cz')).labels = 'A3';                 % a numbered cap: A1 is scalp there
+verifyEqual(tc, {B.chanlocs(P.isRefSite(B.chanlocs)).labels}, {'m1'});   % (the M channels are not numbered)
+T = E; [T.chanlocs.type] = deal('');
+T.chanlocs(strcmp(L, 'F3')).type = 'EEG';                        % typed EEG on purpose: scalp
+T.chanlocs(strcmp(L, 'Pz')).type = 'REF';                        % typed REF: a reference site
+verifyEqual(tc, {T.chanlocs(P.isRefSite(T.chanlocs)).labels}, {'POL A2', 'm1', 'Pz'});
+[T.chanlocs.type] = deal('EEG');                                 % EEG on every channel: an importer's default
+verifyTrue(tc, all(ismember({'A1', 'POL A2', 'm1'}, {T.chanlocs(P.isRefSite(T.chanlocs)).labels})));
+% named in the dialog and the log; left out of the bad channels, the
+% average and the epoch threshold
+st = pipecompare.live.DataState.fromEEG(E);
+verifyEqual(tc, st.refSites, {'A1', 'POL A2', 'm1'});
+a = strjoin(P.dataAdvice(st), ' ');
+verifyTrue(tc, contains(a, 'Ear/mastoid channels left out: A1, POL A2, m1'), a);
+verifyFalse(tc, contains(strjoin(P.dataAdvice(pipecompare.live.DataState.fromEEG(EEG)), ' '), 'Ear/mastoid'));
+c = P.contract(E, 'P3', {'11'});
+p = P.recipe('standard', st, c, 'average', ex);
+for k = [1 2 numel(p.Slots)]   % badchannels, reref, reject_threshold
+    verifyTrue(tc, all(ismember({'A1', 'POL A2', 'm1'}, p.Slots(k).alternatives{1}.params.exclude)), p.Slots(k).id);
+end
+% data already referenced to linked ears: A1 and A2 near flat and mirrored,
+% which a bad-channel test could flag; they are not tested and kept as they are
+F = E; a1 = strcmp({F.chanlocs.labels}, 'A1'); a2 = strcmp({F.chanlocs.labels}, 'POL A2');
+F.data(a1, :) = 0.01 * randn(1, F.pnts); F.data(a2, :) = -F.data(a1, :);
+q = struct('measure', 'kurt+prob', 'threshold', 5, 'exclude', {P.nonEegChannels(F)}, 'detectHighpass', 1, 'action', 'interpolate');
+[G, ~, info] = pipecompare.run.Steps.badChannels(F, q, struct('highpass', 0));
+verifyFalse(tc, any(ismember({'A1', 'POL A2', 'm1'}, info.badChannels)));
+verifyEqual(tc, G.data(a1 | a2, :), F.data(a1 | a2, :));
+% removed before PipeCompare: not interpolated back for the average
+R = pop_select(E, 'rmchannel', {'A1'});
+verifyEmpty(tc, pipecompare.live.DataState.fromEEG(R).restorableChannels);
+end
+
+function testDetectableDifferenceIsSaid(tc)
+% The smallest difference these data can show: 2.8 x the standard error of
+% the difference (80% power, two-sided alpha .05), from the recommended
+% pipeline's own SME; with several conditions the pair with the largest
+% error, with one condition its value against 0.
+P = pipecompare.simple.Presets;
+o = struct('name', 'P3.mean', 'unit', 'uV', 'sme', [3 4 4], 'estimate', [5 6 7]);
+r.ranking.byStratum = struct('recommended', 2);
+r.cands = struct('m', {[], struct('objectives', o)});
+t = P.detectableText(r);                                         % 2.8 * sqrt(4^2 + 4^2) = 15.8
+verifyTrue(tc, contains(t, 'two conditions must differ in P3 by about 16 uV'), t);
+verifyTrue(tc, contains(t, 'largest difference seen here (2 uV) is smaller') && contains(t, 'more trials'), t);
+o.estimate = [5 30 7];                                           % a difference the data can show
+r.cands(2).m.objectives = o;
+verifyFalse(tc, contains(P.detectableText(r), 'smaller than that'));
+b = struct('name', 'alpha.logpower', 'unit', 'log10(uV^2)', 'sme', 0.05, 'estimate', 1.2);
+r.cands(2).m.objectives = b;                                     % one condition: against 0
+t = P.detectableText(r);
+verifyTrue(tc, contains(t, 'alpha must differ from 0 by about 0.14 log10(uV^2)') && ~contains(t, 'smaller than that'), t);
+r.ranking.byStratum = struct('recommended', {});                 % nothing recommended: nothing said
+verifyEmpty(tc, P.detectableText(r));
+end
+
+function testStepsInWords(tc)
+% What a pipeline did, in order, with its decisions on the data.
+P = pipecompare.simple.Presets;
+f = @(type, params, varargin) struct('type', type, 'params', params, 'interpolated', {{}}, 'removed', {{}}, ...
+    'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN);
+s1 = f('badchannels', struct('measure', 'kurt+prob', 'threshold', 5, 'exclude', {{'EOG1'}}, 'detectHighpass', 1, 'action', 'interpolate'));
+s1.interpolated = {'O1', 'O2'};
+s2 = f('reref', struct('mode', 'average', 'channels', {{}}, 'exclude', {{'EOG1'}}));
+s3 = f('ica', struct('fitHighpass', 1, 'extended', 1));
+s4 = f('icremove', struct('threshold', 0.8, 'classes', {{'Eye', 'Muscle'}})); s4.icsRemoved = 3; s4.icsTotal = 30;
+s5 = f('epoch', struct());
+s6 = f('reject_threshold', struct('uv', 150, 'exclude', {{}})); s6.rejected = 5; s6.epochsBefore = 60;
+r.contract = P.contract(tc.TestData.EEG, 'P3', {'11', '31'});
+r.ref = struct('names', {{'11', '31'}}, 'n', [30 30]);
+r.cands = struct('steps', {{s1, s2, s3, s4, s5, s6}}, 'm', struct('kept', [28 27]));
+L = P.stepsText(r, 1);
+verifyEqual(tc, L{1}, ['1. Bad channels (kurtosis or joint probability over 5 SD, found on a 1 Hz high-passed copy): ', ...
+    'O1, O2 interpolated (not tested: EOG1)']);
+verifyEqual(tc, L{2}, '2. Average reference (left out: EOG1)');
+verifyTrue(tc, startsWith(L{3}, '3. ICA (extended runica), fitted on a 1 Hz high-passed copy'));
+verifyEqual(tc, L{4}, '4. ICLabel: 3 of 30 components removed (Eye, Muscle with probability 0.8 or more)');
+verifyEqual(tc, L{5}, '5. Epochs -200 to 800 ms around event type(s) 11, 31');
+verifyEqual(tc, L{6}, '6. Epochs beyond +/-150 uV on any channel rejected: 5 of 60');
+verifyEqual(tc, L{7}, 'Trials kept per condition: 11: 28 of 30; 31: 27 of 30');
+s1.interpolated = {}; r.cands.steps = {s1};
+L = P.stepsText(r, 1);
+verifyTrue(tc, contains(L{1}, 'none found'), L{1});
+end
+
 function testNextStepWhenRejectionRemovesTooMuch(tc)
 % Every pipeline lost too many epochs and the data keep their recorded
 % reference: the average reference is suggested.
@@ -609,6 +710,10 @@ nqc_setBase(EEG);
 w = pipecompare.gui.SimpleResults(r); c = onCleanup(@() delete(w.Fig)); %#ok<NASGU>
 verifyTrue(tc, startsWith(w.Headline.Text, sprintf('Use pipeline %d: high-pass ', r.ranking.recommended)));
 verifyFalse(tc, contains(w.Headline.Text, 'cutoff='));          % the settings in words, not the internal key
+verifyTrue(tc, contains(w.Headline.Text, 'to be told apart'), w.Headline.Text);   % how large a difference shows
+s = strjoin(w.Steps.Value(:)', ' ');                              % the recommended pipeline, step by step
+verifyTrue(tc, startsWith(s, sprintf('Pipeline %d, step by step: 1. High-pass filter', r.ranking.recommended)), s);
+verifyTrue(tc, contains(s, 'Epochs -200 to 800 ms around event type(s) 11, 31') && contains(s, 'Trials kept per condition: 11: '), s);
 verifyTrue(tc, startsWith(w.Table.Data{1, 6}, 'high-pass '));
 verifyEqual(tc, size(w.Table.Data, 1), 5);
 verifyEqual(tc, w.Table.Data{1, 1}, sprintf('%d*', r.ranking.recommended));   % always shown, first
