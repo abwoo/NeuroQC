@@ -1529,14 +1529,17 @@ end
 
 function lines = resultNotes(r)
 % What the dialog's result window also says: the settings compared make
-% no difference, what to try when no pipeline passed, and filters applied
-% before PipeCompare that already change the signal.
+% no difference, what to try when no pipeline passed, how large a
+% difference these data can show, and filters applied before PipeCompare
+% that already change the signal.
 lines = {};
 if pipecompare.eval.Rank.sameScores(r.ranking)
     lines{end+1} = 'All pipelines that passed have the same noise: the settings compared make no difference on these data.';
 end
 hint = pipecompare.simple.Presets.nextStep(r, 'add a reref step, mode average, after the bad channels');
 if ~isempty(hint), lines{end+1} = hint; end
+detect = pipecompare.simple.Presets.detectableText(r);
+if ~isempty(detect), lines{end+1} = detect; end
 prior = pipecompare.simple.Presets.priorFilterText(r);
 if ~isempty(prior), lines{end+1} = prior; end
 end

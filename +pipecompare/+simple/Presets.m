@@ -316,6 +316,52 @@ classdef Presets
                 'recorded reference, which often makes amplitudes large. Try the average reference (', how, ').']);
         end
 
+        function t = detectableText(result)
+            % How large a difference this recording can show, in words,
+            % from the recommended pipeline's own measurement error (SME,
+            % not gain-corrected: the error the data have for a test run on
+            % them). Two conditions with independent trials and standard
+            % errors a and b: the difference has standard error
+            % sqrt(a^2 + b^2), and a two-sided test at alpha = .05 finds a
+            % true difference of (1.96 + 0.84) * that with 80% probability;
+            % with several conditions, the pair with the largest error; one
+            % condition, its value against 0. When the differences seen
+            % here are smaller than that (a comparison in the measure's
+            % own units, so it holds for uV, ms and log power alike), more
+            % trials would help more than other preprocessing. '' when no
+            % pipeline is recommended.
+            t = '';
+            z = 1.96 + 0.84;
+            if isempty(result.ranking.byStratum), return; end
+            recs = [result.ranking.byStratum.recommended];
+            for k = recs(:)'
+                m = result.cands(k).m;
+                if isempty(m) || ~isfield(m, 'objectives'), continue; end
+                for o = m.objectives(:)'
+                    sme = o.sme; est = o.estimate; nC = numel(sme);
+                    name = strtok(o.name, '.');   % P3.mean: P3; alpha.logpower: alpha
+                    if nC == 1
+                        d = z * sme; seen = abs(est);
+                        what = sprintf('%s must differ from 0 by about %s', name, unitText(d, o.unit));
+                    else
+                        [i, j] = find(triu(true(nC), 1));
+                        se = sqrt(sme(i) .^ 2 + sme(j) .^ 2);
+                        d = z * max(se); seen = max(abs(est(i) - est(j)));
+                        what = sprintf('two conditions must differ in %s by about %s', name, unitText(d, o.unit));
+                    end
+                    if ~isfinite(d), continue; end
+                    who = ''; if numel(recs) > 1, who = sprintf('Pipeline %d: ', k); end
+                    t = sprintf('%s%sWith this many trials and this noise, %s to be told apart; smaller differences need more trials.', ...
+                        pipecompare.utils.ternary(isempty(t), '', [t ' ']), who, what);
+                    if isfinite(seen) && seen < d
+                        t = sprintf(['%s The %s seen here (%s) is smaller than that, so more trials (more events, ', ...
+                            'or several recordings) would help more than other preprocessing.'], t, ...
+                            pipecompare.utils.ternary(nC == 1, 'value', 'largest difference'), unitText(seen, o.unit));
+                    end
+                end
+            end
+        end
+
         function t = priorFilterText(result)
             % A warning when the filters the data had before PipeCompare
             % (result.priorFilters, pipecompare.eval.Injection.priorFilters)
@@ -425,6 +471,11 @@ classdef Presets
             if standard, plan = plan.add('reject_threshold', exclusion{:}); end
         end
     end
+end
+
+function t = unitText(v, unit)
+% a value with its unit: whole numbers from 10, else 2 significant digits
+if abs(v) >= 10, t = sprintf('%.0f %s', v, unit); else, t = sprintf('%.2g %s', v, unit); end
 end
 
 function c = lateralContract(p, events, sites)

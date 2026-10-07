@@ -127,6 +127,8 @@ if isempty(result.ranking.recommended) && ~opts.pool && ~pipecompare.simple.Pres
 end
 hint = pipecompare.simple.Presets.nextStep(result);
 if ~isempty(hint), pipecompare.utils.log('%s', hint); end
+detect = pipecompare.simple.Presets.detectableText(result);
+if ~isempty(detect), pipecompare.utils.log('%s', detect); end
 % filters applied before PipeCompare are outside the pipelines' signal check
 try
     result.priorFilters = pipecompare.eval.Injection.priorFilters(result.root, c, state, result.options);

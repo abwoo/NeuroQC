@@ -70,6 +70,10 @@ classdef SimpleResults < handle
                 end
                 t = sprintf('%s %d of %d pipelines passed the checks.', t, nFeas, height(T));
             end
+            % how large a difference these data can show (a weak result
+            % from too few trials, not from the preprocessing)
+            d = pipecompare.simple.Presets.detectableText(obj.Result);
+            if ~isempty(d), t = sprintf('%s %s', t, d); end
             prior = pipecompare.simple.Presets.priorFilterText(obj.Result);
             if ~isempty(prior), t = sprintf('%s %s', t, prior); end
         end

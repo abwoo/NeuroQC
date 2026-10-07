@@ -9,6 +9,11 @@ Small fixes. Scores and recommendations are unchanged, except on data cleaned wi
 from a script whose high-pass PipeCompare now sees, and on data with ear or mastoid channels (see
 below).
 
+- The result says how large a difference the recording can show: with the recommended pipeline's
+  SME, two conditions must differ by about 2.8 x sqrt(SME_a² + SME_b²) (80% power, two-sided
+  p < .05; one condition: 2.8 x SME against 0) to be told apart. When the differences seen are
+  smaller, it adds that more trials would help more than other preprocessing. In the results
+  window, the Command Window and the advanced panel.
 - Ear and mastoid channels (A1, A2, M1, M2, also as `POL A1` from EDF exports, or typed `REF`) are
   recognised in any dataset and handled like EOG channels: no longer tested as bad channels and
   interpolated, nor counted in epoch rejection or the average reference. Before, *Standard* could

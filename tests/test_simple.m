@@ -201,6 +201,29 @@ R = pop_select(E, 'rmchannel', {'A1'});
 verifyEmpty(tc, pipecompare.live.DataState.fromEEG(R).restorableChannels);
 end
 
+function testDetectableDifferenceIsSaid(tc)
+% The smallest difference these data can show: 2.8 x the standard error of
+% the difference (80% power, two-sided alpha .05), from the recommended
+% pipeline's own SME; with several conditions the pair with the largest
+% error, with one condition its value against 0.
+P = pipecompare.simple.Presets;
+o = struct('name', 'P3.mean', 'unit', 'uV', 'sme', [3 4 4], 'estimate', [5 6 7]);
+r.ranking.byStratum = struct('recommended', 2);
+r.cands = struct('m', {[], struct('objectives', o)});
+t = P.detectableText(r);                                         % 2.8 * sqrt(4^2 + 4^2) = 15.8
+verifyTrue(tc, contains(t, 'two conditions must differ in P3 by about 16 uV'), t);
+verifyTrue(tc, contains(t, 'largest difference seen here (2 uV) is smaller') && contains(t, 'more trials'), t);
+o.estimate = [5 30 7];                                           % a difference the data can show
+r.cands(2).m.objectives = o;
+verifyFalse(tc, contains(P.detectableText(r), 'smaller than that'));
+b = struct('name', 'alpha.logpower', 'unit', 'log10(uV^2)', 'sme', 0.05, 'estimate', 1.2);
+r.cands(2).m.objectives = b;                                     % one condition: against 0
+t = P.detectableText(r);
+verifyTrue(tc, contains(t, 'alpha must differ from 0 by about 0.14 log10(uV^2)') && ~contains(t, 'smaller than that'), t);
+r.ranking.byStratum = struct('recommended', {});                 % nothing recommended: nothing said
+verifyEmpty(tc, P.detectableText(r));
+end
+
 function testNextStepWhenRejectionRemovesTooMuch(tc)
 % Every pipeline lost too many epochs and the data keep their recorded
 % reference: the average reference is suggested.
@@ -554,6 +577,7 @@ nqc_setBase(EEG);
 w = pipecompare.gui.SimpleResults(r); c = onCleanup(@() delete(w.Fig)); %#ok<NASGU>
 verifyTrue(tc, startsWith(w.Headline.Text, sprintf('Use pipeline %d: high-pass ', r.ranking.recommended)));
 verifyFalse(tc, contains(w.Headline.Text, 'cutoff='));          % the settings in words, not the internal key
+verifyTrue(tc, contains(w.Headline.Text, 'to be told apart'), w.Headline.Text);   % how large a difference shows
 verifyTrue(tc, startsWith(w.Table.Data{1, 6}, 'high-pass '));
 verifyEqual(tc, size(w.Table.Data, 1), 5);
 verifyEqual(tc, w.Table.Data{1, 1}, sprintf('%d*', r.ranking.recommended));   % always shown, first

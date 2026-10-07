@@ -206,6 +206,21 @@ rejection, it names the channels most often over the rejection limit (likely bad
 remove or interpolate before running again) and, for data that keep their recorded reference,
 suggests the average reference.
 
+The result also says how large a difference this recording can show, for example *With this many
+trials and this noise, two conditions must differ in P3 by about 6 uV to be told apart; smaller
+differences need more trials.* This comes from the recommended pipeline's own measurement error
+(SME, the error of your measure in its own units, not the gain-corrected value in the table). For
+two conditions with errors *a* and *b*, the difference between them has the error
+sqrt(*a*² + *b*²); a true difference of 2.8 times that (1.96 + 0.84) is found by a two-sided test
+at p < .05 in 80% of recordings like this one. With more than two conditions, the pair with the
+largest error is used; with one condition, the value is compared with 0. When the largest
+difference actually seen between the conditions (or the value itself, with one condition) is
+smaller than this, the result adds that more trials (more events, or several recordings) would
+help more than other preprocessing. That comparison is made in the measure's own units, so it
+works the same for amplitudes (uV), latencies (ms) and band power (log10 uV²). The same sentence
+appears in the Command Window and in the advanced panel's result notes. It describes this one
+recording, trial by trial; a group study's power depends on the number of participants instead.
+
 For any EEGLAB step, order search, several components or different constraints, open
 **Advanced…** in the dialog, or **Tools > PipeCompare > Advanced panel…**. The panel defines the
 same measures as the dialog (ERP components, N2pc and LRP contralateral minus ipsilateral, band
