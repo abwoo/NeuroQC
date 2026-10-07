@@ -331,10 +331,76 @@ rejection, it names the channels most often over the rejection limit (likely bad
 remove or interpolate before running again) and, for data that keep their recorded reference,
 suggests the average reference.
 
+The result also says how large a difference this recording can show, for example *With this many
+trials and this noise, two conditions must differ in P3 by about 6 uV to be told apart; smaller
+differences need more trials.* This comes from the recommended pipeline's own measurement error
+(SME, the error of your measure in its own units, not the gain-corrected value in the table). For
+two conditions with errors *a* and *b*, the difference between them has the error
+sqrt(*a*² + *b*²); a true difference of 2.8 times that (1.96 + 0.84) is found by a two-sided test
+at p < .05 in 80% of recordings like this one. With more than two conditions, the pair with the
+largest error is used; with one condition, the value is compared with 0. When the largest
+difference actually seen between the conditions (or the value itself, with one condition) is
+smaller than this, the result adds that more trials (more events, or several recordings) would
+help more than other preprocessing. That comparison is made in the measure's own units, so it
+works the same for amplitudes (uV), latencies (ms) and band power (log10 uV²). The same sentence
+appears in the Command Window and in the advanced panel's result notes. It describes this one
+recording, trial by trial; a group study's power depends on the number of participants instead.
+
+Under the table, the window lists what the recommended pipeline did, step by step in the order the
+steps ran; select another row to see that pipeline's steps instead. Each line gives the step's
+settings and what it decided on these data, for example:
+
+```
+1. Bad channels (kurtosis or joint probability over 5 SD, found on a 1 Hz high-passed copy): O1, O2 interpolated (not tested: VEOG, HEOG)
+2. Average reference (left out: VEOG, HEOG)
+3. ICA (extended runica), fitted on a 1 Hz high-passed copy and applied to the data
+4. High-pass filter 0.5 Hz
+5. Low-pass filter 40 Hz
+6. ICLabel: 4 of 60 components removed (Muscle, Eye, Heart, Line Noise, Channel Noise with probability 0.8 or more)
+7. Epochs -200 to 800 ms around event type(s) ...
+8. Baseline -200 to 0 ms removed
+9. Epochs beyond +/-150 uV on any channel rejected: 12 of 120
+Trials kept per condition: ...
+```
+
+This is a readable summary of the pipeline's `EEG.history`; the dataset you get with *Use this
+pipeline* keeps the full history (every EEGLAB command) unchanged. The same list is printed in the
+Command Window after a run from `pop_pipecompare`, and the advanced panel shows it under *Steps*
+when you select a result row.
+
 For any EEGLAB step, order search, several components or different constraints, open
 **Advanced…** in the dialog, or **Tools > PipeCompare > Advanced panel…**. The panel defines the
 same measures as the dialog (ERP components, N2pc and LRP contralateral minus ipsilateral, band
 power). See [docs/PANEL.md](docs/PANEL.md) for a description of every control.
+
+### Ear and mastoid channels
+
+Electrodes on the earlobes or mastoids are reference sites, not scalp electrodes. PipeCompare
+recognises them automatically, in any dataset, by their standard names: **A1** and **A2** (10-20
+earlobes) and **M1** and **M2** (mastoids), in any upper or lower case and also with the `POL `
+prefix some EDF exports add (`POL A1`). A channel whose type is set to `REF` in the channel
+locations counts too. These channels:
+
+- stay in the data, unchanged;
+- are not tested as bad channels, so they are never interpolated (the scalp cannot predict them);
+- do not count in epoch rejection;
+- are left out of an average reference, as EOG channels are;
+- are not interpolated back when they were removed before PipeCompare.
+
+This also covers data already referenced to linked ears or mastoids, where A1 and A2 are flat or
+mirror each other and a bad-channel test would wrongly flag them. The dialog (step 1, *Data*),
+the Command Window log and the advanced panel's dataset summary list them, e.g. *Ear/mastoid
+channels left out: A1, A2*; in the panel they are filled into each step's *exclude* list, where
+you can edit them.
+
+Some channels with these names are not ears, and are left as scalp channels:
+
+- caps numbered by letter, such as BioSemi's A1-A32: when the data also have A3 (or M3), A1 and A2
+  are scalp electrodes there;
+- TP9 and TP10, which sit near the mastoids but are scalp electrodes in the 10-10 system;
+- a channel you set to type `EEG` in **Edit > Channel locations** while other channels have other
+  types. Use this to keep A1 and A2 as scalp channels. (When every channel has type `EEG`, that is
+  the importer's default, not a choice, and the names decide.)
 
 ### From the command line
 

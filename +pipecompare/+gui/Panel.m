@@ -261,6 +261,9 @@ classdef Panel < handle
             obj.DatasetLabel.Text = sprintf(['Set %s: %s%s\n%d ch | %g Hz | %s | %d events\n', ...
                 'Reference: %s | ICA: %s | %s\nFilters: %s'], mat2str(live.currentSet), s.setname, stored, ...
                 s.nbchan, s.srate, shape, s.nEvents, s.reference, s.ica.summary, locs, pipecompare.gui.PanelText.orDash(s.filters.text));
+            if ~isempty(s.refSites)   % as in the simple mode: not scalp, left out of the steps' exclude lists
+                obj.DatasetLabel.Text = sprintf('%s | ear/mastoid channels left out: %s', obj.DatasetLabel.Text, strjoin(s.refSites, ', '));
+            end
             obj.autoFill(s);
             obj.checkTrialRule(EEG, s);
             if isempty(s.warnings), obj.WarnArea.Value = {'No inconsistencies between data and history.'};
@@ -341,9 +344,10 @@ classdef Panel < handle
         end
 
         function addStep(obj)
-            % As in the simple mode: non-EEG channels (EOG, ECG, ...) are
-            % left out of bad-channel detection, the average and epoch
-            % rejection, and bad channels are kurtosis or joint probability
+            % As in the simple mode: non-EEG channels (EOG, ECG, ...) and
+            % ear/mastoid channels (A1, A2, M1, M2) are left out of
+            % bad-channel detection, the average and epoch rejection, and
+            % bad channels are kurtosis or joint probability
             % (z = 5), detected on a 1 Hz high-passed copy of continuous
             % data. Shown in the table; Edit values... changes them.
             type = obj.TypeDrop.Value; args = {};
@@ -1408,6 +1412,8 @@ classdef Panel < handle
                             pipecompare.gui.PanelText.pctText(T.ampError(k)), T.latencyShiftMs(k), pipecompare.gui.PanelText.pctText(T.artifactPct(k)), T.waveformCorr(k), T.topoCorr(k));
                         c = obj.Result.cands(k);
                         if ~isempty(c.unmatched), v{end+1} = ['Signal check not decision-matched for: ' strjoin(c.unmatched, ', ')]; end
+                        steps = pipecompare.simple.Presets.stepsText(obj.Result, k);   % as in the simple mode's results
+                        if ~isempty(steps), v = [v {'Steps:'} steps]; end
                         v = [v {'EEGLAB commands:'} c.coms(:)'];
                 end
                 obj.DetailArea.Value = v(:);
@@ -1525,14 +1531,17 @@ end
 
 function lines = resultNotes(r)
 % What the dialog's result window also says: the settings compared make
-% no difference, what to try when no pipeline passed, and filters applied
-% before PipeCompare that already change the signal.
+% no difference, what to try when no pipeline passed, how large a
+% difference these data can show, and filters applied before PipeCompare
+% that already change the signal.
 lines = {};
 if pipecompare.eval.Rank.sameScores(r.ranking)
     lines{end+1} = 'All pipelines that passed have the same noise: the settings compared make no difference on these data.';
 end
 hint = pipecompare.simple.Presets.nextStep(r, 'add a reref step, mode average, after the bad channels');
 if ~isempty(hint), lines{end+1} = hint; end
+detect = pipecompare.simple.Presets.detectableText(r);
+if ~isempty(detect), lines{end+1} = detect; end
 prior = pipecompare.simple.Presets.priorFilterText(r);
 if ~isempty(prior), lines{end+1} = prior; end
 end

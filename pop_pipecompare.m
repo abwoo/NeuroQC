@@ -25,7 +25,8 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %   'recipe'   'standard' (default) | 'filters': which steps are compared
 %   'reference' 'asis' (default) | 'average': the average reference as a
 %              fixed step of every pipeline, after the bad channels and
-%              before ICA (channels typed as EOG, ECG, ... are left out of
+%              before ICA (channels typed as EOG, ECG, ... and ear or
+%              mastoid channels such as A1, A2, M1, M2 are left out of
 %              the average)
 %   'segment'  band power: segment length in s (default 2)
 %   'show'     'on' (default) shows a progress window with a Stop button
@@ -126,6 +127,10 @@ if isempty(result.ranking.recommended) && ~opts.pool && ~pipecompare.simple.Pres
 end
 hint = pipecompare.simple.Presets.nextStep(result);
 if ~isempty(hint), pipecompare.utils.log('%s', hint); end
+detect = pipecompare.simple.Presets.detectableText(result);
+if ~isempty(detect), pipecompare.utils.log('%s', detect); end
+steps = pipecompare.simple.Presets.stepsText(result, result.ranking.recommended);
+if ~isempty(steps), pipecompare.utils.log('Pipeline %d, step by step:%s', result.ranking.recommended, sprintf('\n  %s', steps{:})); end
 % filters applied before PipeCompare are outside the pipelines' signal check
 try
     result.priorFilters = pipecompare.eval.Injection.priorFilters(result.root, c, state, result.options);

@@ -178,8 +178,9 @@ classdef Presets
         end
 
         function labels = nonEegChannels(EEG)
-            % non-EEG channels (EOG, ECG, ...): not tested for bad channels
-            % or epoch rejection, and left out of an average reference
+            % non-EEG channels (EOG, ECG, ...) and ear/mastoid reference
+            % sites (A1, A2, M1, M2): not tested for bad channels or epoch
+            % rejection, and left out of an average reference
             labels = setdiff({EEG.chanlocs.labels}, pipecompare.simple.Presets.eegChannels(EEG), 'stable');
         end
 
@@ -194,12 +195,43 @@ classdef Presets
         function tf = isNonEeg(chanlocs)
             % non-EEG channels (EOG, ECG, EMG, ...), by type or, when the
             % type is not set, by name (VEOG, HEOG, ECG1, EYEL; with the
-            % POL prefix of some EDF exports: POL EYEL)
+            % POL prefix of some EDF exports: POL EYEL); and ear/mastoid
+            % reference sites (isRefSite)
             labels = {chanlocs.labels};
             tf = ~cellfun(@isempty, regexpi(labels, '^(POL\s+)?([VH]?EOG|ECG|EKG|EMG|EYE)', 'once'));
             if isfield(chanlocs, 'type')
                 ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), chanlocs(:)', 'UniformOutput', false);
                 tf = tf | ismember(ty, {'EOG', 'HEOG', 'VEOG', 'ECG', 'EKG', 'EMG', 'MISC', 'TRIG', 'STIM'});
+            end
+            tf = tf | pipecompare.simple.Presets.isRefSite(chanlocs);
+        end
+
+        function tf = isRefSite(chanlocs)
+            % Ear and mastoid electrodes (10-20 names A1, A2 for the
+            % earlobes, M1, M2 for the mastoids; optional POL prefix of
+            % EDF exports; any case), or channels typed REF. They are
+            % reference sites, not scalp: the scalp cannot predict them
+            % (no interpolation), and a linked-ears reference leaves them
+            % flat or mirrored, which a bad-channel test would flag.
+            % Not when numbered caps use the letter for scalp channels
+            % (BioSemi A1-A32: there is an A3, ...), and not a channel
+            % typed EEG while other channels have other types (to keep A1,
+            % A2 as scalp channels, set their type to EEG in Edit > Channel
+            % locations); a type EEG on every channel is an importer's
+            % default, not a choice.
+            labels = cellfun(@(l) strtrim(char(string(l))), {chanlocs.labels}, 'UniformOutput', false);
+            tok = regexpi(labels, '^(?:POL\s+)?([AM])(\d+)$', 'tokens', 'once');
+            num = ~cellfun(@isempty, tok);
+            letter = repmat({''}, size(labels)); n = zeros(size(labels));
+            letter(num) = cellfun(@(t) upper(t{1}), tok(num), 'UniformOutput', false);
+            n(num) = cellfun(@(t) str2double(t{2}), tok(num));
+            numbered = unique(letter(num & n > 2));   % A3, M3, ...: a numbered cap
+            tf = num & ismember(n, [1 2]) & ~ismember(letter, numbered);
+            if isfield(chanlocs, 'type')
+                ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), chanlocs(:)', 'UniformOutput', false);
+                eeg = strcmp(ty, 'EEG');
+                if ~all(eeg), tf = tf & ~eeg; end
+                tf = tf | strcmp(ty, 'REF');
             end
         end
 
@@ -236,6 +268,12 @@ classdef Presets
                         'removed, choose Filters only'];
                 end
                 lines{end+1} = [t '.'];
+            end
+            ear = pipecompare.utils.fieldOr(state, 'refSites', {});
+            if ~isempty(ear)
+                lines{end+1} = sprintf(['Ear/mastoid channels left out: %s. They stay in the data but are not ', ...
+                    'tested as bad channels, interpolated, counted in epoch rejection or part of an average ', ...
+                    'reference (to treat them as scalp channels, set their type to EEG).'], strjoin(ear, ', '));
             end
             % PipeCompare handles these itself on its copy
             w = state.warnings(~contains(state.warnings, {'urevent', 'EEG.srate'}));
@@ -278,6 +316,130 @@ classdef Presets
                 'recorded reference, which often makes amplitudes large. Try the average reference (', how, ').']);
         end
 
+        function lines = stepsText(result, k)
+            % What pipeline k did, step by step in order, in words: each
+            % step's settings and its decisions on these data (channels
+            % interpolated, components and epochs removed), then the trials
+            % kept per condition. A summary of the pipeline's EEG.history
+            % (the history itself is unchanged). {} when the pipeline did
+            % not run to the end.
+            lines = {};
+            if isempty(k) || k > numel(result.cands) || ~isfield(result.cands(k), 'steps'), return; end
+            c = result.cands(k); con = result.contract;
+            for q = 1:numel(c.steps)
+                f = c.steps{q}; p = f.params;
+                switch f.type
+                    case 'highpass', t = sprintf('High-pass filter %g Hz', p.cutoff);
+                    case 'lowpass', t = sprintf('Low-pass filter %g Hz', p.cutoff);
+                    case 'badchannels'
+                        how = strrep(strrep(strrep(p.measure, 'kurt', 'kurtosis'), 'prob', 'joint probability'), '+', ' or ');
+                        t = sprintf('Bad channels (%s over %g SD', how, p.threshold);
+                        if pipecompare.utils.fieldOr(p, 'detectHighpass', 0) > 0
+                            t = sprintf('%s, found on a %g Hz high-passed copy', t, p.detectHighpass);
+                        end
+                        t = [t '): ' listText(pipecompare.utils.ternary(isempty(f.removed), f.interpolated, f.removed), ...
+                            pipecompare.utils.ternary(isempty(f.removed), 'interpolated', 'removed'), 'none found')];
+                        t = [t notTested(p)];
+                    case 'channels'
+                        t = sprintf('Named channels %s: %s', pipecompare.utils.ternary(strcmp(p.action, 'remove'), ...
+                            'removed', 'interpolated'), strjoin(cellstr(p.labels), ', '));
+                    case 'restore'   % (labels in lower case: in the data's spelling)
+                        pool = [pipecompare.utils.fieldOr(pipecompare.utils.fieldOr(result, 'state', struct()), 'removedChannels', {}), ...
+                            pipecompare.utils.fieldOr(pipecompare.utils.fieldOr(result, 'state', struct()), 'labels', {})];
+                        [ok, at] = ismember(f.interpolated, lower(pool));
+                        names = f.interpolated; names(ok) = pool(at(ok));
+                        t = ['Channels removed before PipeCompare: ' listText(names, 'interpolated back', 'none')];
+                    case 'reref'
+                        if strcmp(p.mode, 'average'), t = 'Average reference';
+                        else, t = ['Re-referenced to ' strjoin(cellstr(p.channels), ', ')]; end
+                        if isfield(p, 'exclude') && ~isempty(p.exclude)
+                            t = sprintf('%s (left out: %s)', t, strjoin(cellstr(p.exclude), ', '));
+                        end
+                    case 'ica'
+                        t = 'ICA (extended runica)';
+                        if pipecompare.utils.fieldOr(p, 'fitHighpass', 0) > 0
+                            t = sprintf('%s, fitted on a %g Hz high-passed copy and applied to the data', t, p.fitHighpass);
+                        end
+                    case 'icremove'
+                        t = sprintf('ICLabel: %s of %s components removed (%s with probability %g or more)', ...
+                            numText(f.icsRemoved), numText(f.icsTotal), strjoin(cellstr(p.classes), ', '), p.threshold);
+                    case 'epoch'
+                        if con.isSegmented(), t = sprintf('Cut into %g s segments', con.segment);
+                        else
+                            t = sprintf('Epochs %g to %g ms around event type(s) %s', 1000 * con.epoch, ...
+                                strjoin(cellfun(@(e) char(string(e)), con.allEvents(), 'UniformOutput', false), ', '));
+                        end
+                    case 'baseline', t = sprintf('Baseline %g to %g ms removed', 1000 * con.baseline);
+                    case 'reject_threshold'
+                        t = sprintf('Epochs beyond +/-%g uV on any channel rejected: %s', p.uv, ofText(f));
+                        t = [t notTested(p)];
+                    case {'reject_jointprob', 'reject_kurtosis'}
+                        t = sprintf('Epochs rejected by %s (%g SD): %s', pipecompare.utils.ternary(strcmp(f.type, ...
+                            'reject_kurtosis'), 'kurtosis', 'joint probability'), p.sd, ofText(f));
+                        t = [t notTested(p)];
+                    case 'asr', t = sprintf('ASR burst correction (%g SD)', p.cutoff);
+                    case 'native'
+                        cmd = strtrim(char(p.command));
+                        if numel(cmd) > 100, cmd = [cmd(1:97) '...']; end
+                        t = ['EEGLAB command: ' cmd];
+                    otherwise
+                        d = pipecompare.plan.Catalog.get(f.type); t = d.label;
+                end
+                lines{end+1} = sprintf('%d. %s', q, t); %#ok<AGROW>
+            end
+            if ~isempty(c.m) && isfield(c.m, 'kept') && isfield(result, 'ref') && ~isempty(result.ref)
+                kept = arrayfun(@(i) sprintf('%s: %d of %d', result.ref.names{i}, c.m.kept(i), result.ref.n(i)), ...
+                    1:numel(c.m.kept), 'UniformOutput', false);
+                lines{end+1} = sprintf('Trials kept per condition: %s', strjoin(kept, '; '));
+            end
+        end
+
+        function t = detectableText(result)
+            % How large a difference this recording can show, in words,
+            % from the recommended pipeline's own measurement error (SME,
+            % not gain-corrected: the error the data have for a test run on
+            % them). Two conditions with independent trials and standard
+            % errors a and b: the difference has standard error
+            % sqrt(a^2 + b^2), and a two-sided test at alpha = .05 finds a
+            % true difference of (1.96 + 0.84) * that with 80% probability;
+            % with several conditions, the pair with the largest error; one
+            % condition, its value against 0. When the differences seen
+            % here are smaller than that (a comparison in the measure's
+            % own units, so it holds for uV, ms and log power alike), more
+            % trials would help more than other preprocessing. '' when no
+            % pipeline is recommended.
+            t = '';
+            z = 1.96 + 0.84;
+            if isempty(result.ranking.byStratum), return; end
+            recs = [result.ranking.byStratum.recommended];
+            for k = recs(:)'
+                m = result.cands(k).m;
+                if isempty(m) || ~isfield(m, 'objectives'), continue; end
+                for o = m.objectives(:)'
+                    sme = o.sme; est = o.estimate; nC = numel(sme);
+                    name = strtok(o.name, '.');   % P3.mean: P3; alpha.logpower: alpha
+                    if nC == 1
+                        d = z * sme; seen = abs(est);
+                        what = sprintf('%s must differ from 0 by about %s', name, unitText(d, o.unit));
+                    else
+                        [i, j] = find(triu(true(nC), 1));
+                        se = sqrt(sme(i) .^ 2 + sme(j) .^ 2);
+                        d = z * max(se); seen = max(abs(est(i) - est(j)));
+                        what = sprintf('two conditions must differ in %s by about %s', name, unitText(d, o.unit));
+                    end
+                    if ~isfinite(d), continue; end
+                    who = ''; if numel(recs) > 1, who = sprintf('Pipeline %d: ', k); end
+                    t = sprintf('%s%sWith this many trials and this noise, %s to be told apart; smaller differences need more trials.', ...
+                        pipecompare.utils.ternary(isempty(t), '', [t ' ']), who, what);
+                    if isfinite(seen) && seen < d
+                        t = sprintf(['%s The %s seen here (%s) is smaller than that, so more trials (more events, ', ...
+                            'or several recordings) would help more than other preprocessing.'], t, ...
+                            pipecompare.utils.ternary(nC == 1, 'value', 'largest difference'), unitText(seen, o.unit));
+                    end
+                end
+            end
+        end
+
         function t = priorFilterText(result)
             % A warning when the filters the data had before PipeCompare
             % (result.priorFilters, pipecompare.eval.Injection.priorFilters)
@@ -307,8 +469,9 @@ classdef Presets
         function [plan, notes] = recipe(name, state, contract, reference, exclude)
             % The plan of a recipe for these data, and why a step was left
             % out. reference: 'asis' (default) or 'average'; exclude: the
-            % non-EEG channels (e.g. EOG, ECG), not tested for bad channels
-            % or epoch rejection and left out of the average.
+            % non-EEG channels (e.g. EOG, ECG) and ear/mastoid sites, not
+            % tested for bad channels or epoch rejection and left out of
+            % the average.
             if nargin < 4 || isempty(reference), reference = 'asis'; end
             if nargin < 5, exclude = {}; end
             assert(any(strcmp(reference, {'asis', 'average'})), 'PipeCompare:Simple', ...
@@ -386,6 +549,33 @@ classdef Presets
             if standard, plan = plan.add('reject_threshold', exclusion{:}); end
         end
     end
+end
+
+function t = listText(labels, done, none)
+% channels and what was done to them, or none
+if isempty(labels), t = none; else, t = sprintf('%s %s', strjoin(cellstr(labels), ', '), done); end
+end
+
+function t = notTested(p)
+% the channels a step left out
+t = '';
+if isfield(p, 'exclude') && ~isempty(p.exclude), t = sprintf(' (not tested: %s)', strjoin(cellstr(p.exclude), ', ')); end
+end
+
+function t = numText(v)
+if isfinite(v), t = sprintf('%d', v); else, t = '?'; end
+end
+
+function t = ofText(f)
+% epochs removed of those there were
+if ~isfinite(f.rejected), t = '?';
+elseif isfinite(f.epochsBefore), t = sprintf('%d of %d', f.rejected, f.epochsBefore);
+else, t = sprintf('%d', f.rejected); end
+end
+
+function t = unitText(v, unit)
+% a value with its unit: whole numbers from 10, else 2 significant digits
+if abs(v) >= 10, t = sprintf('%.0f %s', v, unit); else, t = sprintf('%.2g %s', v, unit); end
 end
 
 function c = lateralContract(p, events, sites)

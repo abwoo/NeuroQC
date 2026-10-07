@@ -129,7 +129,7 @@ classdef Executor
             end
             ctx0 = struct('contract', contract, 'highpass', rootHighpass(result.state));
             acc0 = struct('interpolated', {{}}, 'icsRemoved', 0, 'rejected', 0, 'coms', {{}}, 'seconds', 0, 'unmatched', {{}}, ...
-                'ica', {{}}, 'overLimit', noOverLimit());
+                'ica', {{}}, 'overLimit', noOverLimit(), 'steps', {{}});
             % pipelines with no step at all (every slot chose 'none') are the starting copy itself
             pre = repmat(emptyCand(), 0, 1);
             for li = tree(1).leaves
@@ -599,10 +599,14 @@ function c = emptyCand()
 %   overLimit               per channel (labels, counts), the rejected
 %                           epochs in which it was over the limit: names
 %                           bad channels the detection missed
+%   steps                   per step of its path, in order: the step's
+%                           type and settings and what it did on these
+%                           data (channels interpolated, components and
+%                           epochs removed), for the list of steps
 % Rank.run reads status, m, signal, interpolatedFraction and stratum.
 c = struct('id', 0, 'key', '', 'stratum', '', 'status', 'pending', 'message', '', 'm', [], 'signal', [], ...
     'interpolatedFraction', NaN, 'icsRemoved', 0, 'rejectedEpochs', 0, 'coms', {{}}, 'seconds', 0, 'unmatched', {{}}, ...
-    'notes', {{}}, 'ica', {{}}, 'overLimit', noOverLimit());
+    'notes', {{}}, 'ica', {{}}, 'overLimit', noOverLimit(), 'steps', {{}});
 end
 
 function o = noOverLimit()
@@ -653,6 +657,20 @@ if isfield(info, 'overLimit') && ~isempty(info.overLimit.counts)
     [labels, ~, j] = unique([acc.overLimit.labels(:); info.overLimit.labels(:)]);
     acc.overLimit = struct('labels', {labels(:)'}, 'counts', accumarray(j(:), [acc.overLimit.counts(:); info.overLimit.counts(:)])');
 end
+acc.steps{end+1} = stepFacts(in, info);
+end
+
+function f = stepFacts(in, info)
+% What a step did, for the results' list of steps: its settings and the
+% decisions it made on these data (channels, components, epochs).
+f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed', {{}}, ...
+    'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN);
+for n = {'interpolated', 'removed'}
+    if isfield(info, n{1}), f.(n{1}) = cellstr(info.(n{1})); end
+end
+for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore'}
+    if isfield(info, n{1}), f.(n{1}) = info.(n{1}); end
+end
 end
 
 function [S, unmatched] = replayCopy(in, S, info, ctx)
@@ -688,7 +706,7 @@ c.id = li; c.key = env.leaves(li).key; c.stratum = env.leaves(li).stratum;
 c.coms = acc.coms; c.seconds = acc.seconds;
 c.icsRemoved = acc.icsRemoved; c.rejectedEpochs = acc.rejected;
 c.interpolatedFraction = numel(acc.interpolated) / env.nbchan;
-c.unmatched = acc.unmatched; c.ica = acc.ica; c.overLimit = acc.overLimit;
+c.unmatched = acc.unmatched; c.ica = acc.ica; c.overLimit = acc.overLimit; c.steps = acc.steps;
 try
     c.m = pipecompare.eval.Measure.candidate(E, env.contract, env.ref, env.opts);
     nm = markedNotRemoved(E);
