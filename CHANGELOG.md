@@ -8,6 +8,13 @@ release has a git tag `vX.Y.Z`.
 Small fixes. Scores and recommendations are unchanged, except on data cleaned with clean_rawdata
 from a script whose high-pass PipeCompare now sees (see below).
 
+- Simple mode: instead of choosing between *Standard* and *Filters only*, tick the steps to
+  compare in a list shown in the order they run (bad channels, reference, ICA, high-pass,
+  low-pass, epochs, epoch rejection); the order stays fixed. *Standard (all)* and *Filters only*
+  are buttons that tick their steps. Steps the data cannot take are greyed out with the reason.
+  `pop_pipecompare` takes `'steps'`, e.g. `{'highpass', 'lowpass', 'reject'}`; `'recipe'` works
+  as before.
+
 - While a comparison runs, the Command Window prints each step and each finished pipeline as it
   happens (in the simple mode it used to stay silent until the end); the same text is still kept
   in `pipecompare_last_run.log`.

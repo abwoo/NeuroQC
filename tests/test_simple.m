@@ -236,6 +236,73 @@ verifyEqual(tc, numel(p.Slots(2).alternatives), 1);                  % no low-pa
 verifyTrue(tc, any(contains(notes, 'high-pass 0.1, 0.3, 0.5 Hz (the data are already high-pass-filtered at 0.5 Hz)')));
 end
 
+function testChosenStepsRunInAFixedOrder(tc)
+% Any of the steps can be compared; they always run in one order, with
+% epoching and baseline in every pipeline, and the recipes are two sets.
+EEG = tc.TestData.EEG;
+c = pipecompare.simple.Presets.contract(EEG, 'P3', {'11'});
+ids = @(p) {p.Slots.id};
+st = pipecompare.live.DataState.fromEEG(EEG);
+P = pipecompare.simple.Presets;
+verifyEqual(tc, ids(P.recipe({'reject', 'highpass'}, st, c)), {'highpass', 'epoch', 'baseline', 'reject_threshold'});
+verifyEqual(tc, ids(P.recipe({'lowpass', 'ica'}, st, c)), {'ica', 'lowpass', 'icremove', 'epoch', 'baseline'});
+verifyEqual(tc, ids(P.recipe({'badchannels', 'reject'}, st, c)), {'badchannels', 'epoch', 'baseline', 'reject_threshold'});
+verifyEqual(tc, ids(P.recipe({'reject'}, st, c, 'average')), {'badchannels', 'reref', 'epoch', 'baseline', 'reject_threshold'});
+verifyEqual(tc, ids(P.recipe(P.recipeSteps('standard'), st, c)), ids(P.recipe('standard', st, c)));
+verifyError(tc, @() P.recipe({'asr'}, st, c), 'PipeCompare:Simple');
+verifyEqual(tc, P.recipeOf({'lowpass', 'highpass'}), 'filters');
+verifyEqual(tc, P.recipeOf(P.stepNames()), 'standard');
+verifyEqual(tc, P.recipeOf({'highpass', 'reject'}), '');
+% band power: with epoch rejection compared, one edge per filter
+p = P.recipe({'highpass', 'lowpass', 'reject'}, st, P.contract(EEG, 'alpha', {}));
+verifyEqual(tc, p.Slots(strcmp({p.Slots.id}, 'lowpass')).alternatives{1}.params.cutoff, {20});
+% what the data cannot take, and why
+[why, info] = P.stepAvailability(st);
+verifyEmpty(tc, why.highpass); verifyEmpty(tc, why.reject);
+verifyEmpty(tc, info.highpass);
+noloc = st; noloc.nLocated = 0;
+why = P.stepAvailability(noloc);
+verifyTrue(tc, contains(why.badchannels, 'channel locations') && contains(why.ica, 'channel locations'));
+[~, Ep] = evalc('pop_epoch(EEG, {''11''}, [-0.2 0.8])');
+why = P.stepAvailability(pipecompare.live.DataState.fromEEG(Ep));
+verifyTrue(tc, contains(why.highpass, 'already epoched') && contains(why.lowpass, 'already epoched'));
+H = EEG; H.history = sprintf('%s\nEEG = pop_eegfiltnew(EEG, ''locutoff'',0.5,''plotfreqz'',0);', EEG.history);
+[~, info] = P.stepAvailability(pipecompare.live.DataState.fromEEG(H));
+verifyTrue(tc, contains(info.highpass, 'already high-passed at 0.5 Hz'));
+end
+
+function testDialogStepChecklist(tc)
+EEG = tc.TestData.EEG;
+d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>
+d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
+names = pipecompare.simple.Presets.stepNames();
+box = @(s) d.StepBoxes(strcmp(names, s));
+verifyEqual(tc, d.update(), 4 * 3 * 3 * 3);                     % Standard
+d.tick(find(strcmp(names, 'ica')), false);
+verifyEqual(tc, d.update(), 4 * 3 * 3);                         % without ICA
+verifyFalse(tc, box('ica').Value);
+o = d.options();
+verifyEqual(tc, o.steps, {'badchannels', 'highpass', 'lowpass', 'reject'});
+verifyEmpty(tc, o.recipe);                                      % not one of the two recipes
+d.usePreset('filters');
+verifyEqual(tc, d.update(), 12);
+verifyFalse(tc, box('badchannels').Value);
+d.RefDrop.Value = 'average'; d.update();
+verifyTrue(tc, box('badchannels').Value);                       % always before an average reference
+verifyEqual(tc, char(box('badchannels').Enable), 'off');
+d.RefDrop.Value = 'asis'; d.update();
+verifyFalse(tc, box('badchannels').Value);                      % the choice is kept
+verifyEqual(tc, char(box('badchannels').Enable), 'on');
+% epoched data: the filters are greyed out, with the reason
+[~, Ep] = evalc('pop_epoch(EEG, {''11'', ''31''}, [-0.2 0.8])');
+d3 = pipecompare.gui.SimpleDialog(Ep); c3 = onCleanup(@() delete(d3)); %#ok<NASGU>
+d3.MeasureDrop.Value = 'P3'; d3.measureChanged();
+hp = d3.StepBoxes(strcmp(names, 'highpass'));
+verifyEqual(tc, char(hp.Enable), 'off');
+verifyFalse(tc, hp.Value);
+verifyTrue(tc, contains(d3.StepNotes(strcmp(names, 'highpass')).Text, 'already epoched'));
+end
+
 function testChannelsRemovedBeforeAreRestoredForTheAverage(tc)
 % EEG channels removed before PipeCompare are interpolated back before an
 % average reference (an average over fewer channels is another reference);
@@ -304,7 +371,7 @@ verifyEqual(tc, d.MeasureDrop.Value, d.Choose);
 verifyTrue(tc, all(ismember({'P3', 'custom', 'alpha', 'band'}, d.MeasureDrop.ItemsData)));
 verifyTrue(tc, ismember('ERP: P3 (Pz, 300-600 ms)', d.MeasureDrop.Items));
 verifyEmpty(tc, d.EventList.Value);
-verifyEqual(tc, d.RecipeDrop.Value, 'standard');                % preselected
+verifyEqual(tc, pipecompare.simple.Presets.recipeOf(d.chosenSteps()), 'standard');   % preselected
 verifyEqual(tc, char(d.RunButton.Enable), 'off');
 verifyEqual(tc, d.Grid.RowHeight{3}, 0);                        % no custom row for a preset
 d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
@@ -318,7 +385,7 @@ verifyEqual(tc, d.update(), 4 * 3 * 3 * 3);                     % fixed: no more
 o = d.options();
 verifyEqual(tc, o.reference, 'average');
 d.RefDrop.Value = 'asis';
-d.RecipeDrop.Value = 'filters';
+d.usePreset('filters');
 [n, msg] = d.update();
 verifyEqual(tc, n, 12);                                         % 4 high-pass x 3 low-pass edges
 verifyTrue(tc, startsWith(msg, '12 pipelines'));
@@ -326,12 +393,12 @@ d.MeasureDrop.Value = 'alpha'; d.measureChanged();
 verifyEqual(tc, char(d.EventList.Enable), 'off');               % band power needs no events
 o = d.options();
 verifyEmpty(tc, o.events);
-d.RecipeDrop.Value = 'standard';
+d.usePreset('standard');
 verifyEqual(tc, d.update(), 3 * 3);                             % band power: one high-pass, one low-pass
 d.MeasureDrop.Value = 'N2pc'; d.measureChanged();
 verifyEqual(tc, d.EventGrid.ColumnWidth{2}, '1x');              % one list per side
 verifyEqual(tc, char(d.PoolBox.Enable), 'off');
-d.EventList.Value = {'11'}; d.RightList.Value = {'31'}; d.RecipeDrop.Value = 'filters';
+d.EventList.Value = {'11'}; d.RightList.Value = {'31'}; d.usePreset('filters');
 verifyEqual(tc, d.update(), 12);
 o = d.options();
 verifyEqual(tc, [o.left o.right], {'11', '31'});
@@ -343,7 +410,7 @@ verifyEqual(tc, d.EventGrid.ColumnWidth{2}, 0);
 d3 = pipecompare.gui.SimpleDialog(Ep); c3 = onCleanup(@() delete(d3)); %#ok<NASGU>
 verifyFalse(tc, any(ismember({'alpha', 'band'}, d3.MeasureDrop.ItemsData)));
 verifyEqual(tc, sort(d3.EventList.Value), {'11', '31'});        % the time-locking types
-d3.MeasureDrop.Value = 'P3'; d3.RecipeDrop.Value = 'filters'; d3.measureChanged();
+d3.MeasureDrop.Value = 'P3'; d3.usePreset('filters'); d3.measureChanged();
 [n, msg] = d3.update();
 verifyEqual(tc, n, 1);
 verifyTrue(tc, startsWith(msg, 'Only 1 pipeline: nothing to compare.'));
@@ -360,7 +427,7 @@ end
 function testDialogOwnWindowAndBand(tc)
 EEG = tc.TestData.EEG;
 d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>
-d.EventList.Value = {'11', '31'}; d.RecipeDrop.Value = 'filters';
+d.EventList.Value = {'11', '31'}; d.usePreset('filters');
 d.MeasureDrop.Value = 'custom'; d.measureChanged();
 verifyEqual(tc, d.Grid.RowHeight{3}, 22);                       % window and electrodes row shown
 verifyEqual(tc, d.CustomLabel.Text, 'Window (ms)');
@@ -424,7 +491,7 @@ EEG = tc.TestData.EEG;
 is11 = find(arrayfun(@(e) strcmp(strtrim(char(string(e.type))), '11'), EEG.event));
 F = EEG; F.event(is11(6:end)) = []; F.urevent = [];
 d = pipecompare.gui.SimpleDialog(F); c = onCleanup(@() delete(d)); %#ok<NASGU>
-d.EventList.Value = {'11'}; d.MeasureDrop.Value = 'P3'; d.RecipeDrop.Value = 'filters';
+d.EventList.Value = {'11'}; d.MeasureDrop.Value = 'P3'; d.usePreset('filters');
 d.update();
 verifyEqual(tc, char(d.RunButton.Enable), 'off');               % every pipeline would be excluded
 verifyTrue(tc, startsWith(d.NotesLabel.Text, '11 has 5 events; each condition needs at least 10.'));
@@ -461,6 +528,11 @@ verifyTrue(tc, rb.ref.segmented);
     'events', {'11', '31'}, 'recipe', 'filters', 'show', 'off');
 verifyTrue(tc, startsWith(com, 'EEG = pop_pipecompare(EEG, ''measure'',''custom'',''window'',[0.25'));
 verifyTrue(tc, contains(com, '''channels'',{''Pz''},''events'',{''11'',''31''}'));
+[~, com, rs] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'steps', {'lowpass', 'highpass'}, 'show', 'off');
+verifyTrue(tc, contains(com, '''recipe'',''filters'''));         % the steps of a recipe: written as the recipe
+verifyEqual(tc, numel(rs.cands), 12);
+[~, com] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'steps', {'lowpass'}, 'show', 'off');
+verifyTrue(tc, contains(com, '''steps'',{''lowpass''}'));
 [~, ~, rn] = pop_pipecompare(EEG, 'measure', 'P3', 'events', [11 31], 'recipe', 'filters', 'show', 'off');
 verifyEqual(tc, {rn.contract.conditions.name}, {'11', '31'});    % numeric event types
 [~, com, rl] = pop_pipecompare(EEG, 'measure', 'N2pc', 'left', {'11'}, 'right', 31, 'recipe', 'filters', 'show', 'off');

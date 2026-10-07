@@ -13,9 +13,14 @@ classdef SimpleDialog < handle
     %      events are flagged before Run. N2pc and LRP (contralateral
     %      minus ipsilateral) take the event types of each side in two
     %      lists: target on the left / right, left / right hand.
-    %   3. Which processing is compared: Standard is preselected. The
-    %      number of pipelines is shown live, with the steps left out and
-    %      why.
+    %   3. Which steps are compared: a list in the order they run (bad
+    %      channels, reference, ICA, high-pass, low-pass, epochs, epoch
+    %      rejection); tick any of them, or one of the two recipes
+    %      (Standard, preselected: all; Filters only). The order is
+    %      fixed. Steps these data cannot take are greyed out with the
+    %      reason (e.g. filters on epoched data), and the bad channels are
+    %      always detected before an average reference. The number of
+    %      pipelines is shown live, with the steps left out and why.
     %   Advanced... opens the full panel with these choices filled in.
 
     properties
@@ -29,7 +34,10 @@ classdef SimpleDialog < handle
         ChannelsFor = ''       % which custom measure they were chosen for
         EventLabel; EventList; RightList; EventGrid; PoolBox
         Types; Counts          % the event types offered and how many of each
-        RecipeDrop; RefDrop
+        StepBoxes; StepNotes   % one per Presets.stepNames, in that order
+        Ticks                  % the steps ticked (shown unticked while the data cannot take them)
+        Why; Info              % per step: why the data cannot take it, what to know about it
+        EpochBox; RefDrop
         CountLabel; NotesLabel
         RunButton; AdvancedButton
         Answer = []            % the options when Run was pressed
@@ -63,10 +71,10 @@ classdef SimpleDialog < handle
             obj.Types = s.eventTypes(keep); obj.Counts = s.eventCounts(keep);
             [isLock, at] = ismember(obj.Types, s.lockingTypes);
             obj.Counts(isLock) = s.lockingCounts(at(isLock));
-            obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', [200 200 620 470], ...
+            obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', [200 120 720 640], ...
                 'CloseRequestFcn', @(~, ~) obj.close());
-            g = uigridlayout(obj.Fig, [10 2]); obj.Grid = g;
-            g.RowHeight = {'fit', 22, 0, '1x', 22, 22, 22, 22, 44, 30};
+            g = uigridlayout(obj.Fig, [9 2]); obj.Grid = g;
+            g.RowHeight = {'fit', 22, 0, '1x', 22, 'fit', 22, 44, 30};
             g.ColumnWidth = {150, '1x'};
             uilabel(g, 'Text', '1. Data', 'FontWeight', 'bold');
             obj.TypeWhy = uilabel(g, 'Text', obj.typeReason(), 'FontColor', [0.3 0.3 0.3], 'WordWrap', 'on');
@@ -95,14 +103,9 @@ classdef SimpleDialog < handle
             uilabel(g, 'Text', '');
             obj.PoolBox = uicheckbox(g, 'Text', 'Score the selected event types as one condition', ...
                 'ValueChangedFcn', @(~, ~) obj.update());
-            uilabel(g, 'Text', '3. Compare', 'FontWeight', 'bold');
-            labels = cellfun(@pipecompare.simple.Presets.recipeLabel, pipecompare.simple.Presets.recipeNames(), 'UniformOutput', false);
-            obj.RecipeDrop = uidropdown(g, 'Items', labels, 'ItemsData', pipecompare.simple.Presets.recipeNames(), ...
-                'Value', 'standard', 'ValueChangedFcn', @(~, ~) obj.update());
-            uilabel(g, 'Text', 'Reference');
-            % fixed in every pipeline (not searched): it changes what is measured
-            obj.RefDrop = uidropdown(g, 'Items', {'As recorded', 'Average reference (after bad channels, before ICA)'}, ...
-                'ItemsData', {'asis', 'average'}, 'Value', 'asis', 'ValueChangedFcn', @(~, ~) obj.update());
+            uilabel(g, 'Text', '3. Compare (steps run in this order)', 'FontWeight', 'bold', 'WordWrap', 'on', ...
+                'VerticalAlignment', 'top');
+            obj.stepList(g);
             uilabel(g, 'Text', '');
             obj.CountLabel = uilabel(g, 'Text', '', 'FontWeight', 'bold');
             uilabel(g, 'Text', '');
@@ -113,6 +116,90 @@ classdef SimpleDialog < handle
             obj.AdvancedButton = uibutton(b, 'Text', 'Advanced...', 'ButtonPushedFcn', @(~, ~) obj.advanced());
             uibutton(b, 'Text', 'Cancel', 'ButtonPushedFcn', @(~, ~) obj.close());
             obj.measureChanged();
+        end
+
+        function stepList(obj, g)
+            % The steps in the order they run: a tick box for each step
+            % that can be compared, the reference (fixed, not compared) and
+            % the epochs (always); next to each, why the data cannot take
+            % it or what to know about it.
+            P = pipecompare.simple.Presets;
+            names = P.stepNames();
+            [obj.Why, obj.Info] = P.stepAvailability(obj.State);
+            obj.Ticks = true(1, numel(names));            % Standard
+            obj.StepBoxes = gobjects(1, numel(names)); obj.StepNotes = gobjects(1, numel(names));
+            s = uigridlayout(g, [8 2]); s.Padding = [0 0 0 0]; s.RowSpacing = 4;
+            s.RowHeight = repmat({22}, 1, 8); s.ColumnWidth = {330, '1x'};
+            b = uigridlayout(s, [1 3]); b.Padding = [0 0 0 0]; b.ColumnWidth = {'fit', 'fit', '1x'};
+            b.Layout.Row = 1; b.Layout.Column = [1 2];
+            uibutton(b, 'Text', 'Standard (all)', 'ButtonPushedFcn', @(~, ~) obj.usePreset('standard'));
+            uibutton(b, 'Text', 'Filters only', 'ButtonPushedFcn', @(~, ~) obj.usePreset('filters'));
+            grey = [0.3 0.3 0.3];
+            uilabel(b, 'Text', 'or tick the steps you want', 'FontColor', grey);
+            % rows: bad channels, reference, ICA, high-pass, low-pass, epochs, rejection
+            rows = [2 4 5 6 8];
+            for k = 1:numel(names)
+                h = uicheckbox(s, 'Text', P.stepLabel(names{k}), 'Value', true, ...
+                    'ValueChangedFcn', @(h, ~) obj.tick(k, h.Value));
+                h.Layout.Row = rows(k); h.Layout.Column = 1; obj.StepBoxes(k) = h;
+                l = uilabel(s, 'Text', '', 'FontColor', grey);
+                l.Layout.Row = rows(k); l.Layout.Column = 2; obj.StepNotes(k) = l;
+            end
+            % fixed in every pipeline (not compared): it changes what is measured
+            obj.RefDrop = uidropdown(s, 'Items', {'Reference: as recorded', 'Reference: average'}, ...
+                'ItemsData', {'asis', 'average'}, 'Value', 'asis', 'ValueChangedFcn', @(~, ~) obj.update());
+            obj.RefDrop.Layout.Row = 3; obj.RefDrop.Layout.Column = 1;
+            l = uilabel(s, 'Text', 'fixed in every pipeline, not compared', 'FontColor', grey);
+            l.Layout.Row = 3; l.Layout.Column = 2;
+            obj.EpochBox = uicheckbox(s, 'Text', 'Epochs and baseline', 'Value', true, 'Enable', 'off');
+            obj.EpochBox.Layout.Row = 7; obj.EpochBox.Layout.Column = 1;
+            l = uilabel(s, 'Text', 'always', 'FontColor', grey);
+            l.Layout.Row = 7; l.Layout.Column = 2;
+        end
+
+        function usePreset(obj, name)
+            % tick the steps of a recipe (Standard, Filters only)
+            obj.Ticks = ismember(pipecompare.simple.Presets.stepNames(), pipecompare.simple.Presets.recipeSteps(name));
+            obj.update();
+        end
+
+        function tick(obj, k, value)
+            obj.Ticks(k) = value;
+            obj.update();
+        end
+
+        function steps = chosenSteps(obj)
+            % the steps ticked
+            steps = pipecompare.simple.Presets.stepNames();
+            steps = steps(obj.Ticks);
+        end
+
+        function showSteps(obj)
+            % the tick boxes as the data and the reference allow them
+            names = pipecompare.simple.Presets.stepNames();
+            averaged = any(strcmpi(pipecompare.utils.fieldOr(obj.State, 'reference', ''), {'average', 'averef'}));
+            average = strcmp(obj.RefDrop.Value, 'average') || averaged;
+            for k = 1:numel(names)
+                why = obj.Why.(names{k});
+                b = obj.StepBoxes(k); note = obj.StepNotes(k);
+                if ~isempty(why)
+                    b.Value = false; b.Enable = 'off'; note.Text = why;
+                elseif strcmp(names{k}, 'badchannels') && average
+                    % a bad channel in the average spreads into every channel
+                    b.Value = true; b.Enable = 'off';
+                    note.Text = 'always before an average reference';
+                else
+                    b.Value = obj.Ticks(k); b.Enable = 'on'; note.Text = obj.Info.(names{k});
+                end
+            end
+            m = obj.MeasureDrop.Value;
+            if pipecompare.simple.Presets.isBand(m)
+                obj.EpochBox.Text = 'Cut into segments';
+            elseif obj.State.isEpoched
+                obj.EpochBox.Text = 'Baseline (the data are already epoched)';
+            else
+                obj.EpochBox.Text = 'Epochs and baseline';
+            end
         end
 
         function delete(obj)
@@ -214,8 +301,10 @@ classdef SimpleDialog < handle
             erp = obj.isErp();
             lateral = pipecompare.simple.Presets.isLateral(m);
             if erp && isempty(obj.EventList.Value) && ~(lateral && ~isempty(obj.RightList.Value)), return; end
+            steps = obj.chosenSteps();
             o = struct('measure', m, 'events', {cellstr(obj.EventList.Value)}, 'left', {{}}, 'right', {{}}, ...
-                'pool', obj.PoolBox.Value, 'window', [], 'band', [], 'channels', {{}}, 'recipe', obj.RecipeDrop.Value, ...
+                'pool', obj.PoolBox.Value, 'window', [], 'band', [], 'channels', {{}}, ...
+                'recipe', pipecompare.simple.Presets.recipeOf(steps), 'steps', {steps}, ...
                 'reference', obj.RefDrop.Value, 'segment', 2, 'show', 'on');
             if ~erp, o.events = {}; o.pool = false; end
             if lateral
@@ -240,6 +329,7 @@ classdef SimpleDialog < handle
         function [n, msg] = update(obj)
             % live count of the pipelines the choices give on these data
             n = 0; obj.RunButton.Enable = 'off'; obj.NotesLabel.Text = '';
+            obj.showSteps();
             o = obj.options();
             if isempty(o)
                 msg = 'Choose what to measure.';
@@ -254,7 +344,7 @@ classdef SimpleDialog < handle
             try
                 c = obj.contract(o);
                 c.validate(obj.State);
-                [plan, notes] = pipecompare.simple.Presets.recipe(o.recipe, obj.State, c, o.reference, ...
+                [plan, notes] = pipecompare.simple.Presets.recipe(o.steps, obj.State, c, o.reference, ...
                     pipecompare.simple.Presets.nonEegChannels(obj.EEG));
                 [leaves, tree] = plan.enumerate(obj.State, c, struct('maxLeaves', Inf));
                 n = numel(leaves);
@@ -263,7 +353,7 @@ classdef SimpleDialog < handle
                 msg = sprintf('%d pipelines will be compared', n);
                 if nIca > 0, msg = sprintf('%s (%d ICA decomposition%s)', msg, nIca, pipecompare.utils.ternary(nIca > 1, 's', '')); end
                 if n < 2
-                    msg = sprintf('Only %d pipeline: nothing to compare. Choose Standard.', n);
+                    msg = sprintf('Only %d pipeline: nothing to compare. Tick more steps.', n);
                 elseif n > maxLeaves
                     msg = sprintf('%s: above the limit of %d. Use Advanced... to fix some values.', msg, maxLeaves);
                 else
@@ -338,7 +428,7 @@ classdef SimpleDialog < handle
             end
             app = pipecompare.gui.Panel();
             if ~isempty(c)
-                [plan, notes] = pipecompare.simple.Presets.recipe(o.recipe, obj.State, c, o.reference, ...
+                [plan, notes] = pipecompare.simple.Presets.recipe(o.steps, obj.State, c, o.reference, ...
                     pipecompare.simple.Presets.nonEegChannels(obj.EEG));
                 app.Plan = plan;
                 if strcmp(c.analysis, 'bandpower')
@@ -354,7 +444,7 @@ classdef SimpleDialog < handle
                 end
                 app.showPlan();   % after the fields: the epoch and baseline rows show them
                 app.settingsChanged();
-                for k = 1:numel(notes), pipecompare.utils.log('Recipe %s: %s.', o.recipe, notes{k}); end
+                for k = 1:numel(notes), pipecompare.utils.log('Left out: %s.', notes{k}); end
             end
             obj.close();
         end
