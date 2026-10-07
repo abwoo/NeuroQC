@@ -119,6 +119,7 @@ classdef Catalog
                     st.srate = p.fs;
                 case {'highpass','lowpass','linenoise','asr'}
                     if st.epoched, reason = sprintf('%s must run on continuous data (before epoching)', type); return; end
+                    if ~strcmp(type, 'asr'), reason = missingPlugin('pop_eegfiltnew'); if ~isempty(reason), return; end; end
                     if strcmp(type, 'asr')
                         reason = missingPlugin('pop_clean_rawdata'); if ~isempty(reason), return; end
                         reason = asrFilter(st.srate); if ~isempty(reason), return; end
@@ -131,6 +132,9 @@ classdef Catalog
                     end
                     if strcmp(type, 'highpass'), st.highpass = max(st.highpass, p.cutoff); end
                 case 'badchannels'
+                    if pipecompare.utils.fieldOr(p, 'detectHighpass', 0) > 0   % detection on a high-passed copy
+                        reason = missingPlugin('pop_eegfiltnew'); if ~isempty(reason), return; end
+                    end
                     if strcmp(p.action, 'interpolate') && ~st.anyLocations
                         reason = ['interpolating bad channels' ' needs channel locations (Edit > Channel locations): spherical interpolation (Perrin et al., 1989) works on electrode positions, and the dataset has none']; return;
                     end
@@ -169,6 +173,9 @@ classdef Catalog
                     end
                     st.averaged = strcmp(p.mode, 'average'); st.unbalanced = false;
                 case 'ica'
+                    if pipecompare.utils.fieldOr(p, 'fitHighpass', 0) > 0   % fitted on a high-passed copy
+                        reason = missingPlugin('pop_eegfiltnew'); if ~isempty(reason), return; end
+                    end
                     st.hasICA = true; st.icRemoved = false;
                 case 'icremove'
                     if ~st.hasICA, reason = 'IC removal needs ICA earlier in the plan or in the dataset'; return; end
@@ -254,7 +261,7 @@ end
 function reason = missingPlugin(fn)
 % Steps that call a plugin are illegal when it is not installed, so the
 % plan says so before the search instead of every candidate failing in it.
-plugins = struct('pop_clean_rawdata', 'clean_rawdata', 'pop_iclabel', 'ICLabel');
+plugins = struct('pop_clean_rawdata', 'clean_rawdata', 'pop_iclabel', 'ICLabel', 'pop_eegfiltnew', 'firfilt');
 reason = '';
 if isfield(plugins, fn) && exist(fn, 'file') ~= 2
     reason = sprintf('%s needs the %s plugin (EEGLAB > File > Manage EEGLAB extensions)', fn, plugins.(fn));

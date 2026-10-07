@@ -54,7 +54,7 @@ classdef Steps
                     [EEG, com] = pop_clean_rawdata(EEG, 'FlatlineCriterion', 'off', 'ChannelCriterion', 'off', ...
                         'LineNoiseCriterion', 'off', 'Highpass', 'off', 'BurstCriterion', p.cutoff, ...
                         'WindowCriterion', 'off', 'BurstRejection', 'off', 'Distance', 'Euclidian', ...
-                        'MaxMem', pipecompare.run.AsrRecord.MaxMemMB);
+                        'MaxMem', pipecompare.run.AsrRecord.maxMemMB(EEG.nbchan, EEG.srate));
                     coms = {com};
                     info.asr = recordAsr(E0, EEG, p.cutoff);
                 case 'badchannels'
@@ -245,8 +245,8 @@ classdef Steps
             info.interpolated = labels;
             if ~isempty(bad)
                 requireLocations(EEG.chanlocs(bad), 'badchannels');
-                [EEG, com2] = pop_interp(EEG, bad, 'spherical');
-                coms{end+1} = com2;
+                EEG = pop_interp(EEG, bad, 'spherical');   % returns no command from the command line
+                coms{end+1} = sprintf('EEG = pop_interp(EEG, %s, ''spherical'');', mat2str(bad(:)'));
             end
         end
 
@@ -271,8 +271,8 @@ classdef Steps
                     coms = {com}; info.removed = labels;
                 case 'interpolate'
                     requireLocations(EEG.chanlocs(idx), 'channels');
-                    [EEG, com] = pop_interp(EEG, idx(:)', 'spherical');
-                    coms = {com}; info.interpolated = labels;
+                    EEG = pop_interp(EEG, idx(:)', 'spherical');   % returns no command from the command line
+                    coms = {sprintf('EEG = pop_interp(EEG, %s, ''spherical'');', mat2str(idx(:)'))}; info.interpolated = labels;
                 otherwise
                     error('PipeCompare:Channels', 'channels action must be remove or interpolate');
             end
@@ -317,7 +317,7 @@ classdef Steps
                     end
                 end
                 if isempty(what), what = {'the data as they are (nothing extreme to leave out)'}; end
-                tmp = pop_runica(tmp, opts{:});
+                tmp = runIca(tmp, opts);
                 EEG.icaweights = tmp.icaweights; EEG.icasphere = tmp.icasphere;
                 EEG.icachansind = tmp.icachansind; EEG.icawinv = []; EEG.icaact = [];
                 EEG = eeg_checkset(EEG);
@@ -328,7 +328,7 @@ classdef Steps
                     'EEG = eeg_checkset(EEG); clear EEGica; %% PipeCompare: ICA fitted on %s'], ...
                     strjoin(pre, ' '), c2, strjoin(what, ', '))};
             else
-                EEG = pop_runica(EEG, opts{:});
+                EEG = runIca(EEG, opts);
                 coms = {sprintf('EEG = pop_runica(EEG, %s);', args)};
             end
         end
@@ -725,5 +725,45 @@ if ~isempty(f) && contains(fileread(f), '[xi,yi] = meshgrid(xi,yi);')
     pipecompare.utils.log(['WARNING: this ICLabel (1.5, as bundled with EEGLAB 2024.0) misclassifies components ', ...
         '(rotated scalp maps; eye components are mostly missed). Update ICLabel to 1.6 or later in ', ...
         'File > Manage EEGLAB extensions.']);
+end
+end
+
+function EEG = runIca(EEG, opts)
+% pop_runica(EEG, opts{:}) for opts = {'icatype', 'runica', runica options}.
+% EEGLAB before 2025.1 adds 'interrupt', 'on' to the options even from the
+% command line, so runica opens a window with an Interrupt button for
+% every fit, and a click stops the fit half way. There the same
+% computation is made here, as pop_runica makes it, without that window.
+if ~contains(fileread(which('pop_runica')), 'if ismatlab, g.options')
+    EEG = pop_runica(EEG, opts{:});
+    return
+end
+o = opts(3:end);
+x = reshape(EEG.data, EEG.nbchan, EEG.pnts * EEG.trials);
+r = icaRank(double(x(:, 1:min(3000, size(x, 2)))), contains(fileread(which('pop_runica')), 'tmprank2 = min('));
+x = x - repmat(mean(x, 2), [1 size(x, 2)]);
+x = double(x);
+x = x - repmat(mean(x, 2), [1 size(x, 2)]);
+if r < size(x, 1), o = [o {'pca', r}]; end
+[EEG.icaweights, EEG.icasphere] = runica(x, 'lrate', 0.001, o{:});
+clear x
+EEG.icachansind = 1:EEG.nbchan; EEG.icaact = [];
+EEG.icawinv = pinv(EEG.icaweights * EEG.icasphere);
+v = sum(EEG.icawinv .^ 2) .* sum(transpose((EEG.icaweights * EEG.icasphere) * EEG.data(EEG.icachansind, :)) .^ 2) ...
+    / ((numel(EEG.icachansind) * EEG.pnts) - 1);
+[~, k] = sort(v); k = k(end:-1:1);   % by variance, as pop_runica
+EEG.icaweights = EEG.icaweights(k, :);
+EEG.icawinv = pinv(EEG.icaweights * EEG.icasphere);
+EEG = eeg_checkset(EEG);
+end
+
+function r = icaRank(x, takeMin)
+% pop_runica's getrank (EEGLAB 2024.0 to 2024.2 take the smaller of the
+% two estimates, older releases the larger)
+r1 = rank(x);
+[~, D] = eig(cov(x', 1));
+r = sum(diag(D) > 1e-7);
+if r1 ~= r
+    if takeMin, r = min(r1, r); else, r = max(r1, r); end
 end
 end

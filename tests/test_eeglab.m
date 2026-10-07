@@ -829,6 +829,12 @@ r = pipecompare.PipeCompare.optimize(p, c);
 d = tempname; mkdir(d); cleanup = onCleanup(@() rmdir(d, 's')); %#ok<NASGU>
 f = fullfile(d, 'nqc_pipeline_test.m');
 pipecompare.PipeCompare.writeScript(r, 1, f);
+% the file name is the function's name: refused when MATLAB cannot call it
+% or when it would hide an EEGLAB function
+for bad = {'my pipeline.m', 'pipeline-final.m', '1st.m', 'pop_epoch.m'}
+    verifyError(tc, @() pipecompare.PipeCompare.writeScript(r, 1, fullfile(d, bad{1})), 'PipeCompare:Export', bad{1});
+    verifyFalse(tc, isfile(fullfile(d, bad{1})), bad{1});
+end
 addpath(d); c2 = onCleanup(@() rmpath(d)); %#ok<NASGU>
 out = nqc_pipeline_test(EEG);
 m = pipecompare.eval.Measure.candidate(out, c, r.ref);

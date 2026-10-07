@@ -720,7 +720,10 @@ pipecompare.PipeCompare.script(pipecompare_result);          % print the recomme
 After `adopt`, `EEG` in the Command Window is the new dataset (cut into epochs and cleaned); save
 it with `pop_saveset`. The saved script is a function: run it on any recording with the same
 channels and event types, for example `EEG = my_pipeline(EEG);` (the file must be in the current
-folder or on the MATLAB path). Type `help pop_pipecompare` for all options.
+folder or on the MATLAB path). The file name is the function's name, so it may contain only
+English letters, digits and underscores, must start with a letter, and must not be the name of an
+existing MATLAB or EEGLAB function (such as `pop_epoch`); PipeCompare refuses other names. Type
+`help pop_pipecompare` for all options.
 
 ## Scripting interface
 

@@ -460,6 +460,14 @@ verifyFalse(tc, ismember('restore', ids(pipecompare.simple.Presets.recipe('stand
 V = EEG; V.chanlocs(1).labels = 'VEOG';
 V = pop_select(V, 'nochannel', {'VEOG'});
 verifyEmpty(tc, pipecompare.live.DataState.fromEEG(V).restorableChannels);
+% a channel removed as the reference (listed in chaninfo.removedchans by
+% EEGLAB 2025.1 and later) is not interpolated back
+[~, F] = evalc('pop_reref(EEG, find(strcmpi({EEG.chanlocs.labels}, ''O1'')))');
+st = pipecompare.live.DataState.fromEEG(F);
+verifyFalse(tc, ismember('O1', st.removedChannels(st.restorableChannels)));
+R.chaninfo.removedchans(strcmpi({R.chaninfo.removedchans.labels}, 'O1')).ref = 'O1';
+st = pipecompare.live.DataState.fromEEG(R);
+verifyEqual(tc, st.removedChannels(st.restorableChannels), {'O2'});
 end
 
 function testDataAdviceSaysWhereToStart(tc)
@@ -680,6 +688,8 @@ verifyTrue(tc, contains(com, '''channels'',{''Pz'',''Cz''}'));
 verifyEqual(tc, rc.contract.components.roi, {'Pz', 'Cz'});
 [~, ~, rn] = pop_pipecompare(EEG, 'measure', 'P3', 'events', [11 31], 'recipe', 'filters', 'show', 'off');
 verifyEqual(tc, {rn.contract.conditions.name}, {'11', '31'});    % numeric event types
+[~, com] = pop_pipecompare(EEG, "measure", "P3", "events", ["11" "31"], "steps", "lowpass", "show", "off");   % MATLAB strings
+verifyTrue(tc, contains(com, '''measure'',''P3'',''events'',{''11'',''31''}'));
 [~, com, rl] = pop_pipecompare(EEG, 'measure', 'N2pc', 'left', {'11'}, 'right', 31, 'recipe', 'filters', 'show', 'off');
 verifyTrue(tc, contains(com, '''measure'',''N2pc'',''left'',{''11''},''right'',{''31''},'));
 verifyTrue(tc, rl.contract.isLateral(1));

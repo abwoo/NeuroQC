@@ -53,7 +53,7 @@ classdef Panel < handle
         % ------------------------------------------------------------ layout
         function build(obj)
             obj.Fig = uifigure('Name', sprintf('PipeCompare %s', pipecompare.PipeCompare.version()), ...
-                'Position', [60 60 1380 860], 'CloseRequestFcn', @(~, ~) obj.delete());
+                'Position', pipecompare.utils.onScreen([60 60 1380 860]), 'CloseRequestFcn', @(~, ~) obj.delete());
             g = uigridlayout(obj.Fig, [3 2]);
             g.RowHeight = {80, 300, '1x'}; g.ColumnWidth = {'1x', '1.25x'};   % contract and results get the remaining height
             % below the size every part needs, keep their sizes and scroll

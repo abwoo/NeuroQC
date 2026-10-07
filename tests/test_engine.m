@@ -1039,3 +1039,30 @@ verifyEmpty(tc, M.result.options.progress);
 res = pipecompare.PipeCompare.resume(d);
 verifyTrue(tc, all(strcmp({res.cands.status}, 'ok')));
 end
+
+function testIcaMatchesPopRunica(tc)
+% EEGLAB before 2025.1 opens runica's Interrupt window for every
+% pop_runica call; there PipeCompare fits ICA itself, as pop_runica does
+% (same rank, weights and component order), without that window.
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10, 'artifactTrials', 0));
+[~, EEG] = evalc('pop_reref(EEG, [])');   % rank deficient: PCA to one dimension less
+in = struct('type', 'ica', 'params', struct('extended', 1, 'fitHighpass', 0, 'fitClean', 0), ...
+    'key', 'ica', 'slot', 'ica', 'label', 'ica');
+[~, A] = evalc('pipecompare.run.Steps.run(in, EEG, struct())');
+[~, B] = evalc('pop_runica(EEG, ''icatype'', ''runica'', ''extended'', 1, ''rndreset'', ''no'', ''interrupt'', ''off'')');
+verifyEqual(tc, size(A.icaweights), size(B.icaweights));
+verifyEqual(tc, A.icaweights, B.icaweights, 'AbsTol', 1e-8);
+verifyEqual(tc, A.icasphere, B.icasphere, 'AbsTol', 1e-8);
+verifyEqual(tc, double(A.icawinv), double(B.icawinv), 'AbsTol', 1e-6);
+end
+
+function testAsrMemoryFitsManyChannels(tc)
+% clean_rawdata before 2.8 (EEGLAB 2022) stops with "Not enough memory"
+% when MaxMem cannot hold ASR's lookahead buffer: it is raised with the
+% number of channels and the sampling rate, and stays 64 MB otherwise.
+verifyEqual(tc, pipecompare.run.AsrRecord.maxMemMB(64, 1000), 64);
+for cf = [64 1000; 160 1000; 256 2048]'
+    C = cf(1); P = round(max(0.5, 1.5 * C / cf(2)) / 2 * cf(2));
+    verifyGreaterThan(tc, pipecompare.run.AsrRecord.maxMemMB(C, cf(2)) * 2^20, C * C * P * 24);
+end
+end
