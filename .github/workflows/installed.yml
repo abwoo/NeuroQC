@@ -36,7 +36,7 @@ jobs:
           - { matlab: latest, eeglab: 2026.0.0, os: windows-latest }
           - { matlab: R2022a, eeglab: '2022.0', os: windows-latest }
           - { matlab: latest, eeglab: 2026.0.0, os: macos-latest }
-          - { matlab: R2023b, eeglab: '2022.0', os: macos-latest }
+          - { matlab: latest, eeglab: '2022.0', os: macos-latest }
     steps:
       - name: Checkout EEGLAB ${{ matrix.eeglab }}
         run: git clone --depth 1 --branch ${{ matrix.eeglab }} --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab

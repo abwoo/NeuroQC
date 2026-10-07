@@ -234,7 +234,10 @@ epochs) from each recording's own data.
 MATLAB R2026a with EEGLAB 2026.0.0 is the combination run by hand
 ([docs/COVERAGE.md](docs/COVERAGE.md)). Continuous integration runs the full automated test suite
 on every MATLAB release from R2021b to R2026a and the latest release with EEGLAB 2026.0.0, and on
-every EEGLAB release from 2022.0 to 2025.1.0 with both MATLAB R2022a and the latest MATLAB. On
+every EEGLAB release from 2022.0 to 2025.1.0 with both MATLAB R2022a and the latest MATLAB. It also
+runs it on Windows (the latest MATLAB with EEGLAB 2026.0.0, and R2022a with EEGLAB 2022.0) and on
+macOS (the latest MATLAB with EEGLAB 2026.0.0 and 2022.0; on GitHub's Mac test machines the windows
+of older MATLAB releases close by themselves, so those are not tested there). On
 R2022b and R2023a, MATLAB's own message box (`uialert`) and progress box (`uiprogressdlg`) never
 return on the test machines' virtual display, even in an empty window, so there the tests use
 stand-ins that print the messages instead of drawing the boxes.

@@ -55,11 +55,12 @@ jobs:
           - { matlab: R2022a, eeglab: '2024.2.1', os: ubuntu-22.04 }
           - { matlab: R2022a, eeglab: '2025.0.0', os: ubuntu-22.04 }
           - { matlab: R2022a, eeglab: '2025.1.0', os: ubuntu-22.04 }
-          # Windows and macOS (Apple silicon: MATLAB R2023b or later)
+          # Windows and macOS (on GitHub's Macs, windows of MATLAB before the
+          # latest release close by themselves or never return, so latest only)
           - { matlab: latest, eeglab: 2026.0.0, os: windows-latest, label: ' (Windows)' }
           - { matlab: R2022a, eeglab: '2022.0', os: windows-latest, label: ' (Windows)' }
           - { matlab: latest, eeglab: 2026.0.0, os: macos-latest, label: ' (macOS)' }
-          - { matlab: R2023b, eeglab: '2022.0', os: macos-latest, label: ' (macOS)' }
+          - { matlab: latest, eeglab: '2022.0', os: macos-latest, label: ' (macOS)' }
     steps:
       - name: Checkout PipeCompare
         uses: actions/checkout@v4
