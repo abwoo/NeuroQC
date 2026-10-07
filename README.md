@@ -634,7 +634,33 @@ channels are those over the per-channel limit.
 
 ### From the command line
 
-The menu dialog records an equivalent command in EEGLAB's command history (`ALLCOM`):
+Everything in the menu can also be started from MATLAB's Command Window. PipeCompare works on the
+dataset that is current in EEGLAB, so start EEGLAB and load the dataset first; this creates the
+variables `EEG`, `ALLEEG` and `CURRENTSET` that PipeCompare reads and writes:
+
+```matlab
+eeglab                                                       % start EEGLAB (adds PipeCompare to the path)
+EEG = pop_loadset('filename', 'mydata.set', 'filepath', '/path/to/folder');
+[ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG, 0);       % make it the current EEGLAB dataset
+eeglab redraw
+```
+
+When the dataset is already open in EEGLAB's window, skip these lines. If `EEG` in the Command
+Window is not the dataset selected in EEGLAB (for example after `EEG = ...` on another dataset),
+`pop_pipecompare` stops with *make this dataset current first*; `EEG = ALLEEG(CURRENTSET);` makes
+them the same again.
+
+Open the windows of the menu:
+
+```matlab
+[EEG, LASTCOM] = pop_pipecompare(EEG); if ~isempty(LASTCOM), eegh(LASTCOM); end   % the simple dialog (Tools > PipeCompare > Compare pipelines...)
+pipecompare.PipeCompare.app();                          % the advanced panel (Tools > PipeCompare > Advanced panel...)
+```
+
+`eegh(LASTCOM)` adds the command that repeats your choices to EEGLAB's history, as the menu does.
+
+Or skip the dialog and give the choices as options. The menu dialog records an equivalent
+command in EEGLAB's command history (`ALLCOM`):
 
 ```matlab
 % ERP: compare pipelines for the P3, one condition per event type
@@ -662,9 +688,30 @@ EEG = pop_pipecompare(EEG, 'measure', 'custom', 'window', [0.25 0.5], 'channels'
     'events', {'target'}, 'recipe', 'standard');
 ```
 
-Replace `'target'` and `'standard'` with the event types in your dataset. The dataset is returned
-unchanged, and the result is also stored in the base-workspace variable `pipecompare_result`. Type
-`help pop_pipecompare` for all options.
+Replace `'target'` and `'standard'` with the event types in your dataset. With options, the
+progress window (with **Stop**) and the result window open as from the menu; add `'show', 'off'`
+to run without any window, for example in a script that runs unattended (the Command Window
+still prints each step):
+
+```matlab
+EEG = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'target'}, 'reference', 'average', 'show', 'off');
+```
+
+The dataset is returned unchanged. The result is stored in the variable `pipecompare_result`
+(also the third output, `[EEG, com, result] = pop_pipecompare(...)`), and these commands do what
+the result window's buttons do:
+
+```matlab
+pipecompare.PipeCompare.adopt(pipecompare_result);           % Use this pipeline: new EEGLAB dataset, now current
+pipecompare.PipeCompare.adopt(pipecompare_result, 12);       % ... or pipeline 12 (one that passed the checks)
+pipecompare.PipeCompare.writeScript(pipecompare_result, [], 'my_pipeline.m');   % Save script...
+pipecompare.PipeCompare.script(pipecompare_result);          % print the recommended pipeline's EEGLAB commands
+```
+
+After `adopt`, `EEG` in the Command Window is the new dataset (cut into epochs and cleaned); save
+it with `pop_saveset`. The saved script is a function: run it on any recording with the same
+channels and event types, for example `EEG = my_pipeline(EEG);` (the file must be in the current
+folder or on the MATLAB path). Type `help pop_pipecompare` for all options.
 
 ## Scripting interface
 
