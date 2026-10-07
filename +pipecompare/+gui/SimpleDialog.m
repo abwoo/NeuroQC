@@ -333,9 +333,9 @@ classdef SimpleDialog < handle
                 o.channels = obj.Channels;
                 if strcmp(m, obj.CustomErp), o.window = v / 1000; else, o.band = v; end
             elseif ~lateral
-                % a preset: your electrodes when they differ from its own
-                if isempty(obj.Channels), o = []; return; end
-                if ~isequal(sort(lower(obj.Channels)), sort(lower(obj.defaultChannels(m))))
+                % a preset: your electrodes (chosen for it) when they
+                % differ from its own
+                if strcmp(obj.ChannelsFor, m) && ~isempty(obj.Channels) && ~isequal(sort(lower(obj.Channels)), sort(lower(obj.defaultChannels(m))))
                     o.channels = obj.Channels;
                 end
             end
@@ -357,9 +357,6 @@ classdef SimpleDialog < handle
                 msg = 'Choose what to measure.';
                 if any(strcmp(obj.MeasureDrop.Value, {obj.CustomErp, obj.CustomBand}))
                     msg = 'Enter two numbers and choose the electrodes.';
-                elseif isempty(obj.Channels) && ~strcmp(obj.MeasureDrop.Value, obj.Choose) && ...
-                        ~pipecompare.simple.Presets.isLateral(obj.MeasureDrop.Value)
-                    msg = 'Choose the electrodes.';
                 elseif obj.isErp()
                     msg = 'Choose the event types.';
                 end
