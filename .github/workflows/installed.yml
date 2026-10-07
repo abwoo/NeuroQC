@@ -82,6 +82,10 @@ jobs:
             r = evalin('base', 'pipecompare_result');
             fprintf('Command-line comparison: %d pipelines, recommended %s\n', numel(r.labels), mat2str(r.ranking.recommended));
             cd(home);
+            % EEGLAB before 2023.0 with its window open: the menu strings PipeCompare took from EEGLAB
+            % open the interactive "new dataset" dialog after a menu step, as EEGLAB's own menus do;
+            % the tests use the same strings spelled out, which skip it under DEBUG_EEGLAB_MENUS
+            if ~exist('eeglab_new', 'file') && isappdata(0, 'pipecompare_eeglab_strings'), rmappdata(0, 'pipecompare_eeglab_strings'); end
             r = run_all({'test_history', 'test_plan', 'test_panel_text', 'test_statistics', 'test_invariants', ...
                          'test_simple', 'test_eeglab', 'test_signal', 'test_engine'});
             assert(~any([r.Failed]), 'PipeCompare:CI', '%d test(s) failed', sum([r.Failed]));
