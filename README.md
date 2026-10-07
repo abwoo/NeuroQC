@@ -263,15 +263,43 @@ pipecompare_setup                         % run from the PipeCompare folder
 2. Open **Tools > PipeCompare > Compare pipelines…**
 3. Choose what to measure: an ERP component (with the event types it is time-locked to) or a
    frequency band, or your own time window or band with the electrodes you pick. The list only
-   offers what the data support. *Standard* is preselected as the recipe, which sets the steps
-   to compare:
+   offers what the data support. The electrodes and time window of each ERP component are not
+   taken from your data but from the published ERP CORE conventions (Kappenman et al., 2021),
+   for example P3 at Pz, 300–600 ms. You can change a component's electrodes with
+   **Electrodes…** next to its time window (for example Pz, CPz and POz for the P3); the window
+   stays the convention's. N2pc and LRP keep their electrode pair, since they are scored as the
+   difference between the two sides. When several electrodes are chosen, PipeCompare averages
+   them first and scores that average waveform; for band power, the power of each chosen
+   electrode is computed and then averaged. The simple mode scores one measure per run; to compare pipelines on several
+   components at once, each with its own electrodes, use the advanced panel (*Add component…*).
 
-   | Recipe | Steps compared |
-   |---|---|
-   | Filters only | high-pass and low-pass cutoffs |
-   | Standard | filters, ICLabel threshold for removing components, epoch-rejection threshold (band power: one high-pass and one low-pass, the edges nearest the band, so 9 pipelines instead of 108) |
+   Then tick the steps you want. They are listed in the order they run, and that order is fixed,
+   so you only decide which steps are done, never in which order:
 
-   *Standard* detects bad channels once and fits ICA once, before the filters, so every filter
+   | Order | Step | What is compared |
+   |---|---|---|
+   | 1 | Bad channels: detect and interpolate | nothing (one fixed setting, see below) |
+   | 2 | Reference: as recorded or average | nothing (your choice, the same in every pipeline) |
+   | 3 | ICA: remove artifact components | the ICLabel probability above which a component is removed (0.7, 0.8, 0.9) |
+   | 4 | High-pass filter | the cutoff (0.1, 0.3, 0.5, 1 Hz) |
+   | 5 | Low-pass filter | the cutoff (20, 30, 40 Hz) |
+   | 6 | Epochs and baseline (segments for band power) | always done |
+   | 7 | Reject epochs over an amplitude limit | the limit (75, 100, 150 µV) |
+
+   Two buttons tick a usual set at once: **Standard (all)**, preselected, ticks every step;
+   **Filters only** ticks the two filters. An unticked step is not done at all: for example,
+   without the high-pass the data keep whatever high-pass they already had. Steps that these data
+   cannot take are greyed out, with the reason next to them: on epoched data the filters (they
+   must run before epoching), without channel locations bad-channel interpolation and ICA (ICLabel
+   needs the locations), without the ICLabel plugin ICA, and ICA when the history shows that ICA
+   components were already removed. When the average reference is chosen (or the data are
+   already average-referenced), bad-channel detection is always ticked, because a bad channel in
+   the average would spread into every channel. For band power, when ICA or epoch rejection is
+   compared, each filter uses one cutoff, the one nearest the band outside it (outside the band a
+   filter does not change its power), so the standard set gives 9 pipelines instead of 108; tick
+   only the filters to compare their cutoffs.
+
+   Bad channels are detected once and ICA is fitted once, before the filters, so every filter
    setting shares one decomposition. A channel is bad when its kurtosis (spiky) or joint
    probability (noisy, e.g. poor contact) is more than 5 SD from the other channels'. Both steps
    look at a 1 Hz high-passed copy, so slow drifts do not mislead them; the data themselves are
@@ -286,8 +314,8 @@ pipecompare_setup                         % run from the PipeCompare folder
    To compare ASR (artifact subspace reconstruction) or other steps, use the advanced panel or a
    script.
 
-   Start from the raw continuous data. If your analysis uses the average reference, choose it under
-   **Reference** rather than re-referencing beforehand: it is then applied in every pipeline after
+   Start from the raw continuous data. If your analysis uses the average reference, choose it in the
+   **Reference** line of the step list rather than re-referencing beforehand: it is then applied in every pipeline after
    the bad channels are interpolated and before ICA. (Data already average-referenced are averaged
    again after the interpolation.) Steps already applied to the data are read from `EEG.history`
    and listed in the dialog; they are not compared again. A filter the data already have is kept
@@ -415,6 +443,13 @@ EEG = pop_pipecompare(EEG, 'measure', 'N2pc', 'left', {'111', '112'}, 'right', {
 
 % Continuous data: compare pipelines for alpha-band power in 2 s segments
 EEG = pop_pipecompare(EEG, 'measure', 'alpha', 'recipe', 'filters');
+
+% Only some steps (any of 'badchannels', 'ica', 'highpass', 'lowpass', 'reject'),
+% always run in that order
+EEG = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'target'}, 'steps', {'highpass', 'lowpass', 'reject'});
+
+% A component with your own electrodes instead of its ERP CORE site
+EEG = pop_pipecompare(EEG, 'measure', 'P3', 'channels', {'Pz', 'CPz', 'POz'}, 'events', {'target'});
 
 % Your own window (s) and electrodes; or 'measure', 'band', 'band', [8 12]
 EEG = pop_pipecompare(EEG, 'measure', 'custom', 'window', [0.25 0.5], 'channels', {'Cz', 'CPz'}, ...

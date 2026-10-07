@@ -2,7 +2,7 @@
 
 ## Simple mode (*Compare pipelines…*, `pop_pipecompare`)
 
-Two choices (what to measure; for ERP, the event types); the recipe is preselected:
+Two choices (what to measure; for ERP, the event types); the steps are preselected:
 
 1. **Data**, described from the data: epoched data offer ERP measures, continuous data with
    events ERP measures and band power, continuous data without events band power.
@@ -11,7 +11,11 @@ Two choices (what to measure; for ERP, the event types); the recipe is preselect
    numbers (window in ms after the event, e.g. `300 600`, or band in Hz, e.g. `8 12`) and pick
    the electrodes with *Electrodes…* (EEGLAB's channel list; a band starts with all EEG
    channels). Your own window uses a −200 ms epoch start and a −200–0 ms baseline, and the band
-   lengthens the segments to hold two cycles of its low edge. ERP: the time-locking event
+   lengthens the segments to hold two cycles of its low edge. A preset's electrodes can be
+   changed the same way: its window (or band) is shown, fixed, next to *Electrodes…*, which starts
+   from the component's ERP CORE site(s) (a preset band from all EEG channels); not for N2pc and
+   LRP, which are scored on their electrode pair. Several electrodes are averaged (ERP: the
+   waveform; band power: each electrode's power). ERP: the time-locking event
    types. Each type is one condition,
    or tick *Score the selected event types as one condition* when several codes mean one
    condition (e.g. one code per block). `boundary` markers are not offered; on epoched data the
@@ -27,14 +31,24 @@ Two choices (what to measure; for ERP, the event types); the recipe is preselect
    condition's waveform at their sites (for MMN this ranks the pipelines as the deviant-minus-
    standard difference wave does). Band power: delta 1–4, theta 4–8, alpha 8–13, beta 13–30
    Hz over all EEG channels, in 2 s segments.
-3. **Compare**: *standard* (preselected) or *filters only* (high-pass × low-pass edges; with fewer
-   than two pipelines, as on epoched data, *Run* stays off). *Standard* adds the ICLabel threshold
-   and epoch rejection; each searches the catalog's default lists. For band power, *Standard* uses
-   one high-pass and one low-pass edge, the catalog values nearest the band outside it (outside
-   the band a filter does not change its power), and compares ICLabel and epoch rejection: 9
-   pipelines; *filters only* compares the filters. *Standard* detects bad channels
+3. **Compare**: a list of steps in the order they run, each with a tick box: bad channels
+   (detect and interpolate), the reference (item 4), ICA (ICLabel threshold compared), high-pass,
+   low-pass (cutoffs compared), epochs and baseline (always; segments for band power) and epoch
+   rejection (amplitude limit compared). Any of them can be ticked; the order is fixed (to change
+   it, use the panel). *Standard (all)* (preselected) ticks every step, *Filters only* the two
+   filters (`'recipe'` in `pop_pipecompare`; other sets with `'steps'`, e.g.
+   `{'highpass', 'lowpass', 'reject'}`). With fewer than two pipelines, as with only the filters
+   on epoched data, *Run* stays off. Each compared step searches the catalog's default lists.
+   Steps the data cannot take are greyed out with the reason next to them (filters on epoched
+   data; bad channels and ICA without channel locations; ICA without ICLabel or after ICA
+   components were already removed); beside a step the data already had, a note says so (e.g.
+   *the data are already high-passed at 0.5 Hz: stricter cutoffs and keeping it are compared*).
+   With the average reference the bad-channel step is always ticked. For band power, when ICA or
+   epoch rejection is ticked, each filter uses one edge, the catalog value nearest the band
+   outside it (outside the band a filter does not change its power): 9 pipelines for all steps;
+   with only the filters ticked their cutoffs are compared. Bad channels are detected
    once (kurtosis or joint probability, z = 5, on a 1 Hz high-passed copy; the channels are interpolated in the data as
-   they are) and fits ICA once, before the filters, so every filter choice shares
+   they are) and ICA is fitted once, before the filters, so every filter choice shares
    one decomposition (fitted on a 1 Hz high-passed copy; filtering and unmixing are linear, so
    their order does not change the data). Non-EEG channels (typed EOG, ECG, … or named so, such
    as VEOG, HEOG, ECG1) are not tested as bad channels and are ignored by epoch rejection. ASR is compared from the panel or a script. The number
@@ -44,9 +58,9 @@ Two choices (what to measure; for ERP, the event types); the recipe is preselect
    compared: they would leave the data unchanged but still filter the known signal; instead,
    keeping the data's own filter (no further filter) is compared with the stricter edges. Above the search limit (500) *Run* stays off; use *Advanced…* to fix
    some values.
-4. **Reference**: *as recorded* (default) or *average reference*, a fixed step of every pipeline
-   placed after the bad channels are interpolated (otherwise a bad channel spreads into every
-   channel) and before ICA, in *Filters only* too; the same non-EEG channels are left out of the
+4. **Reference** (a line of the step list): *as recorded* (default) or *average*, a fixed step of
+   every pipeline placed after the bad channels are interpolated (otherwise a bad channel spreads
+   into every channel) and before ICA, whichever steps are ticked; the same non-EEG channels are left out of the
    average. Data that are already average-referenced are averaged again after the interpolation,
    which removes the bad channels' share of the earlier average. It is not
    searched: the reference changes what is measured, so it is chosen for your analysis, not by

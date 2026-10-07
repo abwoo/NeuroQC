@@ -13,8 +13,10 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %              see pipecompare.simple.Presets
 %   'window'   'custom': [start end] in s after the event, e.g. [0.3 0.6]
 %   'band'     'band': [low high] in Hz, e.g. [8 12]
-%   'channels' 'custom' and 'band': electrode labels ('band': all EEG
-%              channels when omitted)
+%   'channels' electrode labels, averaged: required for 'custom'; for
+%              'band' and the preset bands all EEG channels when omitted;
+%              for an ERP component, instead of its ERP CORE site(s) (not
+%              N2pc and LRP)
 %   'events'   ERP: the time-locking event types, one condition each
 %   'pool'     ERP: true scores all the event types as one condition
 %              (default false)
@@ -23,6 +25,11 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %              / of left-hand responses, and of the right (instead of
 %              'events'; one side may be left out)
 %   'recipe'   'standard' (default) | 'filters': which steps are compared
+%              (standard: all the steps below; filters: the two filters)
+%   'steps'    instead of 'recipe', any of 'badchannels', 'ica',
+%              'highpass', 'lowpass', 'reject' (epoch rejection), e.g.
+%              {'highpass', 'lowpass', 'reject'}; they always run in that
+%              order, with epoching and baseline in every pipeline
 %   'reference' 'asis' (default) | 'average': the average reference as a
 %              fixed step of every pipeline, after the bad channels and
 %              before ICA (channels typed as EOG, ECG, ... and ear or
@@ -50,11 +57,11 @@ if nargin < 2
     if isempty(opts), return; end                       % cancelled, or continued in the panel
 else
     opts = struct('measure', '', 'events', {{}}, 'left', {{}}, 'right', {{}}, 'pool', false, 'window', [], 'band', [], ...
-        'channels', {{}}, 'recipe', 'standard', 'reference', 'asis', 'segment', 2, 'show', 'on');
+        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'reference', 'asis', 'segment', 2, 'show', 'on');
     for k = 1:2:numel(varargin)
         f = lower(char(varargin{k}));
         assert(isfield(opts, f), 'PipeCompare:Simple', ['Unknown option %s (measure, events, left, right, pool, window, ', ...
-            'band, channels, recipe, reference, segment, show).'], f);
+            'band, channels, recipe, steps, reference, segment, show).'], f);
         opts.(f) = varargin{k+1};
     end
     for f = {'events', 'left', 'right'}
@@ -81,12 +88,19 @@ events = opts.events;
 if pipecompare.simple.Presets.isLateral(opts.measure), events = struct('left', {opts.left}, 'right', {opts.right}); end
 c = pipecompare.simple.Presets.contract(EEG, opts.measure, events, opts.segment, opts.pool, ...
     struct('window', opts.window, 'band', opts.band, 'channels', {cellstr(opts.channels)}));
-[plan, notes] = pipecompare.simple.Presets.recipe(opts.recipe, state, c, opts.reference, ...
+% the steps compared: those given, else the recipe's (in the order they run)
+if ~isempty(opts.steps) || isempty(opts.recipe)
+    steps = pipecompare.simple.Presets.recipeSteps(cellstr(opts.steps));
+else
+    steps = pipecompare.simple.Presets.recipeSteps(opts.recipe);
+end
+recipe = pipecompare.simple.Presets.recipeOf(steps);
+[plan, notes] = pipecompare.simple.Presets.recipe(steps, state, c, opts.reference, ...
     pipecompare.simple.Presets.nonEegChannels(EEG));
-for k = 1:numel(notes), pipecompare.utils.log('Recipe %s: %s.', opts.recipe, notes{k}); end
+for k = 1:numel(notes), pipecompare.utils.log('Left out: %s.', notes{k}); end
 nTotal = numel(plan.enumerate(state, c, struct('maxLeaves', Inf)));
-assert(nTotal > 1, 'PipeCompare:Simple', 'On these data the recipe ''%s'' gives %d pipeline, so there is nothing to compare%s.', ...
-    opts.recipe, nTotal, pipecompare.utils.ternary(isempty(notes), '', [': ' strjoin(notes, '; ')]));
+assert(nTotal > 1, 'PipeCompare:Simple', 'On these data the steps chosen (%s) give %d pipeline, so there is nothing to compare%s.', ...
+    strjoin(steps, ', '), nTotal, pipecompare.utils.ternary(isempty(notes), '', [': ' strjoin(notes, '; ')]));
 % the unit judged from the amplitude scale, as in the panel: rejection
 % thresholds in uV would remove nothing from data stored in V
 runOpts = struct('dataUnit', state.unitGuess);
@@ -129,8 +143,8 @@ hint = pipecompare.simple.Presets.nextStep(result);
 if ~isempty(hint), pipecompare.utils.log('%s', hint); end
 detect = pipecompare.simple.Presets.detectableText(result);
 if ~isempty(detect), pipecompare.utils.log('%s', detect); end
-steps = pipecompare.simple.Presets.stepsText(result, result.ranking.recommended);
-if ~isempty(steps), pipecompare.utils.log('Pipeline %d, step by step:%s', result.ranking.recommended, sprintf('\n  %s', steps{:})); end
+did = pipecompare.simple.Presets.stepsText(result, result.ranking.recommended);
+if ~isempty(did), pipecompare.utils.log('Pipeline %d, step by step:%s', result.ranking.recommended, sprintf('\n  %s', did{:})); end
 % filters applied before PipeCompare are outside the pipelines' signal check
 try
     result.priorFilters = pipecompare.eval.Injection.priorFilters(result.root, c, state, result.options);
@@ -153,7 +167,7 @@ elseif ~pipecompare.simple.Presets.isBand(opts.measure)
     args = [args {'events', opts.events}];
     if opts.pool, args = [args {'pool', true}]; end
 elseif opts.segment ~= 2, args = [args {'segment', opts.segment}]; end
-args = [args {'recipe', opts.recipe}];
+if isempty(recipe), args = [args {'steps', steps}]; else, args = [args {'recipe', recipe}]; end
 if strcmp(opts.reference, 'average'), args = [args {'reference', 'average'}]; end
 if strcmp(opts.show, 'off'), args = [args {'show', 'off'}]; end
 com = sprintf('EEG = pop_pipecompare(EEG, %s);', vararg2str(args));

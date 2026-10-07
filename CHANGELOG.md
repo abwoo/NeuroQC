@@ -9,6 +9,15 @@ Small fixes. Scores and recommendations are unchanged, except on data cleaned wi
 from a script whose high-pass PipeCompare now sees, and on data with ear or mastoid channels (see
 below).
 
+- Simple mode: instead of choosing between *Standard* and *Filters only*, tick the steps to
+  compare in a list shown in the order they run (bad channels, reference, ICA, high-pass,
+  low-pass, epochs, epoch rejection); the order stays fixed. *Standard (all)* and *Filters only*
+  are buttons that tick their steps. Steps the data cannot take are greyed out with the reason.
+  `pop_pipecompare` takes `'steps'`, e.g. `{'highpass', 'lowpass', 'reject'}`; `'recipe'` works
+  as before.
+- Simple mode: the electrodes of a preset (an ERP component, or a band) can be changed with
+  *Electrodes…*; they start from the component's ERP CORE site(s) and several are averaged.
+  N2pc and LRP keep their pair. `pop_pipecompare(..., 'channels', {...})` does the same.
 - The results window lists what the recommended (or the selected) pipeline did, step by step in
   order: each step's settings and its decisions on the data (bad channels interpolated, ICA
   components removed, epochs rejected), then the trials kept per condition. Also in the Command

@@ -20,9 +20,13 @@ classdef Presets
     %   edges, delta from 1 Hz so that 2 s segments hold two cycles; 2 s
     %   segments.
     %
-    %   Recipes: which steps are compared, each searched over the catalog's
-    %   default lists (pipecompare.plan.Catalog). Steps the data or the
-    %   installation cannot support are left out, each with the reason.
+    %   Steps: which steps are compared (stepNames: bad channels, ICA,
+    %   high-pass, low-pass, epoch rejection; any of them, always run in
+    %   that order, with epoching and baseline in every pipeline), each
+    %   searched over the catalog's default lists (pipecompare.plan.Catalog).
+    %   The recipes are two sets of them: 'standard' all, 'filters' the
+    %   two filters. Steps the data or the installation cannot support are
+    %   left out, each with the reason.
     %   'standard' fits ICA once: bad channels (fixed) and ICA come before
     %   the searched filters, so every filter choice shares one
     %   decomposition (fitted on a 1 Hz high-passed copy; filtering and
@@ -32,7 +36,8 @@ classdef Presets
     %   uses one high-pass and one low-pass edge, the catalog values
     %   nearest the band outside it: outside the band a filter does not
     %   change its power (only what epoch rejection sees), and 9 pipelines
-    %   are compared instead of 108; 'filters' compares the filters.
+    %   are compared instead of 108 (so for any steps with ICA or epoch
+    %   rejection); 'filters' compares the filters.
     %
     %   Reference: kept as recorded, or the average reference as a fixed
     %   step in every pipeline, after the bad channels are interpolated (a
@@ -95,11 +100,88 @@ classdef Presets
             names = {'filters', 'standard'};
         end
 
-        function t = recipeLabel(name)
+        function names = stepNames()
+            % the steps the simple mode can compare, in the order they run
+            % (epoch and baseline are always done; the reference is a
+            % separate choice, after the bad channels and before ICA)
+            names = {'badchannels', 'ica', 'highpass', 'lowpass', 'reject'};
+        end
+
+        function t = stepLabel(name)
             switch name
-                case 'filters', t = 'Filters only (high-pass, low-pass)';
-                case 'standard', t = 'Standard (filters, ICLabel threshold, epoch rejection; one ICA)';
+                case 'badchannels', t = 'Bad channels: detect and interpolate';
+                case 'ica', t = 'ICA: remove artifact components (ICLabel thresholds compared)';
+                case 'highpass', t = 'High-pass filter (cutoffs compared)';
+                case 'lowpass', t = 'Low-pass filter (cutoffs compared)';
+                case 'reject', t = 'Reject epochs over an amplitude limit (limits compared)';
+                otherwise, error('PipeCompare:Simple', 'Unknown step %s (steps: %s).', name, ...
+                        strjoin(pipecompare.simple.Presets.stepNames(), ', '));
+            end
+        end
+
+        function steps = recipeSteps(name)
+            % The steps of a recipe, or the steps given (validated, in the
+            % order they run).
+            P = pipecompare.simple.Presets;
+            if iscell(name) || isstring(name)
+                steps = cellstr(name);
+                bad = setdiff(steps, P.stepNames());
+                assert(isempty(bad), 'PipeCompare:Simple', 'Unknown step %s (steps: %s).', strjoin(bad, ', '), ...
+                    strjoin(P.stepNames(), ', '));
+                steps = P.stepNames(); steps = steps(ismember(steps, cellstr(name)));
+                return;
+            end
+            switch name
+                case 'standard', steps = P.stepNames();
+                case 'filters', steps = {'highpass', 'lowpass'};
                 otherwise, error('PipeCompare:Simple', 'Unknown recipe %s (filters, standard).', name);
+            end
+        end
+
+        function name = recipeOf(steps)
+            % the recipe these steps make up ('' when none does)
+            name = '';
+            P = pipecompare.simple.Presets;
+            steps = P.recipeSteps(cellstr(steps));
+            for r = P.recipeNames()
+                if isequal(P.recipeSteps(r{1}), steps), name = r{1}; return; end
+            end
+        end
+
+        function [why, info] = stepAvailability(state)
+            % For each step (pipecompare.simple.Presets.stepNames), why it
+            % cannot be compared on these data ('' when it can), and what
+            % to know about it (e.g. a filter the data already have).
+            why = struct('badchannels', '', 'ica', '', 'highpass', '', 'lowpass', '', 'reject', '');
+            info = why;
+            steps = {state.process.step};
+            if state.nLocated == 0
+                why.badchannels = 'needs channel locations (Edit > Channel locations)';
+                why.ica = 'ICLabel needs channel locations (Edit > Channel locations)';
+            elseif exist('pop_iclabel', 'file') ~= 2
+                why.ica = 'ICLabel is not installed';
+            end
+            icaAt = find(strcmp(steps, 'ica'), 1, 'last');
+            if ~isempty(icaAt) && any(strcmp(steps(icaAt+1:end), 'icremove'))
+                why.ica = 'already done to these data (ICA components removed)';
+            elseif state.ica.present && isempty(why.ica)
+                info.ica = 'the ICA in the data is fitted again';
+            end
+            if any(ismember(steps, {'badchannels', 'interpolate'})) && isempty(why.badchannels)
+                info.badchannels = 'already done to these data; detected again';
+            end
+            if state.isEpoched
+                why.highpass = 'the data are already epoched (filters run before epoching)';
+                why.lowpass = why.highpass;
+            else
+                if ~isempty(state.filters.highpass)
+                    info.highpass = sprintf('the data are already high-passed at %g Hz: stricter cutoffs and keeping it are compared', ...
+                        max(state.filters.highpass));
+                end
+                if ~isempty(state.filters.lowpass)
+                    info.lowpass = sprintf('the data are already low-passed at %g Hz: stricter cutoffs and keeping it are compared', ...
+                        min(state.filters.lowpass));
+                end
             end
         end
 
@@ -117,7 +199,10 @@ classdef Presets
             % and right, the event types of each side (target side,
             % response hand), one condition per side. custom: struct with window ([t1
             % t2] s, 'custom'), band ([f1 f2] Hz, 'band') and channels
-            % (labels; for 'band' all EEG channels when empty).
+            % (labels; for 'band' all EEG channels when empty). channels
+            % also replace the electrodes of a preset: an ERP component's
+            % ERP CORE site(s) (not N2pc and LRP, scored on their pair) or
+            % a band's all EEG channels; several are averaged.
             if nargin < 4 || isempty(segment), segment = 2; end
             if nargin < 5, pool = false; end
             if nargin < 6, custom = struct('window', [], 'band', [], 'channels', {{}}); end
@@ -136,7 +221,8 @@ classdef Presets
                     segment = max(segment, ceil(2 / f(1)));   % two cycles of the lowest frequency
                 else
                     f = P.band(measure); name = lower(measure);
-                    roi = P.eegChannels(EEG);
+                    roi = P.channels(labels, custom.channels);
+                    if isempty(roi), roi = P.eegChannels(EEG); end
                 end
                 c = pipecompare.eval.Contract('analysis', 'bandpower', 'segment', segment, 'bands', {name, f, roi});
                 return;
@@ -151,6 +237,11 @@ classdef Presets
                     'baseline', [-0.2 0], 'sites', {roi}, 'window', w, 'polarity', 'positive', 'contra', {{}}, 'side', '');
             else
                 p = P.component(measure);
+                if ~isempty(custom.channels)
+                    assert(isempty(p.contra), 'PipeCompare:Simple', ['%s is scored on the pair %s (contralateral minus ', ...
+                        'ipsilateral); its electrodes cannot be changed here (Advanced... can).'], p.name, strjoin(p.sites, '/'));
+                    p.sites = P.channels(labels, custom.channels);   % your electrodes instead of ERP CORE's
+                end
             end
             if EEG.trials > 1, p = fitEpochs(p, EEG); end
             [ok, at] = ismember(lower(p.sites), lower(labels));
@@ -467,8 +558,10 @@ classdef Presets
         end
 
         function [plan, notes] = recipe(name, state, contract, reference, exclude)
-            % The plan of a recipe for these data, and why a step was left
-            % out. reference: 'asis' (default) or 'average'; exclude: the
+            % The plan of a recipe (or of the steps given, a cell of
+            % pipecompare.simple.Presets.stepNames; they always run in that
+            % order) for these data, and why a step was left out.
+            % reference: 'asis' (default) or 'average'; exclude: the
             % non-EEG channels (e.g. EOG, ECG) and ear/mastoid sites, not
             % tested for bad channels or epoch rejection and left out of
             % the average.
@@ -476,11 +569,11 @@ classdef Presets
             if nargin < 5, exclude = {}; end
             assert(any(strcmp(reference, {'asis', 'average'})), 'PipeCompare:Simple', ...
                 'reference must be asis or average.');
-            pipecompare.simple.Presets.recipeLabel(name);           % validates the name
+            steps = pipecompare.simple.Presets.recipeSteps(name);   % validates the name or steps
+            has = @(s) any(strcmp(steps, s));
             notes = {};
             plan = pipecompare.plan.Plan();
             continuous = ~state.isEpoched;
-            standard = strcmp(name, 'standard');
             ica = false;
             exclusion = {};
             if ~isempty(exclude), exclusion = {'exclude', cellstr(exclude)}; end
@@ -491,13 +584,16 @@ classdef Presets
             % interpolation, which removes the bad channels' share.
             averaged = any(strcmpi(pipecompare.utils.fieldOr(state, 'reference', ''), {'average', 'averef'}));
             if averaged && state.nLocated > 0, reference = 'average'; end
-            if (standard || strcmp(reference, 'average')) && state.nLocated == 0
-                if standard, notes{end+1} = 'no channel locations: bad-channel interpolation and ICLabel are left out'; end
+            if (has('badchannels') || has('ica') || strcmp(reference, 'average')) && state.nLocated == 0
+                what = {};
+                if has('badchannels'), what{end+1} = 'bad-channel interpolation'; end
+                if has('ica'), what{end+1} = 'ICA and ICLabel'; end
+                if ~isempty(what), notes{end+1} = ['no channel locations: ' strjoin(what, ' and ') ' left out']; end
                 if strcmp(reference, 'average')
                     notes{end+1} = ['no channel locations: bad channels cannot be interpolated before the average ', ...
                         'reference, so a bad channel spreads into every channel'];
                 end
-            elseif standard || strcmp(reference, 'average')
+            elseif has('badchannels') || has('ica') || strcmp(reference, 'average')
                 % channels removed before PipeCompare (EEG data channels with
                 % a location) are interpolated back before an average: an
                 % average over fewer channels is a different reference
@@ -509,14 +605,16 @@ classdef Presets
                 % probability noisy ones (e.g. poor contact), so either
                 % marks a channel bad; on continuous data detected on a
                 % 1 Hz high-passed copy (slow drifts distort both), as
-                % ICA is fitted
-                plan = plan.add('badchannels', 'measure', 'kurt+prob', 'threshold', 5, ...
-                    'detectHighpass', double(continuous), exclusion{:});
+                % ICA is fitted; always before an average reference
+                if has('badchannels') || strcmp(reference, 'average')
+                    plan = plan.add('badchannels', 'measure', 'kurt+prob', 'threshold', 5, ...
+                        'detectHighpass', double(continuous), exclusion{:});
+                end
                 plan = addReference(plan, reference, exclude);
-                if standard
-                    steps = {state.process.step};
-                    icaAt = find(strcmp(steps, 'ica'), 1, 'last');
-                    if ~isempty(icaAt) && any(strcmp(steps(icaAt+1:end), 'icremove'))
+                if has('ica')
+                    done = {state.process.step};
+                    icaAt = find(strcmp(done, 'ica'), 1, 'last');
+                    if ~isempty(icaAt) && any(strcmp(done(icaAt+1:end), 'icremove'))
                         notes{end+1} = 'ICA was already run and components removed (history), so they are not compared again';
                     elseif exist('pop_iclabel', 'file') ~= 2
                         notes{end+1} = 'ICLabel is not installed: ICA and IC removal left out';
@@ -535,18 +633,23 @@ classdef Presets
                 if strcmp(contract.analysis, 'bandpower')
                     f = vertcat(contract.bands.freq); lo = min(f(:, 1)); hi = max(f(:, 2));
                 end
-                fix = standard && strcmp(contract.analysis, 'bandpower');
-                [plan, notes] = addFilter(plan, notes, 'highpass', state.filters.highpass, @(v, done) v > done, @max, ...
-                    @(v) v <= lo, lo, fix);
-                [plan, notes] = addFilter(plan, notes, 'lowpass', state.filters.lowpass, @(v, done) v < done, @min, ...
-                    @(v) v >= hi, hi, fix);
-            else
+                % band power with other steps compared: one edge each
+                fix = strcmp(contract.analysis, 'bandpower') && (has('ica') || has('reject'));
+                if has('highpass')
+                    [plan, notes] = addFilter(plan, notes, 'highpass', state.filters.highpass, @(v, done) v > done, @max, ...
+                        @(v) v <= lo, lo, fix);
+                end
+                if has('lowpass')
+                    [plan, notes] = addFilter(plan, notes, 'lowpass', state.filters.lowpass, @(v, done) v < done, @min, ...
+                        @(v) v >= hi, hi, fix);
+                end
+            elseif has('highpass') || has('lowpass')
                 notes{end+1} = 'the data are already epoched, so filters are not compared (they must run before epoching)';
             end
             if ica, plan = plan.add('icremove'); end
             if continuous, plan = plan.add('epoch'); end
             if ~isempty(contract.baseline), plan = plan.add('baseline'); end
-            if standard, plan = plan.add('reject_threshold', exclusion{:}); end
+            if has('reject'), plan = plan.add('reject_threshold', exclusion{:}); end
         end
     end
 end
@@ -653,7 +756,7 @@ end
 if fix && numel(vals) > 1
     v = edge(vals);
     notes{end+1} = sprintf(['%s %s Hz (band power: a filter outside the band does not change its power, so ', ...
-        'one %s is used, %g Hz; "Filters only" compares them)'], name, list(setdiff(vals, v)), name, v);
+        'one %s is used, %g Hz; tick only the filters to compare them)'], name, list(setdiff(vals, v)), name, v);
     vals = v;
 end
 if ~isempty(vals), plan = plan.add(type, 'cutoff', num2cell(vals)); end
