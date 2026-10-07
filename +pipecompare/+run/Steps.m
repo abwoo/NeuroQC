@@ -290,25 +290,82 @@ classdef Steps
             % history line is written here
             args = vararg2str(opts);
             applied = 0; if isfield(ctx, 'highpass'), applied = ctx.highpass; end
-            if p.fitHighpass > 0 && p.fitHighpass > applied
-                % Fit on a high-passed copy (stable decomposition), apply
-                % the weights to the data as they are (ERP signal kept).
-                fa = fftArgs(EEG, p.fitHighpass);
-                [tmp, ~] = pop_eegfiltnew(EEG, 'locutoff', p.fitHighpass, 'plotfreqz', 0, fa{:});
+            fitHp = p.fitHighpass > 0 && p.fitHighpass > applied;
+            clean = pipecompare.utils.fieldOr(p, 'fitClean', 1) > 0;
+            if fitHp || clean
+                % Fit on a copy: high-passed (stable decomposition) and/or
+                % without the stretches of extreme data (movement, bursts),
+                % which would otherwise claim components of their own; the
+                % weights are applied to the data as they are (ERP signal kept).
+                pre = {}; what = {};
+                if fitHp
+                    fa = fftArgs(EEG, p.fitHighpass);
+                    [tmp, ~] = pop_eegfiltnew(EEG, 'locutoff', p.fitHighpass, 'plotfreqz', 0, fa{:});
+                    fftTxt = ''; if ~isempty(fa), fftTxt = ', ''usefftfilt'', 1'; end
+                    pre{end+1} = sprintf('EEGica = pop_eegfiltnew(EEG, ''locutoff'', %g, ''plotfreqz'', 0%s);', p.fitHighpass, fftTxt);
+                    what{end+1} = sprintf('a %g Hz high-passed copy', p.fitHighpass);
+                else
+                    tmp = EEG;
+                    pre{end+1} = 'EEGica = eeg_checkset(EEG);';
+                end
+                if clean
+                    [tmp, left] = pipecompare.run.Steps.cleanForIca(tmp);
+                    pre{end+1} = 'EEGica = pipecompare.run.Steps.cleanForIca(EEGica);';
+                    if left > 0
+                        what{end+1} = sprintf('%.0f%% of the data left out as extreme', 100 * left);
+                        pipecompare.utils.log('ICA fitted without the most extreme %.0f%% of the data.', 100 * left);
+                    end
+                end
+                if isempty(what), what = {'the data as they are (nothing extreme to leave out)'}; end
                 tmp = pop_runica(tmp, opts{:});
                 EEG.icaweights = tmp.icaweights; EEG.icasphere = tmp.icasphere;
                 EEG.icachansind = tmp.icachansind; EEG.icawinv = []; EEG.icaact = [];
                 EEG = eeg_checkset(EEG);
                 c2 = sprintf('EEGica = pop_runica(EEGica, %s);', args);
-                fftTxt = ''; if ~isempty(fa), fftTxt = ', ''usefftfilt'', 1'; end
-                coms = {sprintf(['EEGica = pop_eegfiltnew(EEG, ''locutoff'', %g, ''plotfreqz'', 0%s); %s ', ...
+                coms = {sprintf(['%s %s ', ...
                     'EEG.icaweights = EEGica.icaweights; EEG.icasphere = EEGica.icasphere; ', ...
                     'EEG.icachansind = EEGica.icachansind; EEG.icawinv = []; EEG.icaact = []; ', ...
-                    'EEG = eeg_checkset(EEG); clear EEGica; %% PipeCompare: ICA fitted on a %g Hz high-passed copy'], ...
-                    p.fitHighpass, fftTxt, c2, p.fitHighpass)};
+                    'EEG = eeg_checkset(EEG); clear EEGica; %% PipeCompare: ICA fitted on %s'], ...
+                    strjoin(pre, ' '), c2, strjoin(what, ', '))};
             else
                 EEG = pop_runica(EEG, opts{:});
                 coms = {sprintf('EEG = pop_runica(EEG, %s);', args)};
+            end
+        end
+
+        function [T, left] = cleanForIca(T)
+            % The copy ICA is fitted on, without its most extreme stretches:
+            % 1 s windows of continuous data (or epochs) whose spread is far
+            % above the others' (robust z of the mean log SD over the EEG
+            % channels > 3, median and MAD over the windows), at most 20 %
+            % of them, worst first. left: the share of the data left out.
+            % EOG and other non-EEG channels do not count (blinks stay in, so
+            % that ICA learns them); every channel stays in the copy.
+            eeg = ~pipecompare.simple.Presets.isNonEeg(T.chanlocs(:)');
+            if T.trials > 1
+                n = T.trials; X = double(T.data(eeg, :, :));
+                s = squeeze(mean(log(std(X, 0, 2) + eps), 1))';
+            else
+                w = round(T.srate); n = floor(T.pnts / w);
+                s = zeros(1, n);
+                for k = 1:n
+                    s(k) = mean(log(std(double(T.data(eeg, (k - 1) * w + (1:w))), 0, 2) + eps));
+                end
+            end
+            left = 0;
+            if n < 10, return; end
+            mad = max(1.4826 * median(abs(s - median(s))), eps);
+            z = (s - median(s)) / mad;
+            [~, order] = sort(z, 'descend');
+            drop = order(z(order) > 3); drop = drop(1:min(numel(drop), floor(0.2 * n)));
+            if isempty(drop), return; end
+            if T.trials > 1
+                [~, T] = evalc('pop_select(T, ''notrial'', drop)');
+                left = numel(drop) / n;
+            else
+                drop = sort(drop);
+                [~, T] = evalc('pop_select(T, ''nopoint'', [(drop(:) - 1) * w + 1, drop(:) * w])');
+                left = numel(drop) * w / (n * w);
             end
         end
 
@@ -363,7 +420,13 @@ classdef Steps
             end
             switch type
                 case 'reject_threshold'
-                    [EEG, ~, c1] = pop_eegthresh(EEG, 1, chans, -p.uv, p.uv, EEG.xmin, EEG.xmax, 0, 0);
+                    if strcmp(pipecompare.utils.fieldOr(p, 'method', 'absolute'), 'peaktopeak')
+                        win = pipecompare.utils.fieldOr(p, 'window', 200);
+                        EEG = pipecompare.run.Steps.markPeakToPeak(EEG, chans, p.uv, win);
+                        c1 = sprintf('EEG = pipecompare.run.Steps.markPeakToPeak(EEG, %s, %g, %g);', mat2str(chans), p.uv, win);
+                    else
+                        [EEG, ~, c1] = pop_eegthresh(EEG, 1, chans, -p.uv, p.uv, EEG.xmin, EEG.xmax, 0, 0);
+                    end
                     marks = EEG.reject.rejthresh; E = pipecompare.utils.fieldOr(EEG.reject, 'rejthreshE');
                 case 'reject_jointprob'
                     [EEG, ~, ~, ~, c1] = pop_jointprob(EEG, 1, chans, p.sd, p.sd, 0, 0, 0, [], 0);
@@ -436,6 +499,29 @@ classdef Steps
                 coms{end+1} = c2;
             end
             info.rejected = numel(idx); info.rejIdx = idx; info.epochsBefore = n0;
+        end
+
+        function EEG = markPeakToPeak(EEG, chans, uv, win)
+            % Moving-window peak-to-peak test (ERPLAB's pop_artmwppth, as in
+            % ERP CORE): within each window of win ms, moved in 50 ms steps
+            % over the epoch, the highest minus the lowest value of a
+            % channel; an epoch is marked when this exceeds uv on any of the
+            % channels chans. Marks go where pop_eegthresh puts its own
+            % (EEG.reject.rejthresh, per channel rejthreshE), so they are
+            % removed and repaired the same way.
+            n = max(2, round(win / 1000 * EEG.srate));
+            step = max(1, round(0.050 * EEG.srate));
+            starts = 1:step:max(1, EEG.pnts - n + 1);
+            pp = zeros(numel(chans), EEG.trials);
+            for s0 = starts
+                X = double(EEG.data(chans, s0:min(EEG.pnts, s0 + n - 1), :));
+                pp = max(pp, reshape(max(X, [], 2) - min(X, [], 2), numel(chans), EEG.trials));
+            end
+            E = false(EEG.nbchan, EEG.trials);
+            E(chans, :) = pp > uv;
+            EEG.reject.rejthreshE = double(E);
+            EEG.reject.rejthresh = double(any(E, 1));
+            pipecompare.utils.log('%d/%d epochs over %g uV peak-to-peak (%g ms windows).', sum(any(E, 1)), EEG.trials, uv, win);
         end
 
         function EEG = interpolateEpochs(EEG, chans, epochs)

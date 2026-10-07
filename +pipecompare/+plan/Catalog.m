@@ -71,6 +71,8 @@ classdef Catalog
                 case 'ica'
                     d.label = 'ICA (runica, extended)'; d.dialog = 'pop_runica';
                     d.params = [P('fitHighpass', 1, {}, false, 'fit ICA on a copy high-passed at this edge (Hz); 0 = fit on the data as is'), ...
+                        P('fitClean', 1, {}, false, ['1 = fit ICA without the most extreme stretches of the data (1 s windows or ', ...
+                        'epochs far noisier than the rest, at most 20%); 0 = fit on all of it']), ...
                         P('extended', 1, {}, false, 'runica extended mode')];
                 case 'icremove'
                     d.label = 'Remove artifact ICs (ICLabel)'; d.dialog = 'pop_icflag';
@@ -82,7 +84,11 @@ classdef Catalog
                     d.label = 'Baseline removal (from the analysis contract)'; d.dialog = 'pop_rmbase';
                 case 'reject_threshold'
                     d.label = 'Reject epochs: amplitude threshold'; d.dialog = 'pop_eegthresh';
-                    d.params = [P('uv', 100, {75, 100, 150}, false, 'absolute threshold (uV)'), P('exclude', {}, {}, false, 'channel labels ignored by the test (e.g. EOG channels)'), ...
+                    d.params = [P('uv', 100, {75, 100, 150}, false, 'threshold (uV): absolute, or peak-to-peak with method peaktopeak'), ...
+                        P('exclude', {}, {}, false, 'channel labels ignored by the test (e.g. EOG channels)'), ...
+                        P('method', 'absolute', {}, false, ['''absolute'' (any sample beyond +/-uV) or ''peaktopeak'' ', ...
+                        '(highest minus lowest value within a moving window above uV, as in ERP CORE)']), ...
+                        P('window', 200, {}, false, 'peaktopeak: moving-window length (ms), moved in 50 ms steps'), ...
                         interp];
                 case 'reject_jointprob'
                     d.label = 'Reject epochs: joint probability'; d.dialog = 'pop_jointprob';
@@ -287,7 +293,11 @@ switch type
             reason = 'badchannels measure must be kurt, prob or spec, or several joined by + (e.g. kurt+prob)';
         elseif isfield(p, 'detectHighpass') && ~(isnumeric(p.detectHighpass) && isscalar(p.detectHighpass) && p.detectHighpass >= 0)
             reason = 'badchannels detectHighpass must be >= 0 (0 = detect on the data as is)'; end
-    case 'reject_threshold', if pos('uv'), reason = 'reject_threshold uv must be a positive number'; end
+    case 'reject_threshold'
+        if pos('uv'), reason = 'reject_threshold uv must be a positive number';
+        elseif isfield(p, 'method') && ~any(strcmp(p.method, {'absolute', 'peaktopeak'}))
+            reason = 'reject_threshold method must be absolute or peaktopeak';
+        elseif pos('window'), reason = 'reject_threshold window must be a positive number (ms)'; end
     case {'reject_jointprob','reject_kurtosis'}, if pos('sd'), reason = sprintf('%s sd must be a positive number', type); end
     case 'icremove'
         if pos('threshold') || p.threshold > 1, reason = 'icremove threshold must be a probability in (0, 1]'; end

@@ -329,6 +329,26 @@ on the copy, so the change they make to the known signal is measured and limited
 The 20 % limit on interpolated channels concerns whole channels and does not count repairs.
 [`pipecompare.run.Steps.rejectEpochs`, `pipecompare.run.Steps.interpolateEpochs`]
 
+## 9a. Peak-to-peak rejection
+
+`reject_threshold` with `method` = `peaktopeak` marks an epoch when, on any tested channel, the
+range (maximum minus minimum) within a moving window of `window` ms (default 200), moved in 50 ms
+steps, exceeds `uv`: the moving-window peak-to-peak test of ERPLAB (Lopez-Calderon & Luck, 2014)
+used by ERP CORE (Kappenman et al., 2021). Unlike an absolute threshold it is insensitive to slow
+drifts and offsets within the epoch. The marks are written where `pop_eegthresh` writes its own
+(`EEG.reject.rejthresh`, per channel `rejthreshE`), so removal, repair (section 9) and replay on
+the signal copy are the same. [`pipecompare.run.Steps.markPeakToPeak`]
+
+## 9b. ICA fitted without extreme stretches
+
+The decomposition is fitted on a copy from which the stretches far noisier than the rest are left
+out: 1 s windows (or epochs) whose mean log SD over the EEG channels has a robust z (median, MAD)
+above 3, at most 20 % of them, worst first. Non-EEG channels do not count, so blinks stay in the
+fit. The unmixing matrix is applied to all of the data. Fitting ICA on data cleaned of
+non-stereotyped artifacts is standard practice, since such stretches otherwise take up components
+(Delorme & Makeig, 2004; the EEGLAB tutorial's advice to reject bad data before ICA). `fitClean` = 0
+turns it off. [`pipecompare.run.Steps.cleanForIca`]
+
 ## 10. Montage check (before a run)
 
 Scalp potentials vary smoothly over the head, so after an average reference a channel resembles its

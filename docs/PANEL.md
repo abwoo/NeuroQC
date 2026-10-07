@@ -36,7 +36,9 @@ Two choices (what to measure; for ERP, the event types); the steps are preselect
 3. **Compare**: a list of steps in the order they run, each with a tick box: bad channels
    (detect and interpolate), the reference (item 4), ICA (ICLabel threshold compared), high-pass,
    low-pass (cutoffs compared), epochs and baseline (always; segments for band power), epoch
-   rejection (amplitude limit compared) and, under it, *instead, repair epochs with up to 3
+   rejection (amplitude limit compared) and, under it, *measure the limit peak-to-peak in 200 ms
+   windows* (`'peaktopeak'`: ERP CORE's moving-window test, limits 100, 150, 200 µV compared
+   instead) and *instead, repair epochs with up to 3
    channels over the limit* (`'epochinterp'`: such an epoch keeps those channels, interpolated
    within the epoch; it uses the rejection's limit, so it can only be ticked with it, and adds no
    pipelines; with the average reference the data are averaged again after it). Any of them can be
@@ -147,7 +149,10 @@ runs on its own copy.
   the table shows these values and *Edit values…* changes them. Every epoch-rejection step also
   has `interpolate` (default 0, off): an epoch failed by at most that many channels keeps them,
   interpolated within the epoch, instead of being rejected; several values (e.g. `0 | 3`) are
-  compared. Channels interpolated or removed
+  compared. The amplitude rejection (`reject_threshold`) has `method` (`absolute` or
+  `peaktopeak`, both can be compared) and `window` (ms, for peak-to-peak). The ICA step has
+  `fitClean` (1: fit without the stretches far noisier than the rest; 0: on all of the data).
+  Channels interpolated or removed
   after an average reference must be followed by another average reference (see
   [METHODS.md](METHODS.md)): an order search never puts the average first, and a fixed order that
   does is refused with the reason.

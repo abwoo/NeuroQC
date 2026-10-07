@@ -76,7 +76,7 @@ classdef SimpleDialog < handle
             obj.Types = s.eventTypes(keep); obj.Counts = s.eventCounts(keep);
             [isLock, at] = ismember(obj.Types, s.lockingTypes);
             obj.Counts(isLock) = s.lockingCounts(at(isLock));
-            obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', [200 100 720 670], ...
+            obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', [200 100 720 696], ...
                 'CloseRequestFcn', @(~, ~) obj.close());
             g = uigridlayout(obj.Fig, [9 2]); obj.Grid = g;
             g.RowHeight = {'fit', 22, 0, '1x', 22, 'fit', 22, 44, 30};
@@ -133,16 +133,17 @@ classdef SimpleDialog < handle
             [obj.Why, obj.Info] = P.stepAvailability(obj.State);
             obj.Ticks = ismember(names, P.recipeSteps('standard'));   % Standard
             obj.StepBoxes = gobjects(1, numel(names)); obj.StepNotes = gobjects(1, numel(names));
-            s = uigridlayout(g, [9 2]); s.Padding = [0 0 0 0]; s.RowSpacing = 4;
-            s.RowHeight = repmat({22}, 1, 9); s.ColumnWidth = {330, '1x'};
+            s = uigridlayout(g, [10 2]); s.Padding = [0 0 0 0]; s.RowSpacing = 4;
+            s.RowHeight = repmat({22}, 1, 10); s.ColumnWidth = {330, '1x'};
             b = uigridlayout(s, [1 3]); b.Padding = [0 0 0 0]; b.ColumnWidth = {'fit', 'fit', '1x'};
             b.Layout.Row = 1; b.Layout.Column = [1 2];
             uibutton(b, 'Text', 'Standard', 'ButtonPushedFcn', @(~, ~) obj.usePreset('standard'));
             uibutton(b, 'Text', 'Filters only', 'ButtonPushedFcn', @(~, ~) obj.usePreset('filters'));
             grey = [0.3 0.3 0.3];
             uilabel(b, 'Text', 'or tick the steps you want', 'FontColor', grey);
-            % rows: bad channels, reference, ICA, high-pass, low-pass, epochs, rejection, repair
-            rows = [2 4 5 6 8 9];
+            % rows: bad channels, reference, ICA, high-pass, low-pass, epochs,
+            % rejection, peak-to-peak, repair
+            rows = [2 4 5 6 8 9 10];
             for k = 1:numel(names)
                 h = uicheckbox(s, 'Text', P.stepLabel(names{k}), 'Value', obj.Ticks(k), ...
                     'ValueChangedFcn', @(h, ~) obj.tick(k, h.Value));
@@ -174,10 +175,11 @@ classdef SimpleDialog < handle
         end
 
         function steps = chosenSteps(obj)
-            % the steps ticked (repairing epochs only with epoch rejection)
+            % the steps ticked (peak-to-peak and repairing epochs only with
+            % epoch rejection)
             steps = pipecompare.simple.Presets.stepNames();
             steps = steps(obj.Ticks);
-            if ~ismember('reject', steps), steps = setdiff(steps, {'epochinterp'}, 'stable'); end
+            if ~ismember('reject', steps), steps = setdiff(steps, {'peaktopeak', 'epochinterp'}, 'stable'); end
         end
 
         function showSteps(obj)
@@ -190,7 +192,7 @@ classdef SimpleDialog < handle
                 b = obj.StepBoxes(k); note = obj.StepNotes(k);
                 if ~isempty(why)
                     b.Value = false; b.Enable = 'off'; note.Text = why;
-                elseif strcmp(names{k}, 'epochinterp') && ~(obj.Ticks(strcmp(names, 'reject')) && isempty(obj.Why.reject))
+                elseif any(strcmp(names{k}, {'peaktopeak', 'epochinterp'})) && ~(obj.Ticks(strcmp(names, 'reject')) && isempty(obj.Why.reject))
                     % an option of the epoch rejection (it uses its limit)
                     b.Value = false; b.Enable = 'off'; note.Text = 'needs epoch rejection (uses its limit)';
                 elseif strcmp(names{k}, 'badchannels') && average

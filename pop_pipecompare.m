@@ -28,6 +28,9 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %              (standard: all the steps below; filters: the two filters)
 %   'steps'    instead of 'recipe', any of 'badchannels', 'ica',
 %              'highpass', 'lowpass', 'reject' (epoch rejection),
+%              'peaktopeak' (with 'reject': the limit is measured
+%              peak-to-peak in moving 200 ms windows, as in ERP CORE,
+%              limits 100, 150 and 200 uV compared),
 %              'epochinterp' (with 'reject': an epoch with at most 3
 %              channels over the limit keeps them, interpolated within the
 %              epoch, instead of being rejected), e.g.

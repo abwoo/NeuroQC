@@ -57,6 +57,7 @@ classdef Presets
         IcaMinBrain = 2      % ICA check: fewer components with Brain >= 0.5 than this = almost nothing recognised
         IcaMaxOther = 0.8    % ICA check: a median Other probability above this = almost nothing recognised
         IcaMinK = 20         % ICA check: ICA needs at least this x (components)^2 data points
+        PeakToPeakUv = {100, 150, 200}   % peaktopeak: the limits compared (uV, peak-to-peak)
         RejectOneChannel = 0.5   % one channel over the limit in at least this share of the rejected epochs is named
     end
 
@@ -115,7 +116,10 @@ classdef Presets
             % epochinterp is an option of the epoch rejection: within an
             % epoch, up to 3 channels over its limit are interpolated and
             % the epoch kept
-            names = {'badchannels', 'ica', 'highpass', 'lowpass', 'reject', 'epochinterp'};
+            % peaktopeak is another option of it: the limit is measured
+            % peak-to-peak in moving 200 ms windows (ERP CORE), with limits
+            % PeakToPeakUv
+            names = {'badchannels', 'ica', 'highpass', 'lowpass', 'reject', 'peaktopeak', 'epochinterp'};
         end
 
         function t = stepLabel(name)
@@ -125,6 +129,7 @@ classdef Presets
                 case 'highpass', t = 'High-pass filter (cutoffs compared)';
                 case 'lowpass', t = 'Low-pass filter (cutoffs compared)';
                 case 'reject', t = 'Reject epochs over an amplitude limit (limits compared)';
+                case 'peaktopeak', t = '  measure the limit peak-to-peak in 200 ms windows (ERP CORE)';
                 case 'epochinterp', t = sprintf('  instead, repair epochs with up to %d channels over the limit', ...
                         pipecompare.simple.Presets.EpochInterpMax);
                 otherwise, error('PipeCompare:Simple', 'Unknown step %s (steps: %s).', name, ...
@@ -165,8 +170,10 @@ classdef Presets
             % For each step (pipecompare.simple.Presets.stepNames), why it
             % cannot be compared on these data ('' when it can), and what
             % to know about it (e.g. a filter the data already have).
-            why = struct('badchannels', '', 'ica', '', 'highpass', '', 'lowpass', '', 'reject', '', 'epochinterp', '');
+            why = struct('badchannels', '', 'ica', '', 'highpass', '', 'lowpass', '', 'reject', '', 'peaktopeak', '', 'epochinterp', '');
             info = why;
+            info.peaktopeak = sprintf('limits %s uV; not fooled by slow drifts', ...
+                strjoin(cellfun(@num2str, pipecompare.simple.Presets.PeakToPeakUv, 'UniformOutput', false), ', '));
             info.epochinterp = 'interpolated from the other channels, in that epoch only';
             steps = {state.process.step};
             if state.nLocated == 0
@@ -468,6 +475,9 @@ classdef Presets
                         if pipecompare.utils.fieldOr(p, 'fitHighpass', 0) > 0
                             t = sprintf('%s, fitted on a %g Hz high-passed copy and applied to the data', t, p.fitHighpass);
                         end
+                        if pipecompare.utils.fieldOr(p, 'fitClean', 1) > 0
+                            t = [t ' (the fit leaves out stretches far noisier than the rest)'];
+                        end
                     case 'icremove'
                         t = sprintf('ICLabel: %s of %s components removed (%s with probability %g or more)', ...
                             numText(f.icsRemoved), numText(f.icsTotal), strjoin(cellstr(p.classes), ', '), p.threshold);
@@ -483,7 +493,12 @@ classdef Presets
                         end
                     case 'baseline', t = sprintf('Baseline %g to %g ms removed', 1000 * con.baseline);
                     case 'reject_threshold'
-                        t = sprintf('Epochs beyond +/-%g uV on any channel rejected: %s', p.uv, ofText(f));
+                        if strcmp(pipecompare.utils.fieldOr(p, 'method', 'absolute'), 'peaktopeak')
+                            t = sprintf('Epochs over %g uV peak-to-peak (within %g ms) on any channel rejected: %s', ...
+                                p.uv, pipecompare.utils.fieldOr(p, 'window', 200), ofText(f));
+                        else
+                            t = sprintf('Epochs beyond +/-%g uV on any channel rejected: %s', p.uv, ofText(f));
+                        end
                         t = [t repairText(p, f) notTested(p)];
                     case {'reject_jointprob', 'reject_kurtosis'}
                         t = sprintf('Epochs rejected by %s (%g SD): %s', pipecompare.utils.ternary(strcmp(f.type, ...
@@ -789,13 +804,20 @@ classdef Presets
                 % with an average reference the data are averaged again
                 % after it (an interpolated channel's old values are still
                 % in that epoch's average)
+                % peaktopeak: the limit is measured peak-to-peak in moving
+                % windows (ERP CORE), with its own limits
+                how = {};
+                if has('peaktopeak'), how = {'method', 'peaktopeak', 'uv', pipecompare.simple.Presets.PeakToPeakUv}; end
                 repair = has('epochinterp') && state.nLocated > 0;
                 if repair
-                    plan = plan.add('reject_threshold', exclusion{:}, 'interpolate', pipecompare.simple.Presets.EpochInterpMax);
+                    plan = plan.add('reject_threshold', exclusion{:}, how{:}, 'interpolate', pipecompare.simple.Presets.EpochInterpMax);
                     plan = addReference(plan, reference, exclude);
                 else
-                    plan = plan.add('reject_threshold', exclusion{:});
+                    plan = plan.add('reject_threshold', exclusion{:}, how{:});
                 end
+            end
+            if has('peaktopeak') && ~has('reject')
+                notes{end+1} = 'peak-to-peak rejection needs epoch rejection (it is its method)';
             end
             if has('epochinterp') && ~has('reject')
                 notes{end+1} = 'repairing epochs needs epoch rejection (it uses its limit)';

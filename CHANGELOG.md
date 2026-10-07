@@ -5,7 +5,7 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
-Recommendations can change: the signal check now uses a known signal as wide as the measurement
+Recommendations can change: ICA is now fitted without the noisiest stretches of data, the signal check now uses a known signal as wide as the measurement
 window, which excludes a 1 Hz high-pass for broad components such as the LRP, and repairs never
 touch a measured electrode (see below). Also changed: data cleaned with clean_rawdata from a script
 whose high-pass PipeCompare now sees, and data with ear or mastoid channels.
@@ -18,6 +18,12 @@ whose high-pass PipeCompare now sees, and data with ear or mastoid channels.
   than 2 with Brain >= 0.5, or median Other above 0.8), or no pipeline removed a component. The
   ICLabel line of each pipeline's step list gives the brain-like and Other counts. In the results
   window, the Command Window and the advanced panel's notes.
+- ICA is fitted without the stretches of data far noisier than the rest (1 s windows or epochs
+  with a robust z of the log SD above 3, at most 20%), and applied to all of the data; parameter
+  `fitClean` of the ica step (1 by default). ICA results can change.
+- Peak-to-peak rejection (ERP CORE): `reject_threshold` takes `method` `peaktopeak` (range within
+  a moving 200 ms window, 50 ms steps) and `window`; simple mode offers it under the rejection
+  (*measure the limit peak-to-peak in 200 ms windows*, `'peaktopeak'`, limits 100, 150, 200 µV).
 - The signal check's known signal is now as wide at half maximum as the measurement window (was a
   quarter-window SD): a 1 Hz high-pass is now caught for broad components such as the LRP, as at
   their realistic widths. Results can change: such pipelines are now excluded.

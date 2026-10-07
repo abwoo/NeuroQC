@@ -881,6 +881,44 @@ verifyEqual(tc, char(d.StepBoxes(k).Enable), 'off');             % only with the
 verifyFalse(tc, ismember('epochinterp', d.options().steps));
 end
 
+function testPeakToPeakIsAMethodOfRejection(tc)
+% Peak-to-peak (ERP CORE): an option of the epoch rejection, with its own
+% limits; the dialog offers it under the rejection, off in Standard.
+EEG = tc.TestData.EEG;
+P = pipecompare.simple.Presets;
+c = P.contract(EEG, 'P3', {'11'});
+st = pipecompare.live.DataState.fromEEG(EEG);
+p = P.recipe({'reject', 'peaktopeak'}, st, c);
+a = p.Slots(end).alternatives{1}.params;
+verifyEqual(tc, a.method, 'peaktopeak');
+verifyEqual(tc, a.uv, P.PeakToPeakUv);
+verifyNumElements(tc, p.enumerate(st, c), 3);
+p = P.recipe({'reject', 'peaktopeak', 'epochinterp'}, st, c);
+a = p.Slots(end).alternatives{1}.params;
+verifyEqual(tc, {a.method, a.interpolate}, {'peaktopeak', P.EpochInterpMax});
+p = P.recipe({'reject'}, st, c);
+verifyFalse(tc, isfield(p.Slots(end).alternatives{1}.params, 'method'));   % absolute unless chosen
+[~, notes] = P.recipe({'highpass', 'peaktopeak'}, st, c);
+verifyTrue(tc, any(contains(notes, 'needs epoch rejection')));
+f = struct('type', 'reject_threshold', 'params', struct('uv', 150, 'method', 'peaktopeak', 'window', 200, 'exclude', {{}}), ...
+    'interpolated', {{}}, 'removed', {{}}, 'rejected', 4, 'epochsBefore', 60);
+r.contract = c; r.ref = struct('names', {{'11'}}, 'n', 30);
+r.cands = struct('steps', {{f}}, 'm', struct('kept', 26));
+L = P.stepsText(r, 1);
+verifyTrue(tc, startsWith(L{1}, '1. Epochs over 150 uV peak-to-peak (within 200 ms) on any channel rejected: 4 of 60'), L{1});
+d = pipecompare.gui.SimpleDialog(EEG); cleanD = onCleanup(@() delete(d)); %#ok<NASGU>
+d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
+names = P.stepNames(); k = find(strcmp(names, 'peaktopeak'));
+verifyFalse(tc, d.StepBoxes(k).Value);
+n = d.update();
+d.tick(k, true);
+verifyEqual(tc, d.update(), n);                                  % 3 limits instead of 3
+verifyTrue(tc, ismember('peaktopeak', d.options().steps));
+d.tick(find(strcmp(names, 'reject')), false); d.update();
+verifyEqual(tc, char(d.StepBoxes(k).Enable), 'off');
+verifyFalse(tc, ismember('peaktopeak', d.options().steps));
+end
+
 function testIcaThatDidNothingIsSaid(tc)
 % ICLabel that recognised almost nothing, or no component removed in any
 % pipeline, is said in words; a working ICA is not.

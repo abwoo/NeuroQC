@@ -482,6 +482,7 @@ r = pipecompare.PipeCompare.optimize(p, nqc_c());
 d = r.cands(1).ica;
 verifyNumElements(tc, d, 1);
 verifyTrue(tc, contains(d{1}.coms{1}, 'EEGica = pop_runica(EEGica, ''icatype'''));
+verifyTrue(tc, contains(d{1}.coms{1}, 'EEGica = pipecompare.run.Steps.cleanForIca(EEGica);'));
 W = d{1}.icaweights([2 1 3:end], :);   % not what runica gives: proves it is applied, not refitted
 r.cands(1).ica{1}.icaweights = W;
 E = pipecompare.run.Executor.replay(r, 1);
@@ -829,6 +830,47 @@ verifyEqual(tc, sort(info0.rejIdx), [3 7 12 20 25]);
 in.params.interpolate = 1;                                      % epoch 7 has two channels over: rejected
 [~, ~, info1] = pipecompare.run.Steps.run(in, E, x);
 verifyEqual(tc, sort(info1.rejIdx), [7 20 25]);
+end
+
+function testPeakToPeakRejection(tc)
+% Peak-to-peak in moving 200 ms windows: a slow drift that crosses an
+% absolute limit is kept, a fast deflection is rejected; the marks are
+% per channel, so epochs can be repaired the same way.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0, 'blinkRate', 0));
+[~, E] = evalc('nqc_epoched(EEG)');
+ch = find(strcmpi({E.chanlocs.labels}, 'T7'));
+E.data(ch, :, 5) = E.data(ch, :, 5) + linspace(0, 300, E.pnts);          % slow drift
+t = (1:E.pnts) - round(0.5 * E.srate);
+E.data(ch, :, 9) = E.data(ch, :, 9) + 150 * exp(-0.5 * (t / (0.03 * E.srate)) .^ 2);   % fast deflection
+in = struct('type', 'reject_threshold', 'params', struct('uv', 100, 'exclude', {{}}), 'key', 'rej', 'slot', 'rej', 'label', 'rej');
+x = struct('contract', nqc_c(), 'highpass', 0);
+[~, ~, a] = pipecompare.run.Steps.run(in, E, x);
+in.params.method = 'peaktopeak'; in.params.window = 200;
+[~, coms, b] = pipecompare.run.Steps.run(in, E, x);
+verifyTrue(tc, ismember(5, a.rejIdx) && ~ismember(5, b.rejIdx), mat2str(b.rejIdx));
+verifyTrue(tc, ismember(9, b.rejIdx), mat2str(b.rejIdx));
+verifyTrue(tc, contains(coms{1}, 'pipecompare.run.Steps.markPeakToPeak'));
+in.params.interpolate = 3;                                       % repaired like any other test
+[~, ~, c] = pipecompare.run.Steps.run(in, E, x);
+verifyFalse(tc, ismember(9, c.rejIdx));
+verifyGreaterThan(tc, c.epochsInterpolated, 0);
+end
+
+function testIcaIsFittedWithoutExtremeStretches(tc)
+% The copy ICA is fitted on leaves out windows far noisier than the rest
+% (at most 20%), and nothing on clean data.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0, 'blinkRate', 0));
+[T, left] = pipecompare.run.Steps.cleanForIca(EEG);
+verifyLessThan(tc, left, 0.05);
+fs = EEG.srate; eeg = ~pipecompare.simple.Presets.isNonEeg(EEG.chanlocs(:)');
+rng(2);
+for k = [10 30 50 70 80]
+    EEG.data(eeg, (k - 1) * fs + (1:fs)) = EEG.data(eeg, (k - 1) * fs + (1:fs)) + 300 * randn(sum(eeg), fs);
+end
+[T, left] = pipecompare.run.Steps.cleanForIca(EEG);
+verifyGreaterThanOrEqual(tc, left, 5 / 90 - 1e-9);
+verifyLessThanOrEqual(tc, T.pnts, EEG.pnts - 5 * fs);
+verifyLessThan(tc, max(abs(double(T.data(eeg, :))), [], 'all'), 1000);   % the bursts are gone
 end
 
 function testRepairedEpochsInASearch(tc)

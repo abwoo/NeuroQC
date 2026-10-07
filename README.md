@@ -102,8 +102,11 @@ pipeline, so that the comparison is about the settings that matter.
    are left out of the average. Data that were already average-referenced are averaged again,
    which removes the repaired channels' share of the earlier average.
 4. **ICA is computed once** (extended Infomax, `pop_runica`) on a copy high-passed at 1 Hz, which
-   gives a cleaner decomposition. All pipelines share this one decomposition, which saves the
-   largest part of the computing time.
+   gives a cleaner decomposition. The copy also leaves out the stretches of recording that are far
+   noisier than the rest (movement, electrode bursts; see
+   [ICA on clean data](#ica-on-clean-data)), so that they do not claim components of their own.
+   The resulting decomposition is applied to all of the data. All pipelines share this one
+   decomposition, which saves the largest part of the computing time.
 5. **High-pass filter**, *compared*: 0.1, 0.3, 0.5 and 1 Hz.
 6. **Low-pass filter**, *compared*: 20, 30 and 40 Hz.
 7. **Artifact components are removed with ICLabel**, *compared*: a component is removed when
@@ -113,8 +116,11 @@ pipeline, so that the comparison is about the settings that matter.
 9. **Noisy epochs are rejected**, *compared*: an epoch is dropped when any EEG channel exceeds
    ±75, ±100 or ±150 µV (non-EEG channels are ignored).
 
-One more step can be ticked; it is not part of *Standard*. **Repairing epochs instead of rejecting
-them**: an epoch in which only 1 to 3 channels exceed the rejection limit is kept, and those
+Two more options of the rejection can be ticked; they are not part of *Standard*.
+**Peak-to-peak limits** (ERP CORE's method): instead of testing whether any value is beyond ±*x*
+µV, the rejection takes the highest minus the lowest value within a moving 200 ms window, and
+compares 100, 150 and 200 µV (see [Peak-to-peak rejection](#peak-to-peak-rejection)).
+**Repairing epochs instead of rejecting them**: an epoch in which only 1 to 3 channels exceed the rejection limit is kept, and those
 channels are interpolated from the other channels within that epoch only; an epoch with more
 channels over the limit is still rejected. It does not add pipelines (it uses the limit being
 compared). See [Repairing epochs with a few bad channels](#repairing-epochs-with-a-few-bad-channels).
@@ -310,13 +316,15 @@ pipecompare_setup                         % run from the PipeCompare folder
    | 5 | Low-pass filter | the cutoff (20, 30, 40 Hz) |
    | 6 | Epochs and baseline (segments for band power) | always done |
    | 7 | Reject epochs over an amplitude limit | the limit (75, 100, 150 µV) |
-   | 8 | Instead, repair epochs with up to 3 channels over the limit (optional) | nothing (it uses the limit of step 7) |
+   | 7a | Measure the limit peak-to-peak in 200 ms windows (optional) | the limit (100, 150, 200 µV peak-to-peak) instead of 75, 100, 150 µV |
+   | 7b | Instead, repair epochs with up to 3 channels over the limit (optional) | nothing (it uses the limit of step 7) |
 
    Two buttons tick a usual set at once: **Standard**, preselected, ticks steps 1 to 7 (every
-   step except the repair in line 8); **Filters only** ticks the two filters. Line 8 can only be
-   ticked together with step 7, since it uses the same limit (see
+   step except the options 7a and 7b); **Filters only** ticks the two filters. Lines 7a and 7b
+   are options of the rejection and can only be ticked together with step 7 (see
+   [Peak-to-peak rejection](#peak-to-peak-rejection) and
    [Repairing epochs with a few bad channels](#repairing-epochs-with-a-few-bad-channels)).
-   Ticking it does not change the number of pipelines. An unticked step is not done at all: for example,
+   Ticking them does not change the number of pipelines. An unticked step is not done at all: for example,
    without the high-pass the data keep whatever high-pass they already had. Steps that these data
    cannot take are greyed out, with the reason next to them: on epoched data the filters (they
    must run before epoching), without channel locations bad-channel interpolation and ICA (ICLabel
@@ -428,7 +436,7 @@ settings and what it decided on these data, for example:
 ```
 1. Bad channels (kurtosis or joint probability over 5 SD, found on a 1 Hz high-passed copy): O1, O2 interpolated (not tested: VEOG, HEOG)
 2. Average reference (left out: VEOG, HEOG)
-3. ICA (extended runica), fitted on a 1 Hz high-passed copy and applied to the data
+3. ICA (extended runica), fitted on a 1 Hz high-passed copy and applied to the data (the fit leaves out stretches far noisier than the rest)
 4. High-pass filter 0.5 Hz
 5. Low-pass filter 40 Hz
 6. ICLabel: 4 of 60 components removed (Muscle, Eye, Heart, Line Noise, Channel Noise with probability 0.8 or more); 21 look like brain activity, 9 were labelled Other
@@ -545,6 +553,50 @@ it has no ICA, the first pipeline with ICA), and says so when:
 The note appears in the result window after the headline, in the Command Window, and in the
 advanced panel's notes below the results. Each pipeline's step list also gives, on its ICLabel
 line, how many components look like brain activity and how many were labelled *Other*.
+
+### Peak-to-peak rejection
+
+The usual rejection drops an epoch when any EEG channel goes beyond ±*x* µV. That test looks at
+the distance from zero, which after baseline correction is the distance from the baseline. Slow
+drifts can carry a clean epoch over the limit, while a blink that starts from a low point can stay
+under it. ERP CORE (Kappenman et al., 2021) therefore uses a moving-window peak-to-peak test, as
+ERPLAB's *moving window peak-to-peak threshold*:
+
+- a window of 200 ms moves over the epoch in steps of 50 ms;
+- in each window, for each EEG channel, the highest value minus the lowest value is taken;
+- the epoch is rejected when, in any window, this exceeds the limit on any EEG channel (EOG and
+  other non-EEG channels, and ear or mastoid channels, are not tested, as in the usual test).
+
+A blink or a fast jump is a large change within 200 ms and is caught; a slow drift changes little
+within 200 ms and is not. Because the limit is a range rather than a distance from zero, its
+values are larger: simple mode compares 100, 150 and 200 µV peak-to-peak (tick **measure the
+limit peak-to-peak in 200 ms windows** under the rejection; `'peaktopeak'` in `pop_pipecompare`).
+It can be combined with repairing epochs: the channels over the limit are the ones repaired.
+
+In the advanced panel, the amplitude rejection step (`reject_threshold`) has the parameters
+`method` (`absolute`, the default, or `peaktopeak`; both can be compared, as `absolute |
+peaktopeak`), `window` (the window length in ms, default 200) and `uv` (any limits). Each
+pipeline's `EEG.history` records the test as `pipecompare.run.Steps.markPeakToPeak(...)`, which
+marks the epochs where EEGLAB's own threshold test puts its marks (`EEG.reject.rejthresh`).
+
+### ICA on clean data
+
+ICA finds the independent sources in the data. Stretches of the recording that are far noisier
+than the rest, such as movement or a loose electrode for a few seconds, take up components of their
+own and leave fewer for eye, muscle and brain sources, so the decomposition is worse for the
+whole recording. PipeCompare therefore fits ICA on a copy without those stretches, and applies the
+result to all of the data (nothing is cut from your data):
+
+- continuous data are divided into 1 s windows (epoched data: each epoch is one window);
+- for each window, the spread (standard deviation) of every EEG channel is taken, and the mean of
+  their logarithms gives the window's noise level (EOG and other non-EEG channels do not count,
+  so blinks stay in and ICA can learn them);
+- a window is left out when its noise level is more than 3 robust standard deviations above the
+  median of all windows (median and MAD), at most 20 % of the windows, the noisiest first.
+
+On clean data nothing is left out. The Command Window and each pipeline's `EEG.history` say how
+much was left out. In the advanced panel, the ICA step's parameter `fitClean` (1 by default)
+turns this off with 0, and can be compared (`0 | 1`).
 
 ### Repairing epochs with a few bad channels
 
