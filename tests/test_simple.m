@@ -276,6 +276,17 @@ verifyEqual(tc, L{4}, '4. ICLabel: 3 of 30 components removed (Eye, Muscle with 
 verifyEqual(tc, L{5}, '5. Epochs -200 to 800 ms around event type(s) 11, 31');
 verifyEqual(tc, L{6}, '6. Epochs beyond +/-150 uV on any channel rejected: 5 of 60');
 verifyEqual(tc, L{7}, 'Trials kept per condition: 11: 28 of 30; 31: 27 of 30');
+% ICLabel's recognition, and epochs repaired by interpolation
+s4.icsBrain = 12; s4.icsOther = 4;
+s6.params.interpolate = 3; s6.epochsInterpolated = 7;
+s7 = f('reref', struct('mode', 'average', 'channels', {{}}, 'exclude', {{}}));
+r.cands.steps = {s1, s2, s3, s4, s5, s6, s7};
+L = P.stepsText(r, 1);
+verifyEqual(tc, L{4}, ['4. ICLabel: 3 of 30 components removed (Eye, Muscle with probability 0.8 or more); ', ...
+    '12 look like brain activity, 4 were labelled Other']);
+verifyEqual(tc, L{6}, ['6. Epochs beyond +/-150 uV on any channel rejected: 5 of 60; 7 epoch(s) kept by ', ...
+    'interpolating up to 3 channel(s) within the epoch']);
+verifyEqual(tc, L{7}, '7. Average reference again (after the epochs repaired by interpolation)');
 s1.interpolated = {}; r.cands.steps = {s1};
 L = P.stepsText(r, 1);
 verifyTrue(tc, contains(L{1}, 'none found'), L{1});
@@ -380,7 +391,8 @@ verifyEqual(tc, ids(P.recipe({'reject'}, st, c, 'average')), {'badchannels', 're
 verifyEqual(tc, ids(P.recipe(P.recipeSteps('standard'), st, c)), ids(P.recipe('standard', st, c)));
 verifyError(tc, @() P.recipe({'asr'}, st, c), 'PipeCompare:Simple');
 verifyEqual(tc, P.recipeOf({'lowpass', 'highpass'}), 'filters');
-verifyEqual(tc, P.recipeOf(P.stepNames()), 'standard');
+verifyEqual(tc, P.recipeOf(P.recipeSteps('standard')), 'standard');
+verifyEqual(tc, P.recipeOf(P.stepNames()), '');                 % Standard leaves out repairing epochs
 verifyEqual(tc, P.recipeOf({'highpass', 'reject'}), '');
 % band power: with epoch rejection compared, one edge per filter
 p = P.recipe({'highpass', 'lowpass', 'reject'}, st, P.contract(EEG, 'alpha', {}));
@@ -825,6 +837,107 @@ verifyEqual(tc, evalin('base', 'numel(ALLEEG)'), n0);           % nothing stored
 w.adopt('Use anyway');
 verifyEqual(tc, evalin('base', 'EEG.setname'), sprintf('%s PipeCompare#%d', EEG.setname, k));
 nqc_setBase(EEG);
+end
+
+function testRepairingEpochsIsAnOptionOfRejection(tc)
+% Within an epoch, up to 3 channels over the rejection limit are
+% interpolated and the epoch kept (an option of epoch rejection, with its
+% limit); with an average reference the data are averaged again after it.
+EEG = tc.TestData.EEG;
+P = pipecompare.simple.Presets;
+c = P.contract(EEG, 'P3', {'11'});
+ids = @(p) {p.Slots.id};
+st = pipecompare.live.DataState.fromEEG(EEG);
+p = P.recipe({'reject', 'epochinterp'}, st, c);
+verifyEqual(tc, ids(p), {'epoch', 'baseline', 'reject_threshold'});
+verifyEqual(tc, p.Slots(end).alternatives{1}.params.interpolate, P.EpochInterpMax);
+verifyEqual(tc, P.EpochInterpMax, 3);
+p = P.recipe({'reject'}, st, c);
+verifyFalse(tc, isfield(p.Slots(end).alternatives{1}.params, 'interpolate'));   % off unless chosen
+p = P.recipe({'badchannels', 'reject', 'epochinterp'}, st, c, 'average', {'VEOG'});
+verifyEqual(tc, ids(p), {'badchannels', 'reref', 'epoch', 'baseline', 'reject_threshold', 'reref_2'});
+verifyEqual(tc, p.Slots(end).alternatives{1}.params.exclude, {'VEOG'});
+verifyNumElements(tc, p.enumerate(st, c), 3);                   % legal: the average is balanced again
+[p, notes] = P.recipe({'highpass', 'epochinterp'}, st, c);
+verifyFalse(tc, ismember('reject_threshold', ids(p)));
+verifyTrue(tc, any(contains(notes, 'needs epoch rejection')));
+noloc = st; noloc.nLocated = 0;
+[p, notes] = P.recipe({'reject', 'epochinterp'}, noloc, c);
+verifyFalse(tc, isfield(p.Slots(end).alternatives{1}.params, 'interpolate'));
+verifyTrue(tc, any(contains(notes, 'no channel locations')));
+why = P.stepAvailability(noloc);
+verifyTrue(tc, contains(why.epochinterp, 'channel locations'));
+% the dialog: an option under the rejection, off in Standard
+d = pipecompare.gui.SimpleDialog(EEG); cleanD = onCleanup(@() delete(d)); %#ok<NASGU>
+d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
+names = P.stepNames(); k = find(strcmp(names, 'epochinterp'));
+verifyFalse(tc, d.StepBoxes(k).Value);
+n = d.update();
+d.tick(k, true);
+verifyEqual(tc, d.update(), n);                                  % fixed: no more pipelines
+verifyTrue(tc, ismember('epochinterp', d.options().steps));
+d.tick(find(strcmp(names, 'reject')), false); d.update();
+verifyEqual(tc, char(d.StepBoxes(k).Enable), 'off');             % only with the rejection
+verifyFalse(tc, ismember('epochinterp', d.options().steps));
+end
+
+function testIcaThatDidNothingIsSaid(tc)
+% ICLabel that recognised almost nothing, or no component removed in any
+% pipeline, is said in words; a working ICA is not.
+P = pipecompare.simple.Presets;
+ic = @(removed, total, brain, other, med) struct('type', 'icremove', 'params', struct(), 'icsRemoved', removed, ...
+    'icsTotal', total, 'icsBrain', brain, 'icsOther', other, 'otherMedian', med);
+r.ranking = struct('recommended', 2);
+r.cands = struct('id', {1, 2}, 'steps', {{ic(0, 61, 0, 56, 0.9)}, {ic(0, 61, 0, 56, 0.9)}});
+t = P.icaText(r);
+verifyTrue(tc, contains(t, 'almost none of the 61 ICA components: 0 look like brain activity') && ...
+    contains(t, '56 were labelled Other') && contains(t, 'removed nothing in any pipeline') && ...
+    contains(t, 'channel labels match the electrode positions'), t);
+r.cands(2).steps = {ic(4, 61, 20, 10, 0.2)};                     % the recommended pipeline's ICA works
+verifyEmpty(tc, P.icaText(r));
+r.cands(1).steps = {ic(0, 30, 15, 3, 0.1)}; r.cands(2).steps = {ic(0, 30, 15, 3, 0.1)};
+t = P.icaText(r);                                                % recognised, nothing to remove
+verifyTrue(tc, contains(t, 'removed nothing in any pipeline') && contains(t, 'expected') && ...
+    ~contains(t, 'labels'), t);
+r.cands(2).steps = {ic(2, 30, 1, 25, 0.85)};                     % few brain components
+verifyTrue(tc, contains(P.icaText(r), 'almost none') && ~contains(P.icaText(r), 'removed nothing'));
+r.cands = struct('id', {1}, 'steps', {{struct('type', 'highpass', 'params', struct())}});
+verifyEmpty(tc, P.icaText(r));                                   % no ICA: nothing said
+end
+
+function testMontageCheckFindsSwappedLabels(tc)
+% Channels whose data do not resemble their neighbours are named, with the
+% channels they resemble; a swap of two distant channels is found, and
+% nothing is flagged on a smooth field.
+EEG = tc.TestData.EEG;
+xyz = [[EEG.chanlocs.X]' [EEG.chanlocs.Y]' [EEG.chanlocs.Z]']; xyz = xyz ./ vecnorm(xyz, 2, 2);
+rng(3, 'twister');
+data = zeros(EEG.nbchan, EEG.pnts);
+for k = 1:12                                                     % sources with broad, smooth fields
+    v = randn(1, 3); v = v / norm(v);
+    w = exp(-acos(max(-1, min(1, xyz * v'))) .^ 2 / (2 * 0.6 ^ 2));
+    data = data + w * filter(1, [1 -0.9], randn(1, EEG.pnts));
+end
+S = EEG; S.data = single(10 * data + 0.5 * randn(size(data)));
+m = pipecompare.live.Montage.check(S);
+verifyEmpty(tc, m.flagged, strjoin(m.flagged, ', '));
+verifyEmpty(tc, m.text);
+verifyGreaterThan(tc, m.median, 0.5);
+L = upper({EEG.chanlocs.labels}); i = find(strcmp(L, 'F3')); j = find(strcmp(L, 'O2'));
+W = S; W.data([i j], :) = W.data([j i], :);                       % F3 and O2 recorded at each other's place
+m = pipecompare.live.Montage.check(W);
+verifyEqual(tc, sort(upper(m.flagged)), {'F3', 'O2'});
+verifyTrue(tc, contains(m.text, 'may not match where the electrodes were') && contains(m.text, 'F3'), m.text);
+like = m.like{strcmpi(m.flagged, 'F3')};
+verifyTrue(tc, startsWith(like, 'most like'), like);
+verifyFalse(tc, contains(like, 'Fz') || contains(like, 'FC1'), like);   % it resembles the back of the head
+% the dialog says it in the data line
+nqc_setBase(W);
+d = pipecompare.gui.SimpleDialog(W); cleanD = onCleanup(@() delete(d)); %#ok<NASGU>
+verifyTrue(tc, contains(d.TypeWhy.Text, 'Montage check'));
+nqc_setBase(EEG);
+[~, few] = evalc('pop_select(S, ''channel'', 1:6)');
+verifyNotEmpty(tc, pipecompare.live.Montage.check(few).skipped); % too few channels: not checked
 end
 
 function stop = noteStep(m, in)

@@ -13,11 +13,14 @@ classdef SimpleDialog < handle
     %      events are flagged before Run. N2pc and LRP (contralateral
     %      minus ipsilateral) take the event types of each side in two
     %      lists: target on the left / right, left / right hand.
+    %   1 also says what the montage check found (channels that do not
+    %   resemble their neighbours; pipecompare.live.Montage).
     %   3. Which steps are compared: a list in the order they run (bad
     %      channels, reference, ICA, high-pass, low-pass, epochs, epoch
-    %      rejection); tick any of them, or one of the two recipes
-    %      (Standard, preselected: all; Filters only). The order is
-    %      fixed. Steps these data cannot take are greyed out with the
+    %      rejection, and as its option, repairing epochs with up to 3
+    %      channels over the limit by interpolation); tick any of them, or
+    %      one of the two recipes (Standard, preselected: all but the
+    %      repair; Filters only). The order is fixed. Steps these data cannot take are greyed out with the
     %      reason (e.g. filters on epoched data), and the bad channels are
     %      always detected before an average reference. The number of
     %      pipelines is shown live, with the steps left out and why.
@@ -38,6 +41,7 @@ classdef SimpleDialog < handle
         Ticks                  % the steps ticked (shown unticked while the data cannot take them)
         Why; Info              % per step: why the data cannot take it, what to know about it
         EpochBox; RefDrop
+        Montage                % pipecompare.live.Montage.check of the data
         CountLabel; NotesLabel
         RunButton; AdvancedButton
         Answer = []            % the options when Run was pressed
@@ -63,6 +67,7 @@ classdef SimpleDialog < handle
         function obj = SimpleDialog(EEG)
             obj.EEG = EEG;
             obj.State = pipecompare.live.DataState.fromEEG(EEG);
+            obj.Montage = pipecompare.live.Montage.check(EEG);
             s = obj.State;
             % boundary markers (removed segments, merged files) are not
             % time-locking events; on epoched data an event counts once
@@ -71,7 +76,7 @@ classdef SimpleDialog < handle
             obj.Types = s.eventTypes(keep); obj.Counts = s.eventCounts(keep);
             [isLock, at] = ismember(obj.Types, s.lockingTypes);
             obj.Counts(isLock) = s.lockingCounts(at(isLock));
-            obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', [200 120 720 640], ...
+            obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', [200 100 720 670], ...
                 'CloseRequestFcn', @(~, ~) obj.close());
             g = uigridlayout(obj.Fig, [9 2]); obj.Grid = g;
             g.RowHeight = {'fit', 22, 0, '1x', 22, 'fit', 22, 44, 30};
@@ -126,20 +131,20 @@ classdef SimpleDialog < handle
             P = pipecompare.simple.Presets;
             names = P.stepNames();
             [obj.Why, obj.Info] = P.stepAvailability(obj.State);
-            obj.Ticks = true(1, numel(names));            % Standard
+            obj.Ticks = ismember(names, P.recipeSteps('standard'));   % Standard
             obj.StepBoxes = gobjects(1, numel(names)); obj.StepNotes = gobjects(1, numel(names));
-            s = uigridlayout(g, [8 2]); s.Padding = [0 0 0 0]; s.RowSpacing = 4;
-            s.RowHeight = repmat({22}, 1, 8); s.ColumnWidth = {330, '1x'};
+            s = uigridlayout(g, [9 2]); s.Padding = [0 0 0 0]; s.RowSpacing = 4;
+            s.RowHeight = repmat({22}, 1, 9); s.ColumnWidth = {330, '1x'};
             b = uigridlayout(s, [1 3]); b.Padding = [0 0 0 0]; b.ColumnWidth = {'fit', 'fit', '1x'};
             b.Layout.Row = 1; b.Layout.Column = [1 2];
-            uibutton(b, 'Text', 'Standard (all)', 'ButtonPushedFcn', @(~, ~) obj.usePreset('standard'));
+            uibutton(b, 'Text', 'Standard', 'ButtonPushedFcn', @(~, ~) obj.usePreset('standard'));
             uibutton(b, 'Text', 'Filters only', 'ButtonPushedFcn', @(~, ~) obj.usePreset('filters'));
             grey = [0.3 0.3 0.3];
             uilabel(b, 'Text', 'or tick the steps you want', 'FontColor', grey);
-            % rows: bad channels, reference, ICA, high-pass, low-pass, epochs, rejection
-            rows = [2 4 5 6 8];
+            % rows: bad channels, reference, ICA, high-pass, low-pass, epochs, rejection, repair
+            rows = [2 4 5 6 8 9];
             for k = 1:numel(names)
-                h = uicheckbox(s, 'Text', P.stepLabel(names{k}), 'Value', true, ...
+                h = uicheckbox(s, 'Text', P.stepLabel(names{k}), 'Value', obj.Ticks(k), ...
                     'ValueChangedFcn', @(h, ~) obj.tick(k, h.Value));
                 h.Layout.Row = rows(k); h.Layout.Column = 1; obj.StepBoxes(k) = h;
                 l = uilabel(s, 'Text', '', 'FontColor', grey);
@@ -169,9 +174,10 @@ classdef SimpleDialog < handle
         end
 
         function steps = chosenSteps(obj)
-            % the steps ticked
+            % the steps ticked (repairing epochs only with epoch rejection)
             steps = pipecompare.simple.Presets.stepNames();
             steps = steps(obj.Ticks);
+            if ~ismember('reject', steps), steps = setdiff(steps, {'epochinterp'}, 'stable'); end
         end
 
         function showSteps(obj)
@@ -184,6 +190,9 @@ classdef SimpleDialog < handle
                 b = obj.StepBoxes(k); note = obj.StepNotes(k);
                 if ~isempty(why)
                     b.Value = false; b.Enable = 'off'; note.Text = why;
+                elseif strcmp(names{k}, 'epochinterp') && ~(obj.Ticks(strcmp(names, 'reject')) && isempty(obj.Why.reject))
+                    % an option of the epoch rejection (it uses its limit)
+                    b.Value = false; b.Enable = 'off'; note.Text = 'needs epoch rejection (uses its limit)';
                 elseif strcmp(names{k}, 'badchannels') && average
                     % a bad channel in the average spreads into every channel
                     b.Value = true; b.Enable = 'off';
@@ -216,8 +225,10 @@ classdef SimpleDialog < handle
             else
                 t = 'Continuous data without events: band power.';
             end
-            % where PipeCompare starts, and what was done before it
+            % where PipeCompare starts, what was done before it, and what
+            % the montage check found
             t = strjoin([{t} pipecompare.simple.Presets.dataAdvice(s)], ' ');
+            if ~isempty(obj.Montage.text), t = [t ' ' obj.Montage.text]; end
         end
 
         function [items, data] = measures(obj)

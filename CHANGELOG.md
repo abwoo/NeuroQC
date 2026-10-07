@@ -9,6 +9,20 @@ Small fixes. Scores and recommendations are unchanged, except on data cleaned wi
 from a script whose high-pass PipeCompare now sees, and on data with ear or mastoid channels (see
 below).
 
+- Montage check before a run: channels whose signal does not resemble their nearest neighbours
+  (1-30 Hz, average reference, first 10 minutes) are named with the channels they resemble most,
+  since their labels may not match the electrode positions. In the dialog's data line, the
+  Command Window and the advanced panel's data warnings; a warning only.
+- After a run, a note when ICA did nothing useful: ICLabel recognised almost no component (fewer
+  than 2 with Brain >= 0.5, or median Other above 0.8), or no pipeline removed a component. The
+  ICLabel line of each pipeline's step list gives the brain-like and Other counts. In the results
+  window, the Command Window and the advanced panel's notes.
+- Repairing epochs: a rejection step can keep an epoch failed by at most n channels, with those
+  channels interpolated within that epoch (parameter `interpolate` of every rejection step in the
+  advanced panel and scripts; simple mode: *instead, repair epochs with up to 3 channels over the
+  limit*, `'epochinterp'`, not part of *Standard*). The signal check replays the same repairs;
+  with the average reference, the data are averaged again after them. The simple mode's
+  *Standard (all)* button is now *Standard*.
 - Simple mode: instead of choosing between *Standard* and *Filters only*, tick the steps to
   compare in a list shown in the order they run (bad channels, reference, ICA, high-pass,
   low-pass, epochs, epoch rejection); the order stays fixed. *Standard (all)* and *Filters only*

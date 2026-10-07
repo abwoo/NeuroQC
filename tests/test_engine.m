@@ -767,6 +767,61 @@ verifyError(tc, @() pipecompare.PipeCompare.optimize(p, c2), 'PipeCompare:Contra
 end
 
 % ---------------------------------------------------------------- helpers
+function testEpochsRepairedByInterpolationWithinEpochs(tc)
+% An epoch with at most n channels over the limit keeps them, interpolated
+% within that epoch exactly as EEGLAB's eeg_interp does; an epoch with more
+% is rejected; the signal copy gets the same channels in the same epochs.
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30, 'artifactTrials', 0));
+[~, E] = evalc('nqc_epoched(EEG)');
+ch = find(strcmpi({E.chanlocs.labels}, 'T7')); ch2 = find(strcmpi({E.chanlocs.labels}, 'P8'));
+E.data(ch, :, [3 7 12]) = E.data(ch, :, [3 7 12]) + 500;      % one channel far over the limit
+E.data(ch2, :, 7) = E.data(ch2, :, 7) - 500;                   % two in epoch 7
+E.data(:, :, 20) = E.data(:, :, 20) + 500;                     % every channel: rejected
+in = struct('type', 'reject_threshold', 'params', struct('uv', 400, 'exclude', {{}}, 'interpolate', 3), ...
+    'key', 'rej', 'slot', 'rej', 'label', 'rej');
+x = struct('contract', nqc_c(), 'highpass', 0);
+[E2, coms, info] = pipecompare.run.Steps.run(in, E, x);
+verifyEqual(tc, info.epochsInterpolated, 3);
+verifyEqual(tc, info.rejIdx, 20);
+verifyEqual(tc, E2.trials, E.trials - 1);
+verifyTrue(tc, any(contains(coms, 'pipecompare.run.Steps.interpolateEpochs')));
+[~, R] = evalc('pop_select(E, ''trial'', [3 12])');
+[~, R] = evalc('eeg_interp(R, ch, ''spherical'')');
+verifyEqual(tc, double(E2.data(ch, :, [3 12])), double(R.data(ch, :, :)), 'AbsTol', 1e-3);
+[~, R] = evalc('pop_select(E, ''trial'', 7)');
+[~, R] = evalc('eeg_interp(R, [ch ch2], ''spherical'')');
+verifyEqual(tc, double(E2.data([ch ch2], :, 7)), double(R.data([ch ch2], :, :)), 'AbsTol', 1e-3);
+verifyEqual(tc, E2.data(:, :, 1), E.data(:, :, 1));            % other epochs untouched
+S = pipecompare.run.Steps.replayDecision(in, E, info, x);       % the same decisions on a copy
+verifyEqual(tc, double(S.data), double(E2.data), 'AbsTol', 1e-4);
+in.params.interpolate = 0;                                      % off: rejected
+[~, info0] = pipecompare.run.Steps.run(in, E, x);
+verifyEqual(tc, sort(info0.rejIdx), [3 7 12 20]);
+in.params.interpolate = 1;                                      % epoch 7 has two channels over: rejected
+[~, info1] = pipecompare.run.Steps.run(in, E, x);
+verifyEqual(tc, sort(info1.rejIdx), [7 20]);
+end
+
+function testRepairedEpochsInASearch(tc)
+% In a search, repairing epochs is compared like any setting; its
+% decisions are replayed on the signal copy and listed in the steps.
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30, 'noisyChannels', {{'T7'}}, 'noisyUv', 40));
+nqc_setBase(EEG);
+p = pipecompare.plan.Plan();
+p = p.add('highpass', 'cutoff', 0.5);
+p = p.add('epoch'); p = p.add('baseline');
+p = p.add('reject_threshold', 'uv', 100, 'interpolate', {0, 3});
+r = pipecompare.PipeCompare.optimize(p, nqc_c());
+verifyEqual(tc, {r.cands.status}, {'ok', 'ok'});
+verifyEmpty(tc, [r.cands.unmatched]);                          % decisions replayed, not re-run
+k = find(contains(r.labels, 'interpolate=3'));
+f = r.cands(k).steps{end};
+verifyGreaterThan(tc, f.epochsInterpolated, 0);
+verifyLessThan(tc, r.cands(k).rejectedEpochs, r.cands(3 - k).rejectedEpochs);
+L = pipecompare.simple.Presets.stepsText(r, k);
+verifyTrue(tc, any(contains(L, 'kept by interpolating up to 3 channel(s)')), strjoin(L, newline));
+end
+
 function c = nqc_c()
 c = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
     'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz','P3','P4'}});

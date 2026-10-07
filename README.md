@@ -109,6 +109,12 @@ pipeline, so that the comparison is about the settings that matter.
 9. **Noisy epochs are rejected**, *compared*: an epoch is dropped when any EEG channel exceeds
    ±75, ±100 or ±150 µV (non-EEG channels are ignored).
 
+One more step can be ticked; it is not part of *Standard*. **Repairing epochs instead of rejecting
+them**: an epoch in which only 1 to 3 channels exceed the rejection limit is kept, and those
+channels are interpolated from the other channels within that epoch only; an epoch with more
+channels over the limit is still rejected. It does not add pipelines (it uses the limit being
+compared). See [Repairing epochs with a few bad channels](#repairing-epochs-with-a-few-bad-channels).
+
 That makes 4 × 3 × 3 × 3 = 108 pipelines for an ERP. The *Filters only* recipe compares only
 steps 5 and 6. For band power, the data are cut into 2 s segments instead of epochs, and only the
 filter edges nearest the band, outside it, are used (a filter outside a band does not change its
@@ -119,6 +125,12 @@ reconstruction), resampling, rejection by joint probability or kurtosis, a refer
 channels, or any operation from EEGLAB's menus, plugins included.
 
 Along the way PipeCompare also takes care of the following, so you do not have to:
+
+- **It checks that the channel labels fit the electrode positions** before the run, and names
+  channels whose signal does not look like their neighbours' (see [Montage check](#montage-check)).
+  This is a warning only.
+- **It tells you when ICA did nothing useful**: when ICLabel recognised almost none of the
+  components, or no pipeline removed any component (see [When ICA does nothing](#when-ica-does-nothing)).
 
 - **It respects what was done before.** Processing already applied (read from `EEG.history`) is
   listed and not repeated. A filter the data already have is kept as one of the choices
@@ -285,9 +297,13 @@ pipecompare_setup                         % run from the PipeCompare folder
    | 5 | Low-pass filter | the cutoff (20, 30, 40 Hz) |
    | 6 | Epochs and baseline (segments for band power) | always done |
    | 7 | Reject epochs over an amplitude limit | the limit (75, 100, 150 µV) |
+   | 8 | Instead, repair epochs with up to 3 channels over the limit (optional) | nothing (it uses the limit of step 7) |
 
-   Two buttons tick a usual set at once: **Standard (all)**, preselected, ticks every step;
-   **Filters only** ticks the two filters. An unticked step is not done at all: for example,
+   Two buttons tick a usual set at once: **Standard**, preselected, ticks steps 1 to 7 (every
+   step except the repair in line 8); **Filters only** ticks the two filters. Line 8 can only be
+   ticked together with step 7, since it uses the same limit (see
+   [Repairing epochs with a few bad channels](#repairing-epochs-with-a-few-bad-channels)).
+   Ticking it does not change the number of pipelines. An unticked step is not done at all: for example,
    without the high-pass the data keep whatever high-pass they already had. Steps that these data
    cannot take are greyed out, with the reason next to them: on epoched data the filters (they
    must run before epoching), without channel locations bad-channel interpolation and ICA (ICLabel
@@ -384,12 +400,20 @@ settings and what it decided on these data, for example:
 3. ICA (extended runica), fitted on a 1 Hz high-passed copy and applied to the data
 4. High-pass filter 0.5 Hz
 5. Low-pass filter 40 Hz
-6. ICLabel: 4 of 60 components removed (Muscle, Eye, Heart, Line Noise, Channel Noise with probability 0.8 or more)
+6. ICLabel: 4 of 60 components removed (Muscle, Eye, Heart, Line Noise, Channel Noise with probability 0.8 or more); 21 look like brain activity, 9 were labelled Other
 7. Epochs -200 to 800 ms around event type(s) ...
 8. Baseline -200 to 0 ms removed
 9. Epochs beyond +/-150 uV on any channel rejected: 12 of 120
 Trials kept per condition: ...
 ```
+
+When epochs are repaired (line 8 of the step list), the rejection line adds how many epochs were
+kept that way, for example *Epochs beyond +/-150 uV on any channel rejected: 9 of 120; 7 epoch(s)
+kept by interpolating up to 3 channel(s) within the epoch*, and with the average reference a last
+line *Average reference again (after the epochs repaired by interpolation)* follows.
+
+When ICA did nothing useful, the result says so after the headline (see
+[When ICA does nothing](#when-ica-does-nothing)).
 
 This is a readable summary of the pipeline's `EEG.history`; the dataset you get with *Use this
 pipeline* keeps the full history (every EEGLAB command) unchanged. The same list is printed in the
@@ -430,6 +454,91 @@ Some channels with these names are not ears, and are left as scalp channels:
   types. Use this to keep A1 and A2 as scalp channels. (When every channel has type `EEG`, that is
   the importer's default, not a choice, and the names decide.)
 
+### Montage check
+
+Before the run, PipeCompare checks whether each channel's signal looks like that of the channels
+next to it. On the scalp, neighbouring electrodes record similar signals, so a channel that does
+not resemble its neighbours is either a bad channel or not where its label says it is (for
+example, two labels swapped when the recording was set up or exported). A wrong label matters
+more than it seems: bad-channel interpolation and ICLabel both use the positions that come from
+the labels.
+
+How it works:
+
+- It uses the EEG channels that have a location, leaving out EOG, ECG and similar channels and the
+  ear and mastoid channels. It needs at least 8 of them; with fewer, it is skipped.
+- It takes the first 10 minutes of a continuous recording (for epoched data, as many epochs as fit
+  in 10 minutes, each with its mean removed), keeps 1-30 Hz and applies an average reference, all
+  on a copy. Your data are not changed.
+- For each channel it computes the mean correlation with its 3 nearest channels (by electrode
+  position).
+- A channel is flagged when this correlation is far below the other channels': more than 3 robust
+  standard deviations below their median (median and MAD; the spread counts as at least 0.05), or
+  below 0.1 while the median of the montage is at least 0.3. On caps with few, widely spaced
+  electrodes the median is lower, and then only the first rule applies. The worst channel is
+  flagged first and the check runs again without it, so a swapped channel does not also drag its
+  neighbours down. At most a quarter of the channels are flagged.
+- For each flagged channel it names the two channels it resembles most. If these are far away on
+  the head, the label is probably wrong; if it resembles no channel (correlation below 0.3), it is
+  more likely a bad channel.
+
+The result appears in the dialog's first line (*Data*), in the Command Window log, and in the
+advanced panel's list of data warnings, for example: *Montage check: these channels do not
+resemble their neighbours ... AF3 (r = -0.50 with its neighbours; most like TP7 r = 0.61, CP6
+r = 0.55) ...*. It is a warning only: nothing is changed and the comparison runs as usual. If
+channels are flagged, check the montage with whoever recorded the data, correct the labels or
+locations in **Edit > Channel locations**, and run again.
+
+### When ICA does nothing
+
+After the run, PipeCompare looks at what ICA and ICLabel did in the recommended pipeline (or, if
+it has no ICA, the first pipeline with ICA), and says so when:
+
+- ICLabel recognised almost none of the components: fewer than 2 components have a Brain
+  probability of 50 % or more, or the median probability of *Other* is above 0.8. The message gives
+  the numbers, for example *ICLabel recognised almost none of the 61 ICA components: 0 look like
+  brain activity (Brain 50% or more) and 56 were labelled Other*. ICLabel judges components partly
+  by their scalp maps, so this usually means that the channel labels do not match the electrode
+  positions (see [Montage check](#montage-check)); too little clean recording for ICA can do the
+  same. In that case the ICA step changed nothing useful.
+- No pipeline removed any component. If ICLabel did recognise brain components, the message says
+  that no component passed the artifact threshold, which is expected on clean data.
+
+The note appears in the result window after the headline, in the Command Window, and in the
+advanced panel's notes below the results. Each pipeline's step list also gives, on its ICLabel
+line, how many components look like brain activity and how many were labelled *Other*.
+
+### Repairing epochs with a few bad channels
+
+Sometimes a single electrode loses contact for a moment: in a few epochs one channel goes far over
+the rejection limit while all the others are fine. Rejecting those epochs loses trials because of
+one channel. With **repair epochs with up to 3 channels over the limit** ticked (line 8 of the
+step list; `'epochinterp'` in `pop_pipecompare`), the rejection step works as follows, in each
+epoch:
+
+1. It tests every EEG channel against the limit, as usual (non-EEG and ear/mastoid channels are not
+   tested).
+2. If 1, 2 or 3 channels are over the limit, and they all have locations, those channels are
+   replaced in that epoch only by spherical-spline interpolation from the other channels of the
+   same epoch (the same computation as EEGLAB's `eeg_interp`), and the epoch is kept.
+3. If more than 3 channels are over the limit, the epoch is rejected as before.
+
+This is the idea of the epoch-level channel interpolation in FASTER (Nolan, Whelan & Reilly,
+2010). It runs after ICA, filtering, epoching and baseline correction, as part of the rejection
+step, so it sees the same data the limit is applied to. Repaired epochs are not tested again.
+With the average reference, the data are averaged again afterwards: the replaced values were part
+of that epoch's average, which would otherwise keep a share of the bad signal in every channel.
+The signal check applies exactly the same repairs (same channels, same epochs) to its copy, so any
+change to the measured signal is counted. Repaired epochs do not count towards the 20 % limit on
+interpolated channels, which is about whole channels. Each pipeline's `EEG.history` records the
+repairs as one command listing the channels and epochs.
+
+In the advanced panel, every rejection step (amplitude, joint probability, kurtosis) has the
+parameter `interpolate`: the largest number of flagged channels an epoch may have and still be
+repaired (0, the default, turns it off). Set any number there, or several (for example `0 | 3`)
+to compare pipelines with and without repairs. For joint probability and kurtosis, the flagged
+channels are those over the per-channel limit.
+
 ### From the command line
 
 The menu dialog records an equivalent command in EEGLAB's command history (`ALLCOM`):
@@ -444,9 +553,13 @@ EEG = pop_pipecompare(EEG, 'measure', 'N2pc', 'left', {'111', '112'}, 'right', {
 % Continuous data: compare pipelines for alpha-band power in 2 s segments
 EEG = pop_pipecompare(EEG, 'measure', 'alpha', 'recipe', 'filters');
 
-% Only some steps (any of 'badchannels', 'ica', 'highpass', 'lowpass', 'reject'),
+% Only some steps (any of 'badchannels', 'ica', 'highpass', 'lowpass', 'reject', 'epochinterp'),
 % always run in that order
 EEG = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'target'}, 'steps', {'highpass', 'lowpass', 'reject'});
+
+% Standard plus repairing epochs that have up to 3 channels over the rejection limit
+EEG = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'target'}, ...
+    'steps', {'badchannels', 'ica', 'highpass', 'lowpass', 'reject', 'epochinterp'});
 
 % A component with your own electrodes instead of its ERP CORE site
 EEG = pop_pipecompare(EEG, 'measure', 'P3', 'channels', {'Pz', 'CPz', 'POz'}, 'events', {'target'});
@@ -483,7 +596,7 @@ p = p.add('ica', 'fitHighpass', 1);
 p = p.add('icremove', 'threshold', {0.8, 0.9});          % searched over two values
 p = p.add('epoch');                                      % windows come from the contract
 p = p.add('baseline');
-p = p.add('reject_threshold', 'uv', {100, 150});
+p = p.add('reject_threshold', 'uv', {100, 150}, 'interpolate', {0, 3});   % with and without repairing epochs
 
 r = pipecompare.PipeCompare.optimize(p, c, struct('checkpoint', 'pc_run1'));
 

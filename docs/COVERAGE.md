@@ -32,9 +32,9 @@ Each item has four status columns:
 | `icremove` | `pop_iclabel` + `pop_icflag` + `pop_subcomp` | ✓ | ✓ (identity-ICA check) | ✓ | injection, matched (same components) | needs ICLabel; integer srate enforced |
 | `epoch` | `pop_epoch` | ✓ | ✓ | ✓ real data (time-locking checked) | — | windows from the contract |
 | `baseline` | `pop_rmbase` | ✓ | ✓ | ✓ real data | — | window from the contract |
-| `reject_threshold` | `pop_eegthresh` + `pop_rejepoch` | ✓ | ✓ | ✓ real data | injection, matched | rejecting every epoch = retention 0 |
-| `reject_jointprob` | `pop_jointprob` + `pop_rejepoch` | ✓ | ✓ | ✓ | injection, matched | |
-| `reject_kurtosis` | `pop_rejkurt` + `pop_rejepoch` | ✓ | ✓ | ✓ | injection, matched | |
+| `reject_threshold` | `pop_eegthresh` + `pop_rejepoch` | ✓ | ✓ | ✓ real data | injection, matched | rejecting every epoch = retention 0; `interpolate` = n repairs epochs with at most n flagged channels (spherical interpolation within the epoch, replayed on the signal copy) |
+| `reject_jointprob` | `pop_jointprob` + `pop_rejepoch` | ✓ | ✓ | ✓ | injection, matched | `interpolate` as for `reject_threshold` (channels over the per-channel limit) |
+| `reject_kurtosis` | `pop_rejkurt` + `pop_rejepoch` | ✓ | ✓ | ✓ | injection, matched | `interpolate` as for `reject_threshold` |
 | `native` | any `pop_*` command, or a captured EEGLAB workflow (one statement per line) | ✓ | ✓ | ✓ | fixed transforms (filters, resampling, reference, baseline, epoching, channel lists): injection, same operation; workflows of marks + removals (`pop_eegthresh`/`pop_jointprob`/`pop_rejkurt` → `pop_rejepoch`, `pop_iclabel` → `pop_icflag` → `pop_subcomp`): injection, decision-matched (the removed epochs/components are replayed); otherwise injection, re-run (flagged) | each configuration is fixed; several configurations of one step (and skipping it) can be searched as alternatives |
 
 ## History parsing (`pipecompare.live.History`)

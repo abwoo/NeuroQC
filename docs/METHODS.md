@@ -290,6 +290,55 @@ This is the moving-block bootstrap (Künsch, 1989), with the block-length order 
 and Jing (1995). ERP trials, which are separated by inter-trial intervals and time-locked to
 different events, are resampled one by one as before.
 
+## 9. Repairing epochs: channels interpolated within an epoch
+
+A rejection step (`reject_threshold`, `reject_jointprob`, `reject_kurtosis`) with `interpolate` =
+*n* > 0 keeps an epoch that the test fails because of at most *n* channels, as FASTER's epoch-level
+channel interpolation does (Nolan, Whelan & Reilly, 2010). The decision is the test's own
+per-channel marks (`EEG.reject.rejthreshE`, `rejjpE`, `rejkurtE`), taken before anything is
+changed: an epoch with 1 to *n* flagged channels, all with a location, gets those channels replaced
+in that epoch by EEGLAB's spherical-spline interpolation (`eeg_interp`, Perrin et al., 1989) from
+the other channels of the same epoch, its marks are cleared, and it is kept; the other marked
+epochs are removed with `pop_rejepoch`. `eeg_interp` is linear in the data, so its weights for a
+set of channels are read once, as its output for a unit impulse on each channel, and applied to
+every epoch with that set: the numbers are those `eeg_interp` gives on the epochs themselves
+(checked in `test_engine`). Repaired epochs are not tested again.
+
+Interpolated values change the average reference of their epoch: the replaced values were part of
+it. As for whole channels (section 5), a plan that repairs epochs after an average reference must
+average again afterwards, or it is refused with the reason; the simple mode adds that second
+average reference. The signal check replays the same repairs (same channels in the same epochs)
+on the copy, so the change they make to the known signal is measured and limited like any other.
+The 20 % limit on interpolated channels concerns whole channels and does not count repairs.
+[`pipecompare.run.Steps.rejectEpochs`, `pipecompare.run.Steps.interpolateEpochs`]
+
+## 10. Montage check (before a run)
+
+Scalp potentials vary smoothly over the head, so after an average reference a channel resembles its
+nearest neighbours. `pipecompare.live.Montage.check` measures this on the located EEG channels (not
+EOG/ECG/..., not ear or mastoid sites; at least 8): a sample of the data (the first 600 s, or as
+many epochs as fit in 600 s with each epoch's mean removed; at most 2·10⁷ values) is band-passed
+1–30 Hz in the frequency domain and average-referenced, and for each channel *nn* is its mean
+Pearson correlation with its 3 nearest channels (straight-line distance between unit position
+vectors). With *m* the median and *s* = max(0.05, 1.4826 · MAD) over the channels, a channel is
+flagged when (*nn* − *m*)/*s* < −3, or when *nn* < 0.1 and *m* ≥ 0.3 (on sparse caps the
+neighbours are far apart and the absolute rule would flag good channels). Flagging is iterative:
+the worst flagged channel is set aside and *nn* is computed again with neighbours chosen among the
+remaining channels, so a swapped channel does not also lower its neighbours' *nn*; at most a
+quarter of the channels are flagged. For each flagged channel the two channels with the highest
+correlation are named; when none reaches 0.3 the channel resembles nothing and is more likely bad
+than mislabelled. The check only warns; it never changes the data or blocks a run.
+
+## 11. ICA check (after a run)
+
+ICLabel's features include the components' scalp maps (Pion-Tonachini et al., 2019), so channel
+labels that do not match the positions leave it unable to recognise components. After a run, the
+recommended pipeline's ICLabel step (else the first pipeline's with one) is read: fewer than 2
+components with Brain probability ≥ 0.5, or a median Other probability above 0.8, is reported as
+"recognised almost none"; no component removed in any pipeline is reported too, with the montage
+as the first thing to check when recognition was poor, and as expected on clean data when it was
+not. [`pipecompare.simple.Presets.icaText`]
+
 ## References
 
 - Clayson, P. E., Baldwin, S. A., Rocha, H. A., & Larson, M. J. (2021). The data-processing
@@ -324,6 +373,8 @@ different events, are resampled one by one as before.
   *Psychophysiology, 58*(6), e13793.
 - McCarthy, P. J. (1969). Pseudo-replication: Half samples. *Review of the International
   Statistical Institute, 37*(3), 239–264.
+- Nolan, H., Whelan, R., & Reilly, R. B. (2010). FASTER: Fully Automated Statistical Thresholding for
+  EEG artifact Rejection. *Journal of Neuroscience Methods, 192*(1), 152–162.
 - Perrin, F., Pernier, J., Bertrand, O., & Echallier, J. F. (1989). Spherical splines for scalp
   potential and current density mapping. *Electroencephalography and Clinical Neurophysiology,
   72*(2), 184–187.

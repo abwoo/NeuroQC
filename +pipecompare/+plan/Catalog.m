@@ -28,6 +28,10 @@ classdef Catalog
             P = @(name, default, suggest, defines, doc) struct('name', name, 'default', {default}, ...
                 'suggest', {suggest}, 'defines', defines, 'doc', doc);
             none = P('', [], {}, false, ''); none(1) = [];
+            % epoch rejection: an epoch in which at most this many channels
+            % fail the test keeps them interpolated instead of being rejected
+            interp = P('interpolate', 0, {}, false, ['within an epoch, interpolate the channels the test flags when ', ...
+                'there are at most this many (the epoch is kept); 0 = off (reject the epoch)']);
             d = struct('type', type, 'label', '', 'params', none, 'dialog', '', 'doc', '');
             switch type
                 case 'resample'
@@ -78,13 +82,16 @@ classdef Catalog
                     d.label = 'Baseline removal (from the analysis contract)'; d.dialog = 'pop_rmbase';
                 case 'reject_threshold'
                     d.label = 'Reject epochs: amplitude threshold'; d.dialog = 'pop_eegthresh';
-                    d.params = [P('uv', 100, {75, 100, 150}, false, 'absolute threshold (uV)'), P('exclude', {}, {}, false, 'channel labels ignored by the test (e.g. EOG channels)')];
+                    d.params = [P('uv', 100, {75, 100, 150}, false, 'absolute threshold (uV)'), P('exclude', {}, {}, false, 'channel labels ignored by the test (e.g. EOG channels)'), ...
+                        interp];
                 case 'reject_jointprob'
                     d.label = 'Reject epochs: joint probability'; d.dialog = 'pop_jointprob';
-                    d.params = [P('sd', 5, {3, 4, 5}, false, 'local and global limit (SD)'), P('exclude', {}, {}, false, 'channel labels ignored by the test (e.g. EOG channels)')];
+                    d.params = [P('sd', 5, {3, 4, 5}, false, 'local and global limit (SD)'), P('exclude', {}, {}, false, 'channel labels ignored by the test (e.g. EOG channels)'), ...
+                        interp];
                 case 'reject_kurtosis'
                     d.label = 'Reject epochs: kurtosis'; d.dialog = 'pop_rejkurt';
-                    d.params = [P('sd', 5, {3, 4, 5}, false, 'local and global limit (SD)'), P('exclude', {}, {}, false, 'channel labels ignored by the test (e.g. EOG channels)')];
+                    d.params = [P('sd', 5, {3, 4, 5}, false, 'local and global limit (SD)'), P('exclude', {}, {}, false, 'channel labels ignored by the test (e.g. EOG channels)'), ...
+                        interp];
                 case 'native'
                     d.label = 'Native EEGLAB command (fixed)';
                     d.params = P('command', '', {}, true, 'command returned by an EEGLAB dialog');
@@ -168,8 +175,16 @@ classdef Catalog
                 case 'epoch'
                     if st.epoched, reason = 'data are already epoched'; return; end
                     st.epoched = true;
-                case {'baseline','reject_threshold','reject_jointprob','reject_kurtosis'}
+                case 'baseline'
                     if ~st.epoched, reason = sprintf('%s needs epoched data', type); return; end
+                case {'reject_threshold','reject_jointprob','reject_kurtosis'}
+                    if ~st.epoched, reason = sprintf('%s needs epoched data', type); return; end
+                    if pipecompare.utils.fieldOr(p, 'interpolate', 0) > 0
+                        if ~st.anyLocations
+                            reason = ['interpolating channels within epochs' ' needs channel locations (Edit > Channel locations): spherical interpolation (Perrin et al., 1989) works on electrode positions, and the dataset has none']; return;
+                        end
+                        st = channelsChanged(st);
+                    end
                 case 'native'
                     % Infer the effect from the EEGLAB functions the
                     % statements call (a captured workflow has several).
@@ -279,5 +294,10 @@ switch type
     case 'ica', if isfield(p, 'fitHighpass') && ~(isnumeric(p.fitHighpass) && isscalar(p.fitHighpass) && p.fitHighpass >= 0)
             reason = 'ica fitHighpass must be >= 0 (0 = fit on the data as is)'; end
 end
+if any(strcmp(type, {'reject_threshold','reject_jointprob','reject_kurtosis'})) && isempty(reason) && isfield(p, 'interpolate')
+    v = p.interpolate;
+    if ~(isnumeric(v) && isscalar(v) && isfinite(v) && v >= 0 && v == round(v))
+        reason = sprintf('%s interpolate must be a whole number of channels >= 0 (0 = off)', type);
+    end
 end
-
+end

@@ -16,7 +16,9 @@ classdef Steps
     %   real data). ASR replays its recorded window-by-window
     %   reconstructions (pipecompare.run.AsrRecord, verified against EEGLAB's
     %   output); captured mark/remove workflows replay the epochs and
-    %   components they removed. Other native commands are re-run and
+    %   components they removed; epoch rejection replays the channels it
+    %   interpolated within epochs (same epochs, same channels) and the
+    %   epochs it removed. Other native commands are re-run and
     %   reported as not decision-matched.
 
     methods (Static)
@@ -152,6 +154,9 @@ classdef Steps
                 case 'icremove'
                     if ~isempty(info.comps), EEG = pop_subcomp(EEG, info.comps, 0); end
                 case {'reject_threshold','reject_jointprob','reject_kurtosis'}
+                    if isfield(info, 'epochInterp') && ~isempty(info.epochInterp.chans)
+                        EEG = pipecompare.run.Steps.interpolateEpochs(EEG, info.epochInterp.chans, info.epochInterp.epochs);
+                    end
                     if ~isempty(info.rejIdx), EEG = pop_rejepoch(EEG, info.rejIdx, 0); end
                 case 'native'
                     if isfield(info, 'decisions') && ~isempty(info.decisions)
@@ -308,6 +313,18 @@ classdef Steps
             comps = find(EEG.reject.gcompreject(:)');
             info.icsTotal = size(EEG.icaweights, 1);
             info.icsRemoved = numel(comps);
+            % what ICLabel recognised: components it takes for brain
+            % activity (Brain >= 0.5) and those whose likeliest class is
+            % Other, and the median Other probability (the ICA check)
+            L = EEG.etc.ic_classification.ICLabel;
+            names = cellstr(L.classes); Pc = L.classifications;
+            iB = strcmp(names, 'Brain'); iO = strcmp(names, 'Other');
+            if any(iB) && any(iO) && ~isempty(Pc)
+                [~, top] = max(Pc, [], 2);
+                info.icsBrain = sum(Pc(:, iB) >= 0.5);
+                info.icsOther = sum(top == find(iO));
+                info.otherMedian = median(Pc(:, iO));
+            end
             info.comps = comps;
             coms = {c1, c2};
             if ~isempty(comps)
@@ -318,6 +335,7 @@ classdef Steps
 
         function [EEG, coms, info] = rejectEpochs(EEG, type, p)
             n0 = EEG.trials;
+            cInterp = '';
             chans = 1:EEG.nbchan;
             if isfield(p, 'exclude') && ~isempty(p.exclude)
                 chans = find(~ismember(lower({EEG.chanlocs.labels}), lower(cellstr(p.exclude))));
@@ -333,6 +351,36 @@ classdef Steps
                     [EEG, ~, ~, ~, c1] = pop_rejkurt(EEG, 1, chans, p.sd, p.sd, 0, 0, 0, [], 0);
                     marks = EEG.reject.rejkurt; E = pipecompare.utils.fieldOr(EEG.reject, 'rejkurtE');
             end
+            info.epochsInterpolated = 0;
+            info.epochInterp = struct('chans', {{}}, 'epochs', {{}});
+            nMax = pipecompare.utils.fieldOr(p, 'interpolate', 0);
+            if nMax > 0 && ~isempty(E) && size(E, 1) == EEG.nbchan
+                % Epochs failed by at most nMax channels keep them, interpolated
+                % within the epoch (spherical splines from the other
+                % channels), instead of being rejected; the decision is the
+                % test's own per-channel marks, taken before interpolating.
+                flagged = E ~= 0;
+                nf = sum(flagged, 1);
+                ok = @(v) isnumeric(v) && isscalar(v) && isfinite(v);
+                located = arrayfun(@(c) isfield(c, 'X') && ok(c.X) && ok(c.Y) && ok(c.Z), EEG.chanlocs(:)');
+                kept = find(marks(:)' & nf >= 1 & nf <= nMax & ~any(flagged & ~located(:), 1));
+                if ~isempty(kept)
+                    [sigs, ~, g] = unique(arrayfun(@(e) mat2str(find(flagged(:, e))'), kept, 'UniformOutput', false));
+                    sets = cellfun(@str2num, sigs(:)', 'UniformOutput', false); %#ok<ST2NM> (mat2str of index vectors)
+                    epochs = arrayfun(@(k) kept(g == k), 1:numel(sigs), 'UniformOutput', false);
+                    EEG = pipecompare.run.Steps.interpolateEpochs(EEG, sets, epochs);
+                    info.epochInterp = struct('chans', {sets}, 'epochs', {epochs});
+                    info.epochsInterpolated = numel(kept);
+                    field = rejField(type);
+                    EEG.reject.(field)(kept) = 0; EEG.reject.([field 'E'])(:, kept) = 0;   % kept: no longer marked
+                    marks(kept) = 0; E(:, kept) = 0;
+                    cInterp = sprintf(['EEG = pipecompare.run.Steps.interpolateEpochs(EEG, %s, %s); ', ...
+                        'EEG.reject.%s(%s) = 0; EEG.reject.%sE(:, %s) = 0; %% PipeCompare: %d epoch(s) kept with ', ...
+                        'up to %d flagged channel(s) interpolated in them'], cellText(sets), cellText(epochs), ...
+                        field, mat2str(kept), field, mat2str(kept), numel(kept), nMax);
+                    pipecompare.utils.log('%d epoch(s) kept by interpolating the 1 to %d channel(s) flagged in them.', numel(kept), nMax);
+                end
+            end
             idx = find(marks);
             % which channels drive the rejections (a hint for bad channels)
             info.topChannels = '';
@@ -347,13 +395,29 @@ classdef Steps
                 pipecompare.utils.log('%d/%d epochs rejected; channels most often over the limit: %s', ...
                     numel(idx), n0, info.topChannels);
             end
-            coms = {c1};
+            coms = {c1, cInterp};
             if ~isempty(idx)
                 assert(numel(idx) < n0, 'PipeCompare:AllRejected', 'every epoch would be rejected');
                 [EEG, c2] = pop_rejepoch(EEG, idx, 0);
                 coms{end+1} = c2;
             end
             info.rejected = numel(idx); info.rejIdx = idx; info.epochsBefore = n0;
+        end
+
+        function EEG = interpolateEpochs(EEG, chans, epochs)
+            % Within the epochs epochs{k}, the channels chans{k} replaced by
+            % EEGLAB's spherical spline interpolation (eeg_interp, Perrin et
+            % al., 1989) from the other channels of the same epochs.
+            % eeg_interp is linear in the data, so its weights are read once
+            % per set of channels (its output for unit impulses) and applied
+            % to those epochs: the same numbers eeg_interp gives on them.
+            for k = 1:numel(chans)
+                bad = chans{k}; ep = epochs{k};
+                if isempty(bad) || isempty(ep), continue; end
+                W = interpWeights(EEG, bad);
+                X = reshape(double(EEG.data(:, :, ep)), EEG.nbchan, []);
+                EEG.data(bad, :, ep) = cast(reshape(W * X, numel(bad), EEG.pnts, numel(ep)), 'like', EEG.data);
+            end
         end
 
         function [EEG, coms, info] = native(EEG, command)
@@ -418,6 +482,28 @@ classdef Steps
             if ~decided, info.decisions = info.decisions([]); end   % not only marks and removals: re-run instead
         end
     end
+end
+
+function f = rejField(type)
+% the EEG.reject field a rejection step marks
+f = struct('reject_threshold', 'rejthresh', 'reject_jointprob', 'rejjp', 'reject_kurtosis', 'rejkurt');
+f = f.(type);
+end
+
+function t = cellText(c)
+% a cell of index vectors as MATLAB code
+t = ['{' strjoin(cellfun(@mat2str, c, 'UniformOutput', false), ', ') '}'];
+end
+
+function W = interpWeights(EEG, bad)
+% The rows of eeg_interp's spherical interpolation for channels bad: its
+% output on a one-trial dataset holding a unit impulse on each channel.
+n = EEG.nbchan;
+T = eeg_emptyset();
+T.chanlocs = EEG.chanlocs; T.chaninfo = EEG.chaninfo; T.nbchan = n;
+T.data = eye(n); T.pnts = n; T.trials = 1; T.srate = 1; T.xmin = 0; T.xmax = n - 1;
+[~, T] = evalc('eeg_interp(T, bad, ''spherical'')');
+W = double(T.data(bad, :));
 end
 
 function EEG = evalWithEEG(EEG, PIPECOMPARE_CMD__)
