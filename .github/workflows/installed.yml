@@ -62,6 +62,7 @@ jobs:
             assert(startsWith(p, home), 'PipeCompare:CI', 'pop_pipecompare is not the installed one');
             fprintf('Installed PipeCompare %s\n', pipecompare.PipeCompare.version());
             addpath(fullfile(home, 'tests'));
+            if any(strcmp(version('-release'), {'2022b', '2023a'})), addpath(fullfile(home, 'tests', 'shims')); end
             EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30)); nqc_setBase(EEG);
             EEG = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'recipe', 'filters', 'show', 'off');
             r = evalin('base', 'pipecompare_result');

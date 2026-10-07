@@ -234,7 +234,9 @@ epochs) from each recording's own data.
 MATLAB R2026a with EEGLAB 2026.0.0 is the combination run by hand
 ([docs/COVERAGE.md](docs/COVERAGE.md)). Continuous integration runs the full automated test suite
 on every MATLAB release from R2021b to R2026a and the latest release with EEGLAB 2026.0.0, and on
-every EEGLAB release from 2022.0 to 2025.1.0 with both MATLAB R2022a and the latest MATLAB.
+every EEGLAB release from 2022.0 to 2025.1.0 with both MATLAB R2022a and the latest MATLAB. On
+R2022b and R2023a, MATLAB's own message box (`uialert`) never returns on the test machines' virtual
+display, even in an empty window, so there the tests print its messages instead of drawing it.
 
 Two known problems of older EEGLAB releases, which PipeCompare works around or reports:
 
