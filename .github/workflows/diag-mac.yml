@@ -1,0 +1,36 @@
+name: diag mac progress
+
+# Temporary: why uiprogressdlg reports Stop at once on MATLAB R2023b, macOS. Removed before merging.
+on:
+  pull_request:
+
+jobs:
+  diag:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+      - name: probe
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            disp(version); disp(get(0, 'ScreenSize'));
+            f = uifigure('Position', [300 300 480 170]);
+            d = uiprogressdlg(f, 'Title', 't', 'Cancelable', 'on', 'CancelText', 'Stop', 'Indeterminate', 'on');
+            fprintf('A cancel=%d fig=%d dlg=%d vis=%s\n', d.CancelRequested, isvalid(f), isvalid(d), char(f.Visible));
+            drawnow; fprintf('B cancel=%d\n', d.CancelRequested);
+            pause(2); drawnow; fprintf('C cancel=%d\n', d.CancelRequested);
+            d.Message = 'x'; drawnow nocallbacks; fprintf('D cancel=%d\n', d.CancelRequested);
+            d2 = uiprogressdlg(f, 'Title', 't2', 'Indeterminate', 'on');
+            fprintf('E nocancel: cancel=%d\n', d2.CancelRequested);
+            close(d2); delete(f);
+            g = uifigure; drawnow; pause(2);
+            d3 = uiprogressdlg(g, 'Title', 't', 'Cancelable', 'on');
+            drawnow; pause(1); fprintf('F after fig drawn: cancel=%d\n', d3.CancelRequested);
+            delete(g);
+            f = uifigure; drawnow; pause(2); uialert(f, 'msg', 'title'); drawnow; pause(1); disp('G uialert returned'); delete(f);
