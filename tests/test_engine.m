@@ -433,7 +433,7 @@ function testRestoreChannelsRemovedBeforePipeCompare(tc)
 % by the plan (restore demanded a removal inside the plan).
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
 n = EEG.nbchan;
-EEG = pop_select(EEG, 'rmchannel', {'O1', 'O2'});
+EEG = pop_select(EEG, 'nochannel', {'O1', 'O2'});
 assert(numel(EEG.chaninfo.removedchans) >= 2);
 nqc_setBase(EEG);
 p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('restore'); p = p.add('epoch'); p = p.add('baseline');
@@ -771,7 +771,7 @@ function testRoiOnAChannelRestoredByThePlan(tc)
 % The ROI check must not refuse this, the restored Pz carries the known
 % signal, and a pipeline without the restore fails with that reason.
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0));
-E = pop_select(EEG, 'rmchannel', {'Pz'});
+E = pop_select(EEG, 'nochannel', {'Pz'});
 nqc_setBase(E);
 c = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
     'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz'}});

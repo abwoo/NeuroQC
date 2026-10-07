@@ -38,7 +38,7 @@ c = pipecompare.simple.Presets.contract(EEG, 'P3', {'11', '31'});
 verifyEqual(tc, {c.conditions.name}, {'11', '31'});
 verifyEqual(tc, c.components.roi, {'Pz'});                     % the dataset's own spelling
 verifyEqual(tc, c.components.window, [0.3 0.6]);
-[~, noPz] = evalc('pop_select(EEG, ''rmchannel'', {''Pz''})');
+[~, noPz] = evalc('pop_select(EEG, ''nochannel'', {''Pz''})');
 verifyError(tc, @() pipecompare.simple.Presets.contract(noPz, 'P3', {'11'}), 'PipeCompare:Simple');     % P3 is measured at Pz
 verifyError(tc, @() pipecompare.simple.Presets.contract(EEG, 'P3', {}), 'PipeCompare:Simple');         % events must be chosen
 b = pipecompare.simple.Presets.contract(EEG, 'alpha', {});
@@ -225,7 +225,7 @@ q = struct('measure', 'kurt+prob', 'threshold', 5, 'exclude', {P.nonEegChannels(
 verifyFalse(tc, any(ismember({'A1', 'POL A2', 'm1'}, info.badChannels)));
 verifyEqual(tc, G.data(a1 | a2, :), F.data(a1 | a2, :));
 % removed before PipeCompare: not interpolated back for the average
-R = pop_select(E, 'rmchannel', {'A1'});
+R = pop_select(E, 'nochannel', {'A1'});
 verifyEmpty(tc, pipecompare.live.DataState.fromEEG(R).restorableChannels);
 end
 
@@ -451,14 +451,14 @@ function testChannelsRemovedBeforeAreRestoredForTheAverage(tc)
 EEG = tc.TestData.EEG;
 c = pipecompare.simple.Presets.contract(EEG, 'P3', {'11'});
 ids = @(p) {p.Slots.id};
-R = pop_select(EEG, 'rmchannel', {'O1', 'O2'});
+R = pop_select(EEG, 'nochannel', {'O1', 'O2'});
 st = pipecompare.live.DataState.fromEEG(R);
 verifyTrue(tc, all(ismember({'O1', 'O2'}, st.removedChannels(st.restorableChannels))));
 verifyEqual(tc, ids(pipecompare.simple.Presets.recipe('standard', st, c, 'average')), ...
     {'restore', 'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
 verifyFalse(tc, ismember('restore', ids(pipecompare.simple.Presets.recipe('standard', st, c))));   % as recorded
 V = EEG; V.chanlocs(1).labels = 'VEOG';
-V = pop_select(V, 'rmchannel', {'VEOG'});
+V = pop_select(V, 'nochannel', {'VEOG'});
 verifyEmpty(tc, pipecompare.live.DataState.fromEEG(V).restorableChannels);
 end
 
@@ -620,7 +620,7 @@ verifyTrue(tc, ismember('ica', {app.Plan.Slots.id}));           % the Standard r
 plan = app.PlanTable.Data(:, 3);                                % the epoch row shows the epoch set above it
 verifyFalse(tc, any(cellfun(@(s) contains(char(s), 'not set yet'), plan)));
 verifyTrue(tc, any(cellfun(@(s) contains(char(s), sprintf('window [%s] s', app.EpochField.Value)), plan)));
-[~, noPz] = evalc('pop_select(EEG, ''rmchannel'', {''Pz''})');
+[~, noPz] = evalc('pop_select(EEG, ''nochannel'', {''Pz''})');
 d2 = pipecompare.gui.SimpleDialog(noPz); c2 = onCleanup(@() delete(d2)); %#ok<NASGU>
 d2.EventList.Value = {'11'}; d2.MeasureDrop.Value = 'P3'; d2.measureChanged();
 verifyEmpty(tc, d2.advanced());                                 % no empty panel: the reason is shown

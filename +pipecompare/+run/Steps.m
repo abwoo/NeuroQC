@@ -267,7 +267,7 @@ classdef Steps
             info.listedIdx = idx(:)';
             switch p.action
                 case 'remove'
-                    [EEG, com] = pop_select(EEG, 'rmchannel', labels);
+                    [EEG, com] = pop_select(EEG, 'nochannel', labels);
                     coms = {com}; info.removed = labels;
                 case 'interpolate'
                     requireLocations(EEG.chanlocs(idx), 'channels');
@@ -364,7 +364,7 @@ classdef Steps
                 left = numel(drop) / n;
             else
                 drop = sort(drop);
-                [~, T] = evalc('pop_select(T, ''nopoint'', [(drop(:) - 1) * w + 1, drop(:) * w])');
+                T = pipecompare.utils.selectPoints(T, 'nopoint', [(drop(:) - 1) * w + 1, drop(:) * w]);
                 left = numel(drop) * w / (n * w);
             end
         end

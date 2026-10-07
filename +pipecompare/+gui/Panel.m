@@ -272,6 +272,7 @@ classdef Panel < handle
             if isempty(w), obj.WarnArea.Value = {'No inconsistencies between data and history.'};
             else, obj.WarnArea.Value = w; end
             h = s.history;
+            h = h(~strcmp({h.fn}, 'eeg_checkset'));   % EEGLAB before 2023.0 adds one each time a dataset is stored
             obj.HistTable.Data = [num2cell([h.line]') {h.kind}' {h.step}' {h.statement}'];
             ev = arrayfun(@(k) sprintf('%s (%d)', s.eventTypes{k}, s.eventCounts(k)), 1:numel(s.eventTypes), 'UniformOutput', false);
             if s.isEpoched
@@ -639,7 +640,7 @@ classdef Panel < handle
             EEG = pipecompare.live.Session.current();
             assert(~isempty(EEG), 'PipeCompare:NoDataset', 'No dataset in EEGLAB.');
             if EEG.trials == 1 && EEG.pnts / EEG.srate > 120
-                [~, EEG] = evalc('pop_select(EEG, ''time'', [0 120])');
+                EEG = pipecompare.utils.selectPoints(EEG, 'time', [0 120]);
             end
             if k <= 1, return; end
             c = obj.contract();
