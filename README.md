@@ -8,7 +8,7 @@
 ![EEGLAB](https://img.shields.io/badge/EEGLAB-2024.2%2B-blueviolet)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-PipeCompare is an EEGLAB plugin that answers a common question in EEG analysis: *which
+PipeCompare is an [EEGLAB](https://github.com/sccn/eeglab) plugin that answers a common question in EEG analysis: *which
 preprocessing choices give the most precise measurement for these data?* You specify which steps
 and parameter values are open to choice. PipeCompare runs every admissible pipeline through
 EEGLAB's own functions, discards pipelines that violate constraints or distort a known signal, and
@@ -90,7 +90,7 @@ epochs) from each recording's own data.
 | Component | Requirement |
 |---|---|
 | MATLAB | R2021b or later (see the tested versions below). GNU Octave is not supported: the interface uses `uifigure`. |
-| EEGLAB | 2024.2.1 or later. The PipeCompare menu and *Add EEGLAB menu step…* need EEGLAB's main window; scripts also run after `eeglab nogui` |
+| [EEGLAB](https://github.com/sccn/eeglab) | 2024.2.1 or later. The PipeCompare menu and *Add EEGLAB menu step…* need EEGLAB's main window; scripts also run after `eeglab nogui` |
 | EEGLAB plugins | firfilt (bundled with EEGLAB); ICLabel for IC removal; clean_rawdata for ASR |
 | Optional | Parallel Computing Toolbox, for parallel execution; Signal Processing Toolbox, for ASR at sampling rates other than 100, 128, 200, 256, 300, 500 and 512 Hz and for faster low-frequency high-pass filtering |
 
@@ -105,7 +105,8 @@ and `CURRENTSET`, and stores adopted pipelines there.
 
 ## Installation
 
-PipeCompare is listed in EEGLAB's extension manager, so the simplest way to install it is from
+PipeCompare is listed in EEGLAB's extension manager
+([list of EEGLAB extensions](https://sccn.ucsd.edu/eeglab/plugin_uploader/plugin_list_all.php)), so the simplest way to install it is from
 inside EEGLAB. The other two ways are for computers without internet access in MATLAB and for
 working with the source code.
 
