@@ -52,6 +52,7 @@ jobs:
             d = dir(fullfile(pwd, 'plugins', 'PipeCompare*'));
             assert(isscalar(d), 'PipeCompare:CI', 'installed folders: %d', numel(d));
             home = fullfile(d.folder, d.name); disp(home);
+            system(['find ''' home ''' -maxdepth 3 | head -60']);
             assert(isfile(fullfile(home, 'eegplugin_pipecompare.m')), 'PipeCompare:CI', 'eegplugin_pipecompare.m is not at the top of %s', home);
             close all force; eeglab;
             m = findobj(findobj('tag', 'EEGLAB'), 'Tag', 'pipecompare_menu');
