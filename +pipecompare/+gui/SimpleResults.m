@@ -10,7 +10,10 @@ classdef SimpleResults < handle
     %   function for any recording; "Show all pipelines" lists every
     %   pipeline with the reason it was excluded. Under the table, the
     %   steps of the recommended (or the selected) pipeline in order, with
-    %   what each did on these data. With no
+    %   what each did on these data. A note when ICA recognised or removed
+    %   nothing or had too little data (Presets.icaText), and when one
+    %   channel caused most rejected epochs (Presets.rejectText), follows
+    %   the headline. With no
     %   feasible pipeline, the most common reason is said in one line; after
     %   a stop, how many pipelines were run.
 
@@ -78,6 +81,15 @@ classdef SimpleResults < handle
             % from too few trials, not from the preprocessing)
             d = pipecompare.simple.Presets.detectableText(obj.Result);
             if ~isempty(d), t = sprintf('%s %s', t, d); end
+            % ICA that recognised or removed nothing
+            ica = pipecompare.simple.Presets.icaText(obj.Result);
+            if ~isempty(ica), t = sprintf('%s %s', t, ica); end
+            % a measured electrode the recommended pipeline interpolated
+            roi = pipecompare.simple.Presets.roiText(obj.Result);
+            if ~isempty(roi), t = sprintf('%s %s', t, roi); end
+            % one channel that caused most rejected epochs
+            rej = pipecompare.simple.Presets.rejectText(obj.Result);
+            if ~isempty(rej), t = sprintf('%s %s', t, rej); end
             prior = pipecompare.simple.Presets.priorFilterText(obj.Result);
             if ~isempty(prior), t = sprintf('%s %s', t, prior); end
         end
@@ -254,6 +266,8 @@ switch [type '.' param]
     case 'lowpass.cutoff', t = sprintf('low-pass %s Hz', x);
     case 'icremove.threshold', t = sprintf('ICLabel %s', x);
     case 'reject_threshold.uv', t = sprintf('reject above %s uV', x);
+    case {'reject_threshold.interpolate', 'reject_jointprob.interpolate', 'reject_kurtosis.interpolate'}
+        t = sprintf('repair epochs with up to %s channels', x);
     case 'asr.cutoff', t = sprintf('ASR %s SD', x);
     otherwise, t = sprintf('%s %s %s', type, param, x);
 end

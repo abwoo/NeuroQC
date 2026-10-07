@@ -52,6 +52,15 @@ classdef Presets
     %   Filters the data already have: a stricter edge is compared with
     %   keeping the data's own filter (no further filter).
 
+    properties (Constant)
+        EpochInterpMax = 3   % epochinterp: at most this many channels interpolated in an epoch (else it is rejected)
+        IcaMinBrain = 2      % ICA check: fewer components with Brain >= 0.5 than this = almost nothing recognised
+        IcaMaxOther = 0.8    % ICA check: a median Other probability above this = almost nothing recognised
+        IcaMinK = 20         % ICA check: ICA needs at least this x (components)^2 data points
+        PeakToPeakUv = {100, 150, 200}   % peaktopeak: the limits compared (uV, peak-to-peak)
+        RejectOneChannel = 0.5   % one channel over the limit in at least this share of the rejected epochs is named
+    end
+
     methods (Static)
         function names = componentNames()
             names = {'N170', 'MMN', 'N2pc', 'N400', 'P3', 'LRP', 'ERN'};
@@ -103,8 +112,14 @@ classdef Presets
         function names = stepNames()
             % the steps the simple mode can compare, in the order they run
             % (epoch and baseline are always done; the reference is a
-            % separate choice, after the bad channels and before ICA)
-            names = {'badchannels', 'ica', 'highpass', 'lowpass', 'reject'};
+            % separate choice, after the bad channels and before ICA);
+            % epochinterp is an option of the epoch rejection: within an
+            % epoch, up to 3 channels over its limit are interpolated and
+            % the epoch kept
+            % peaktopeak is another option of it: the limit is measured
+            % peak-to-peak in moving 200 ms windows (ERP CORE), with limits
+            % PeakToPeakUv
+            names = {'badchannels', 'ica', 'highpass', 'lowpass', 'reject', 'peaktopeak', 'epochinterp'};
         end
 
         function t = stepLabel(name)
@@ -114,6 +129,9 @@ classdef Presets
                 case 'highpass', t = 'High-pass filter (cutoffs compared)';
                 case 'lowpass', t = 'Low-pass filter (cutoffs compared)';
                 case 'reject', t = 'Reject epochs over an amplitude limit (limits compared)';
+                case 'peaktopeak', t = '  measure the limit peak-to-peak in 200 ms windows (ERP CORE)';
+                case 'epochinterp', t = sprintf('  instead, repair epochs with up to %d channels over the limit', ...
+                        pipecompare.simple.Presets.EpochInterpMax);
                 otherwise, error('PipeCompare:Simple', 'Unknown step %s (steps: %s).', name, ...
                         strjoin(pipecompare.simple.Presets.stepNames(), ', '));
             end
@@ -132,7 +150,7 @@ classdef Presets
                 return;
             end
             switch name
-                case 'standard', steps = P.stepNames();
+                case 'standard', steps = {'badchannels', 'ica', 'highpass', 'lowpass', 'reject'};
                 case 'filters', steps = {'highpass', 'lowpass'};
                 otherwise, error('PipeCompare:Simple', 'Unknown recipe %s (filters, standard).', name);
             end
@@ -152,12 +170,16 @@ classdef Presets
             % For each step (pipecompare.simple.Presets.stepNames), why it
             % cannot be compared on these data ('' when it can), and what
             % to know about it (e.g. a filter the data already have).
-            why = struct('badchannels', '', 'ica', '', 'highpass', '', 'lowpass', '', 'reject', '');
+            why = struct('badchannels', '', 'ica', '', 'highpass', '', 'lowpass', '', 'reject', '', 'peaktopeak', '', 'epochinterp', '');
             info = why;
+            info.peaktopeak = sprintf('limits %s uV; not fooled by slow drifts', ...
+                strjoin(cellfun(@num2str, pipecompare.simple.Presets.PeakToPeakUv, 'UniformOutput', false), ', '));
+            info.epochinterp = 'interpolated from the other channels, in that epoch only';
             steps = {state.process.step};
             if state.nLocated == 0
                 why.badchannels = 'needs channel locations (Edit > Channel locations)';
                 why.ica = 'ICLabel needs channel locations (Edit > Channel locations)';
+                why.epochinterp = why.badchannels;
             elseif exist('pop_iclabel', 'file') ~= 2
                 why.ica = 'ICLabel is not installed';
             end
@@ -441,7 +463,9 @@ classdef Presets
                         names = f.interpolated; names(ok) = pool(at(ok));
                         t = ['Channels removed before PipeCompare: ' listText(names, 'interpolated back', 'none')];
                     case 'reref'
-                        if strcmp(p.mode, 'average'), t = 'Average reference';
+                        again = any(cellfun(@(e) strcmp(e.type, 'reref'), c.steps(1:q-1)));
+                        if strcmp(p.mode, 'average') && again, t = 'Average reference again (after the epochs repaired by interpolation)';
+                        elseif strcmp(p.mode, 'average'), t = 'Average reference';
                         else, t = ['Re-referenced to ' strjoin(cellstr(p.channels), ', ')]; end
                         if isfield(p, 'exclude') && ~isempty(p.exclude)
                             t = sprintf('%s (left out: %s)', t, strjoin(cellstr(p.exclude), ', '));
@@ -451,9 +475,16 @@ classdef Presets
                         if pipecompare.utils.fieldOr(p, 'fitHighpass', 0) > 0
                             t = sprintf('%s, fitted on a %g Hz high-passed copy and applied to the data', t, p.fitHighpass);
                         end
+                        if pipecompare.utils.fieldOr(p, 'fitClean', 1) > 0
+                            t = [t ' (the fit leaves out stretches far noisier than the rest)'];
+                        end
                     case 'icremove'
                         t = sprintf('ICLabel: %s of %s components removed (%s with probability %g or more)', ...
                             numText(f.icsRemoved), numText(f.icsTotal), strjoin(cellstr(p.classes), ', '), p.threshold);
+                        b = pipecompare.utils.fieldOr(f, 'icsBrain', NaN); o = pipecompare.utils.fieldOr(f, 'icsOther', NaN);
+                        if isfinite(b) && isfinite(o)
+                            t = sprintf('%s; %d look like brain activity, %d were labelled Other', t, b, o);
+                        end
                     case 'epoch'
                         if con.isSegmented(), t = sprintf('Cut into %g s segments', con.segment);
                         else
@@ -462,12 +493,17 @@ classdef Presets
                         end
                     case 'baseline', t = sprintf('Baseline %g to %g ms removed', 1000 * con.baseline);
                     case 'reject_threshold'
-                        t = sprintf('Epochs beyond +/-%g uV on any channel rejected: %s', p.uv, ofText(f));
-                        t = [t notTested(p)];
+                        if strcmp(pipecompare.utils.fieldOr(p, 'method', 'absolute'), 'peaktopeak')
+                            t = sprintf('Epochs over %g uV peak-to-peak (within %g ms) on any channel rejected: %s', ...
+                                p.uv, pipecompare.utils.fieldOr(p, 'window', 200), ofText(f));
+                        else
+                            t = sprintf('Epochs beyond +/-%g uV on any channel rejected: %s', p.uv, ofText(f));
+                        end
+                        t = [t repairText(p, f) notTested(p)];
                     case {'reject_jointprob', 'reject_kurtosis'}
                         t = sprintf('Epochs rejected by %s (%g SD): %s', pipecompare.utils.ternary(strcmp(f.type, ...
                             'reject_kurtosis'), 'kurtosis', 'joint probability'), p.sd, ofText(f));
-                        t = [t notTested(p)];
+                        t = [t repairText(p, f) notTested(p)];
                     case 'asr', t = sprintf('ASR burst correction (%g SD)', p.cutoff);
                     case 'native'
                         cmd = strtrim(char(p.command));
@@ -529,6 +565,119 @@ classdef Presets
                     end
                 end
             end
+        end
+
+        function t = icaText(result)
+            % A warning when ICA did nothing useful ('' otherwise): ICLabel
+            % recognised almost none of the components (fewer than
+            % IcaMinBrain with Brain >= 0.5, or a median Other probability
+            % above IcaMaxOther), or no pipeline removed a component. Read
+            % from the recommended pipeline when it ran ICA, else from the
+            % first pipeline that did. Almost nothing recognised usually
+            % means the channel labels do not match the electrode
+            % positions (ICLabel reads the components' scalp maps), or too
+            % little clean recording for ICA. Fewer data points than
+            % IcaMinK x (components)^2 is said in any case (a usual rule
+            % for a reliable decomposition).
+            t = '';
+            P = pipecompare.simple.Presets;
+            if ~isfield(result, 'cands') || isempty(result.cands) || ~isfield(result.cands, 'steps'), return; end
+            rows = zeros(0, 6);   % pipeline, removed, total, brain, other, data points (median Other probability below)
+            med = [];
+            for c = result.cands(:)'
+                for q = 1:numel(c.steps)
+                    f = c.steps{q};
+                    if ~strcmp(f.type, 'icremove') || ~isfinite(f.icsTotal), continue; end
+                    rows(end+1, :) = [c.id f.icsRemoved f.icsTotal pipecompare.utils.fieldOr(f, 'icsBrain', NaN) ...
+                        pipecompare.utils.fieldOr(f, 'icsOther', NaN) pipecompare.utils.fieldOr(f, 'icaPoints', NaN)]; %#ok<AGROW>
+                    med(end+1) = pipecompare.utils.fieldOr(f, 'otherMedian', NaN); %#ok<AGROW>
+                end
+            end
+            if isempty(rows), return; end
+            r = [];
+            if isfield(result, 'ranking') && isfield(result.ranking, 'recommended'), r = find(rows(:, 1) == result.ranking.recommended, 1); end
+            if isempty(r), r = 1; end
+            poor = rows(r, 4) < P.IcaMinBrain || med(r) > P.IcaMaxOther;   % (NaN: not known, not poor)
+            none = all(rows(:, 2) == 0);
+            need = P.IcaMinK * rows(r, 3) ^ 2;
+            if rows(r, 6) < need   % (NaN: not known, not short)
+                t = sprintf(['ICA had too little data: %d data points for %d components, while a reliable ', ...
+                    'decomposition needs about %d x %d x %d = %d or more (more is better). Its components may mix ', ...
+                    'brain activity and artifacts. Use a longer recording if you can.'], rows(r, 6), rows(r, 3), ...
+                    P.IcaMinK, rows(r, 3), rows(r, 3), need);
+            end
+            if ~poor && ~none, return; end
+            t0 = t;
+            if poor
+                t = sprintf(['ICLabel recognised almost none of the %d ICA components: %d look like brain activity ', ...
+                    '(Brain 50%% or more) and %d were labelled Other'], rows(r, 3), rows(r, 4), rows(r, 5));
+                if none, t = [t sprintf(', and ICA removed nothing%s', pipecompare.utils.ternary(numel(unique(rows(:, 1))) > 1, ' in any pipeline', ''))]; end
+                t = [t pipecompare.utils.ternary(none, '. So the ICA step changed nothing here', ...
+                    '. So ICA may have missed the artifacts it should remove') '. Check that the channel labels ', ...
+                    'match the electrode positions (see the montage check of the data; ask whoever recorded it): ', ...
+                    'ICLabel reads the components'' scalp maps, so a wrong montage hides eye and muscle components ', ...
+                    'from it. Too little clean recording for ICA can do the same.'];
+            else
+                t = sprintf('ICA removed nothing%s: ICLabel found no artifact component above the threshold', ...
+                    pipecompare.utils.ternary(numel(unique(rows(:, 1))) > 1, ' in any pipeline', ''));
+                if isfinite(rows(r, 4)), t = sprintf('%s (%d of %d components look like brain activity)', t, rows(r, 4), rows(r, 3)); end
+                t = [t '. On clean data this is expected.'];
+            end
+            t = strtrim([t ' ' t0]);
+        end
+
+        function t = roiText(result)
+            % A warning when the recommended pipeline interpolated an
+            % electrode that is measured ('' otherwise): an interpolated
+            % channel is a weighted mean of its neighbours, with less noise
+            % than a real electrode, so its noise (SME) looks smaller than
+            % it is, and pipelines that interpolate it are favoured.
+            t = '';
+            if ~isfield(result, 'cands') || ~isfield(result.cands, 'steps') || ~isfield(result, 'contract') || ...
+                    ~isfield(result, 'ranking') || ~isfield(result.ranking, 'recommended') || isempty(result.ranking.recommended), return; end
+            c = result.cands([result.cands.id] == result.ranking.recommended);
+            if isempty(c), return; end
+            done = {};
+            for q = 1:numel(c.steps)
+                f = c.steps{q};
+                if isfield(f, 'interpolated'), done = [done cellstr(f.interpolated)]; end %#ok<AGROW>
+            end
+            roi = result.contract.allRoi();
+            hit = roi(ismember(lower(roi), lower(done)));
+            if isempty(hit), return; end
+            t = sprintf(['Pipeline %d rebuilt %s, which you measure, from the electrodes around %s (%s marked bad ', ...
+                'or missing). A rebuilt electrode is an average of its neighbours and has less noise than a real one, ', ...
+                'so this pipeline''s noise (SME) looks smaller than it is and it is favoured over pipelines that keep ', ...
+                'the electrode. If %s really bad, consider measuring at other electrodes (Electrodes...).'], ...
+                c.id, strjoin(hit, ', '), pipecompare.utils.ternary(numel(hit) > 1, 'them', 'it'), ...
+                pipecompare.utils.ternary(numel(hit) > 1, 'they were', 'it was'), ...
+                pipecompare.utils.ternary(numel(hit) > 1, 'they are', 'it is'));
+        end
+
+        function t = rejectText(result)
+            % A hint when one channel caused most of the rejected epochs of
+            % the recommended pipeline ('' otherwise): a channel over the
+            % limit in at least RejectOneChannel of them (and in 3 or more)
+            % is likely a bad channel the detection missed. With no
+            % recommended pipeline, nextStep names such channels instead.
+            t = '';
+            P = pipecompare.simple.Presets;
+            if ~isfield(result, 'cands') || ~isfield(result.cands, 'overLimit') || ~isfield(result, 'ranking') || ...
+                    ~isfield(result.ranking, 'recommended') || isempty(result.ranking.recommended), return; end
+            c = result.cands([result.cands.id] == result.ranking.recommended);
+            if isempty(c) || ~isfield(c, 'rejectedEpochs') || ~(c.rejectedEpochs > 0), return; end
+            n = c.overLimit.counts(:)'; labels = c.overLimit.labels(:)';
+            [n, order] = sort(n, 'descend'); labels = labels(order);
+            top = find(n >= max(3, P.RejectOneChannel * c.rejectedEpochs), 3);
+            if isempty(top), return; end
+            items = arrayfun(@(k) sprintf('%s was over the limit in %d', labels{k}, n(k)), top, 'UniformOutput', false);
+            t = sprintf(['Most rejected epochs are due to %s: %s of the %d epochs rejected in pipeline %d. ', ...
+                '%s may be bad: look at %s in the data (Plot > Channel data (scroll)); if %s bad, mark %s as ', ...
+                'bad or interpolate %s (Tools > Interpolate electrodes) and run again, to keep more trials.'], ...
+                pipecompare.utils.ternary(numel(top) > 1, 'a few channels', 'one channel'), strjoin(items, ', '), ...
+                c.rejectedEpochs, c.id, pipecompare.utils.ternary(numel(top) > 1, 'These channels', 'This channel'), ...
+                pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'), pipecompare.utils.ternary(numel(top) > 1, 'they are', 'it is'), ...
+                pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'), pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'));
         end
 
         function t = priorFilterText(result)
@@ -649,7 +798,32 @@ classdef Presets
             if ica, plan = plan.add('icremove'); end
             if continuous, plan = plan.add('epoch'); end
             if ~isempty(contract.baseline), plan = plan.add('baseline'); end
-            if has('reject'), plan = plan.add('reject_threshold', exclusion{:}); end
+            if has('reject')
+                % epochinterp: an epoch with at most EpochInterpMax channels
+                % over the limit keeps them, interpolated within the epoch;
+                % with an average reference the data are averaged again
+                % after it (an interpolated channel's old values are still
+                % in that epoch's average)
+                % peaktopeak: the limit is measured peak-to-peak in moving
+                % windows (ERP CORE), with its own limits
+                how = {};
+                if has('peaktopeak'), how = {'method', 'peaktopeak', 'uv', pipecompare.simple.Presets.PeakToPeakUv}; end
+                repair = has('epochinterp') && state.nLocated > 0;
+                if repair
+                    plan = plan.add('reject_threshold', exclusion{:}, how{:}, 'interpolate', pipecompare.simple.Presets.EpochInterpMax);
+                    plan = addReference(plan, reference, exclude);
+                else
+                    plan = plan.add('reject_threshold', exclusion{:}, how{:});
+                end
+            end
+            if has('peaktopeak') && ~has('reject')
+                notes{end+1} = 'peak-to-peak rejection needs epoch rejection (it is its method)';
+            end
+            if has('epochinterp') && ~has('reject')
+                notes{end+1} = 'repairing epochs needs epoch rejection (it uses its limit)';
+            elseif has('epochinterp') && state.nLocated == 0
+                notes{end+1} = 'no channel locations: repairing epochs by interpolation left out';
+            end
         end
     end
 end
@@ -657,6 +831,16 @@ end
 function t = listText(labels, done, none)
 % channels and what was done to them, or none
 if isempty(labels), t = none; else, t = sprintf('%s %s', strjoin(cellstr(labels), ', '), done); end
+end
+
+function t = repairText(p, f)
+% the epochs a rejection step kept by interpolating channels in them
+t = '';
+n = pipecompare.utils.fieldOr(p, 'interpolate', 0);
+if n <= 0, return; end
+k = pipecompare.utils.fieldOr(f, 'epochsInterpolated', NaN);
+t = sprintf('; %s kept by interpolating up to %d channel(s) within the epoch', ...
+    pipecompare.utils.ternary(isfinite(k), sprintf('%d epoch(s)', k), '? epochs'), n);
 end
 
 function t = notTested(p)

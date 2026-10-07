@@ -5,7 +5,9 @@
 Two choices (what to measure; for ERP, the event types); the steps are preselected:
 
 1. **Data**, described from the data: epoched data offer ERP measures, continuous data with
-   events ERP measures and band power, continuous data without events band power.
+   events ERP measures and band power, continuous data without events band power. The line also
+   gives the montage check: channels that do not resemble their neighbours, whose labels may not
+   match the positions (see the README, *Montage check*); a warning only.
 2. **Measure**, one list of what the data support: the ERP components, *your own window and
    electrodes*, the bands, and *your own band and electrodes*. For your own measure, type two
    numbers (window in ms after the event, e.g. `300 600`, or band in Hz, e.g. `8 12`) and pick
@@ -33,11 +35,16 @@ Two choices (what to measure; for ERP, the event types); the steps are preselect
    Hz over all EEG channels, in 2 s segments.
 3. **Compare**: a list of steps in the order they run, each with a tick box: bad channels
    (detect and interpolate), the reference (item 4), ICA (ICLabel threshold compared), high-pass,
-   low-pass (cutoffs compared), epochs and baseline (always; segments for band power) and epoch
-   rejection (amplitude limit compared). Any of them can be ticked; the order is fixed (to change
-   it, use the panel). *Standard (all)* (preselected) ticks every step, *Filters only* the two
-   filters (`'recipe'` in `pop_pipecompare`; other sets with `'steps'`, e.g.
-   `{'highpass', 'lowpass', 'reject'}`). With fewer than two pipelines, as with only the filters
+   low-pass (cutoffs compared), epochs and baseline (always; segments for band power), epoch
+   rejection (amplitude limit compared) and, under it, *measure the limit peak-to-peak in 200 ms
+   windows* (`'peaktopeak'`: ERP CORE's moving-window test, limits 100, 150, 200 µV compared
+   instead) and *instead, repair epochs with up to 3
+   channels over the limit* (`'epochinterp'`: such an epoch keeps those channels, interpolated
+   within the epoch; it uses the rejection's limit, so it can only be ticked with it, and adds no
+   pipelines; with the average reference the data are averaged again after it). Any of them can be
+   ticked; the order is fixed (to change it, use the panel). *Standard* (preselected) ticks every
+   step but the repair, *Filters only* the two filters (`'recipe'` in `pop_pipecompare`; other sets
+   with `'steps'`, e.g. `{'highpass', 'lowpass', 'reject'}`). With fewer than two pipelines, as with only the filters
    on epoched data, *Run* stays off. Each compared step searches the catalog's default lists.
    Steps the data cannot take are greyed out with the reason next to them (filters on epoched
    data; bad channels and ICA without channel locations; ICA without ICLabel or after ICA
@@ -78,7 +85,10 @@ every finished pipeline as the search runs, then a summary; the same log is kept
 why and the dialog stays open. The result window says in one
 sentence which pipeline to use and why, naming pipelines by the settings compared (e.g. high-pass
 0.5 Hz, low-pass 30 Hz), lists it (*) with the best others (checks, noise (SME), trials kept,
-signal change, settings) above one line with the steps every pipeline shares. *Show all
+signal change, settings) above one line with the steps every pipeline shares. When ICA did
+nothing useful (ICLabel recognised almost no component, or none was removed) or had too little
+data, and when one channel caused most of the recommended pipeline's rejected epochs, the
+headline says so. *Show all
 pipelines* lists every pipeline with the reason it was excluded. *Use this pipeline* builds the
 pipeline again (with the ICA decomposition of the comparison) as a new EEGLAB dataset, which is in memory
 until saved; a pipeline that did not pass the checks is used only after a confirmation that says
@@ -92,7 +102,8 @@ runs on its own copy.
 
 - **History and state.** The left side shows the live `EEG.history`, parsed line by line. The top
   shows the dataset's state (including channel locations) and any inconsistency between data and
-  history.
+  history, with the montage check first when it flags channels (also printed in the Command
+  Window).
 - **Analysis contract, from EEGLAB's own dialogs.** Conditions are picked from the dataset's event
   list (*Add from events…*); the trials that count from markers, an EEGLAB data selection
   (`pop_select`) or event selection (`pop_selectevent`); the epoch from `pop_epoch`; the baseline from
@@ -135,7 +146,13 @@ runs on its own copy.
   control alternatives and order. As in the simple mode, an added bad-channel, re-reference or
   epoch-rejection step leaves the non-EEG channels (EOG, ECG, ...) out, and an added bad-channel
   step uses kurtosis or joint probability (z = 5) on a 1 Hz high-passed copy of continuous data;
-  the table shows these values and *Edit values…* changes them. Channels interpolated or removed
+  the table shows these values and *Edit values…* changes them. Every epoch-rejection step also
+  has `interpolate` (default 0, off): an epoch failed by at most that many channels keeps them,
+  interpolated within the epoch, instead of being rejected; several values (e.g. `0 | 3`) are
+  compared. The amplitude rejection (`reject_threshold`) has `method` (`absolute` or
+  `peaktopeak`, both can be compared) and `window` (ms, for peak-to-peak). The ICA step has
+  `fitClean` (1: fit without the stretches far noisier than the rest; 0: on all of the data).
+  Channels interpolated or removed
   after an average reference must be followed by another average reference (see
   [METHODS.md](METHODS.md)): an order search never puts the average first, and a fixed order that
   does is refused with the reason.
@@ -146,8 +163,9 @@ runs on its own copy.
   Every command and score is printed in the Command Window and the result is stored in
   `pipecompare_result`. Options: data unit, checkpoint folder, parallel. Below the results the
   panel says what the dialog's result window says: that the settings make no difference, what to
-  try when no pipeline passed, and when filters applied before PipeCompare already change the
-  known signal beyond a pipeline's limit.
+  try when no pipeline passed, how large a difference the data can show, when ICA did nothing
+  useful or had too little data, when one channel caused most rejected epochs, and when filters applied before PipeCompare already change the known signal beyond a
+  pipeline's limit.
 - **Results.** Selecting a row shows its full pipeline, reason, measures and commands below the
   table. *Inspect selected* opens a rebuilt candidate (not adopted) or the source in EEGLAB's
   viewers; *Adopt* stores a candidate as a new EEGLAB dataset whose `EEG.history` reproduces it,

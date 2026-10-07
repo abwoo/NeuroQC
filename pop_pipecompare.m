@@ -27,7 +27,13 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %   'recipe'   'standard' (default) | 'filters': which steps are compared
 %              (standard: all the steps below; filters: the two filters)
 %   'steps'    instead of 'recipe', any of 'badchannels', 'ica',
-%              'highpass', 'lowpass', 'reject' (epoch rejection), e.g.
+%              'highpass', 'lowpass', 'reject' (epoch rejection),
+%              'peaktopeak' (with 'reject': the limit is measured
+%              peak-to-peak in moving 200 ms windows, as in ERP CORE,
+%              limits 100, 150 and 200 uV compared),
+%              'epochinterp' (with 'reject': an epoch with at most 3
+%              channels over the limit keeps them, interpolated within the
+%              epoch, instead of being rejected), e.g.
 %              {'highpass', 'lowpass', 'reject'}; they always run in that
 %              order, with epoching and baseline in every pipeline
 %   'reference' 'asis' (default) | 'average': the average reference as a
@@ -40,8 +46,12 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %              (stopping keeps the pipelines already run) and opens the
 %              results window; 'off' does neither
 %
-%   The Command Window shows each step and pipeline as it runs, then a
-%   summary; the same log (every EEGLAB command of every pipeline) is kept
+%   Before the run, the montage check (pipecompare.live.Montage) names
+%   channels that do not resemble their neighbours (labels that may not
+%   match the positions); after it, a note when ICA did nothing useful or
+%   had too little data (Presets.icaText), and when one channel caused
+%   most rejected epochs (Presets.rejectText). The Command Window shows each step and pipeline as
+%   it runs, then a summary; the same log (every EEGLAB command of every pipeline) is kept
 %   in pipecompare_last_run.log in tempdir. The dataset is not modified
 %   (EEG is returned unchanged); the result is also stored in the base
 %   variable pipecompare_result. com is the command that repeats this
@@ -81,6 +91,8 @@ state = pipecompare.live.DataState.fromEEG(EEG);
 advice = pipecompare.simple.Presets.dataAdvice(state);
 advice = advice(~startsWith(advice, 'Start from the raw'));
 for k = 1:numel(advice), pipecompare.utils.log('%s', advice{k}); end
+mon = pipecompare.live.Montage.check(EEG);
+if ~isempty(mon.text), pipecompare.utils.log('%s', mon.text); end
 assert(~(state.isEpoched && pipecompare.simple.Presets.isBand(opts.measure)), 'PipeCompare:Simple', ['Band power is ', ...
     'compared on continuous recordings (e.g. resting state); this dataset is already cut into epochs. Choose an ERP ', ...
     'measure, or use the continuous data.']);
@@ -143,6 +155,12 @@ hint = pipecompare.simple.Presets.nextStep(result);
 if ~isempty(hint), pipecompare.utils.log('%s', hint); end
 detect = pipecompare.simple.Presets.detectableText(result);
 if ~isempty(detect), pipecompare.utils.log('%s', detect); end
+ica = pipecompare.simple.Presets.icaText(result);
+if ~isempty(ica), pipecompare.utils.log('%s', ica); end
+roi = pipecompare.simple.Presets.roiText(result);
+if ~isempty(roi), pipecompare.utils.log('%s', roi); end
+rej = pipecompare.simple.Presets.rejectText(result);
+if ~isempty(rej), pipecompare.utils.log('%s', rej); end
 did = pipecompare.simple.Presets.stepsText(result, result.ranking.recommended);
 if ~isempty(did), pipecompare.utils.log('Pipeline %d, step by step:%s', result.ranking.recommended, sprintf('\n  %s', did{:})); end
 % filters applied before PipeCompare are outside the pipelines' signal check

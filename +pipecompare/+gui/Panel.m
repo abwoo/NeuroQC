@@ -266,8 +266,11 @@ classdef Panel < handle
             end
             obj.autoFill(s);
             obj.checkTrialRule(EEG, s);
-            if isempty(s.warnings), obj.WarnArea.Value = {'No inconsistencies between data and history.'};
-            else, obj.WarnArea.Value = s.warnings(:); end
+            w = s.warnings(:);
+            mon = pipecompare.live.Montage.check(EEG);   % labels that may not match the positions
+            if ~isempty(mon.text), w = [{mon.text}; w]; pipecompare.utils.log('%s', mon.text); end
+            if isempty(w), obj.WarnArea.Value = {'No inconsistencies between data and history.'};
+            else, obj.WarnArea.Value = w; end
             h = s.history;
             obj.HistTable.Data = [num2cell([h.line]') {h.kind}' {h.step}' {h.statement}'];
             ev = arrayfun(@(k) sprintf('%s (%d)', s.eventTypes{k}, s.eventCounts(k)), 1:numel(s.eventTypes), 'UniformOutput', false);
@@ -1532,8 +1535,9 @@ end
 function lines = resultNotes(r)
 % What the dialog's result window also says: the settings compared make
 % no difference, what to try when no pipeline passed, how large a
-% difference these data can show, and filters applied before PipeCompare
-% that already change the signal.
+% difference these data can show, ICA that recognised or removed nothing
+% or had too little data, one channel that caused most rejected epochs,
+% and filters applied before PipeCompare that already change the signal.
 lines = {};
 if pipecompare.eval.Rank.sameScores(r.ranking)
     lines{end+1} = 'All pipelines that passed have the same noise: the settings compared make no difference on these data.';
@@ -1542,6 +1546,12 @@ hint = pipecompare.simple.Presets.nextStep(r, 'add a reref step, mode average, a
 if ~isempty(hint), lines{end+1} = hint; end
 detect = pipecompare.simple.Presets.detectableText(r);
 if ~isempty(detect), lines{end+1} = detect; end
+ica = pipecompare.simple.Presets.icaText(r);
+if ~isempty(ica), lines{end+1} = ica; end
+roi = pipecompare.simple.Presets.roiText(r);
+if ~isempty(roi), lines{end+1} = roi; end
+rej = pipecompare.simple.Presets.rejectText(r);
+if ~isempty(rej), lines{end+1} = rej; end
 prior = pipecompare.simple.Presets.priorFilterText(r);
 if ~isempty(prior), lines{end+1} = prior; end
 end

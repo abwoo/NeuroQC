@@ -482,6 +482,7 @@ r = pipecompare.PipeCompare.optimize(p, nqc_c());
 d = r.cands(1).ica;
 verifyNumElements(tc, d, 1);
 verifyTrue(tc, contains(d{1}.coms{1}, 'EEGica = pop_runica(EEGica, ''icatype'''));
+verifyTrue(tc, contains(d{1}.coms{1}, 'EEGica = pipecompare.run.Steps.cleanForIca(EEGica);'));
 W = d{1}.icaweights([2 1 3:end], :);   % not what runica gives: proves it is applied, not refitted
 r.cands(1).ica{1}.icaweights = W;
 E = pipecompare.run.Executor.replay(r, 1);
@@ -646,6 +647,32 @@ verifyFalse(tc, any(ismember(info.badChannels, {E.chanlocs.labels})));
 verifyEqual(tc, E.nbchan, EEG.nbchan - numel(info.badChannels));
 end
 
+function testFlatChannelsAreBad(tc)
+% A channel with no signal (a constant, or almost nothing) is bad whatever
+% the measures say, and does not keep the others from being detected; the
+% data line names it before the run.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'noisyChannels', {{'T7'}}, 'noisyUv', 200));
+f1 = find(strcmp({EEG.chanlocs.labels}, 'Cz')); f2 = find(strcmp({EEG.chanlocs.labels}, 'O1'));
+EEG.data(f1, :) = 0;                                                % disconnected: a constant
+EEG.data(f2, :) = 1e-3 * randn(1, EEG.pnts);                        % almost nothing
+p = struct('measure', 'kurt+prob', 'threshold', 5, 'exclude', {{'EOG1', 'EOG2'}}, ...
+    'detectHighpass', 1, 'action', 'interpolate');
+[E, coms, info] = pipecompare.run.Steps.badChannels(EEG, p, struct('highpass', 0));
+verifyTrue(tc, all(ismember({'Cz', 'O1', 'T7'}, info.badChannels)), strjoin(info.badChannels, ' '));
+verifyTrue(tc, contains(coms{1}, 'flat channels [Cz O1]'), coms{1});
+verifyGreaterThan(tc, std(double(E.data(f1, :))), 1);              % interpolated from its neighbours
+p.action = 'remove'; p.detectHighpass = 0; p.measure = 'kurt';      % the copy-free path
+[E, ~, info] = pipecompare.run.Steps.badChannels(EEG, p, struct('highpass', 0));
+verifyTrue(tc, all(ismember({'Cz', 'O1'}, info.badChannels)), strjoin(info.badChannels, ' '));
+verifyFalse(tc, any(ismember({'Cz', 'O1'}, {E.chanlocs.labels})));
+s = pipecompare.live.DataState.fromEEG(EEG);
+w = s.warnings(contains(s.warnings, 'Flat channel'));
+verifyNumElements(tc, w, 1);
+verifyTrue(tc, contains(w{1}, 'Cz, O1') && ~contains(w{1}, 'T7'), w{1});
+s = pipecompare.live.DataState.fromEEG(nqc_synth(struct('seconds', 30, 'nPerCond', 5)));
+verifyFalse(tc, any(contains(s.warnings, 'Flat channel')));        % none on normal data
+end
+
 function testFixedEeglabCommandsAreDecisionMatched(tc)
 % A fixed EEGLAB transform re-run on the injected copy is the same
 % operation (not flagged); a data-driven one (pop_rejchan) is flagged.
@@ -767,6 +794,112 @@ verifyError(tc, @() pipecompare.PipeCompare.optimize(p, c2), 'PipeCompare:Contra
 end
 
 % ---------------------------------------------------------------- helpers
+function testEpochsRepairedByInterpolationWithinEpochs(tc)
+% An epoch with at most n channels over the limit keeps them, interpolated
+% within that epoch exactly as EEGLAB's eeg_interp does; an epoch with more
+% is rejected; the signal copy gets the same channels in the same epochs.
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30, 'artifactTrials', 0));
+[~, E] = evalc('nqc_epoched(EEG)');
+ch = find(strcmpi({E.chanlocs.labels}, 'T7')); ch2 = find(strcmpi({E.chanlocs.labels}, 'P8'));
+E.data(ch, :, [3 7 12]) = E.data(ch, :, [3 7 12]) + 500;      % one channel far over the limit
+E.data(ch2, :, 7) = E.data(ch2, :, 7) - 500;                   % two in epoch 7
+E.data(:, :, 20) = E.data(:, :, 20) + 500;                     % every channel: rejected
+pz = find(strcmpi({E.chanlocs.labels}, 'Pz'));
+E.data(pz, :, 25) = E.data(pz, :, 25) + 500;                   % a measured electrode: rejected, not repaired
+in = struct('type', 'reject_threshold', 'params', struct('uv', 400, 'exclude', {{}}, 'interpolate', 3), ...
+    'key', 'rej', 'slot', 'rej', 'label', 'rej');
+x = struct('contract', nqc_c(), 'highpass', 0);
+[E2, coms, info] = pipecompare.run.Steps.run(in, E, x);
+verifyEqual(tc, info.epochsInterpolated, 3);
+verifyEqual(tc, info.epochsNotRepaired, 1);
+verifyEqual(tc, info.rejIdx, [20 25]);
+verifyEqual(tc, E2.trials, E.trials - 2);
+verifyTrue(tc, any(contains(coms, 'pipecompare.run.Steps.interpolateEpochs')));
+[~, R] = evalc('pop_select(E, ''trial'', [3 12])');
+[~, R] = evalc('eeg_interp(R, ch, ''spherical'')');
+verifyEqual(tc, double(E2.data(ch, :, [3 12])), double(R.data(ch, :, :)), 'AbsTol', 1e-3);
+[~, R] = evalc('pop_select(E, ''trial'', 7)');
+[~, R] = evalc('eeg_interp(R, [ch ch2], ''spherical'')');
+verifyEqual(tc, double(E2.data([ch ch2], :, 7)), double(R.data([ch ch2], :, :)), 'AbsTol', 1e-3);
+verifyEqual(tc, E2.data(:, :, 1), E.data(:, :, 1));            % other epochs untouched
+S = pipecompare.run.Steps.replayDecision(in, E, info, x);       % the same decisions on a copy
+verifyEqual(tc, double(S.data), double(E2.data), 'AbsTol', 1e-4);
+in.params.interpolate = 0;                                      % off: rejected
+[~, ~, info0] = pipecompare.run.Steps.run(in, E, x);
+verifyEqual(tc, sort(info0.rejIdx), [3 7 12 20 25]);
+in.params.interpolate = 1;                                      % epoch 7 has two channels over: rejected
+[~, ~, info1] = pipecompare.run.Steps.run(in, E, x);
+verifyEqual(tc, sort(info1.rejIdx), [7 20 25]);
+end
+
+function testPeakToPeakRejection(tc)
+% Peak-to-peak in moving 200 ms windows: a slow drift that crosses an
+% absolute limit is kept, a fast deflection is rejected; the marks are
+% per channel, so epochs can be repaired the same way.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0, 'blinkRate', 0));
+[~, E] = evalc('nqc_epoched(EEG)');
+ch = find(strcmpi({E.chanlocs.labels}, 'T7'));
+E.data(ch, :, 5) = E.data(ch, :, 5) + linspace(0, 300, E.pnts);          % slow drift
+t = (1:E.pnts) - round(0.5 * E.srate);
+E.data(ch, :, 9) = E.data(ch, :, 9) + 150 * exp(-0.5 * (t / (0.03 * E.srate)) .^ 2);   % fast deflection
+in = struct('type', 'reject_threshold', 'params', struct('uv', 100, 'exclude', {{}}), 'key', 'rej', 'slot', 'rej', 'label', 'rej');
+x = struct('contract', nqc_c(), 'highpass', 0);
+[~, ~, a] = pipecompare.run.Steps.run(in, E, x);
+in.params.method = 'peaktopeak'; in.params.window = 200;
+[~, coms, b] = pipecompare.run.Steps.run(in, E, x);
+verifyTrue(tc, ismember(5, a.rejIdx) && ~ismember(5, b.rejIdx), mat2str(b.rejIdx));
+verifyTrue(tc, ismember(9, b.rejIdx), mat2str(b.rejIdx));
+verifyTrue(tc, contains(coms{1}, 'pipecompare.run.Steps.markPeakToPeak'));
+in.params.interpolate = 3;                                       % repaired like any other test
+[~, ~, c] = pipecompare.run.Steps.run(in, E, x);
+verifyFalse(tc, ismember(9, c.rejIdx));
+verifyGreaterThan(tc, c.epochsInterpolated, 0);
+end
+
+function testIcaIsFittedWithoutExtremeStretches(tc)
+% The copy ICA is fitted on leaves out windows far noisier than the rest
+% (at most 20%), and nothing on clean data.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0, 'blinkRate', 0));
+[T, left] = pipecompare.run.Steps.cleanForIca(EEG);
+verifyLessThan(tc, left, 0.05);
+fs = EEG.srate; eeg = ~pipecompare.simple.Presets.isNonEeg(EEG.chanlocs(:)');
+rng(2);
+for k = [10 30 50 70 80]
+    EEG.data(eeg, (k - 1) * fs + (1:fs)) = EEG.data(eeg, (k - 1) * fs + (1:fs)) + 300 * randn(sum(eeg), fs);
+end
+[T, left] = pipecompare.run.Steps.cleanForIca(EEG);
+verifyGreaterThanOrEqual(tc, left, 5 / 90 - 1e-9);
+verifyLessThanOrEqual(tc, T.pnts, EEG.pnts - 5 * fs);
+verifyLessThan(tc, max(abs(double(T.data(eeg, :))), [], 'all'), 1000);   % the bursts are gone
+end
+
+function testRepairedEpochsInASearch(tc)
+% In a search, repairing epochs is compared like any setting; its
+% decisions are replayed on the signal copy and listed in the steps.
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30));
+% T7 loses contact after every 4th event: far over the limit in those
+% epochs only (a channel noisy all the time would fail every epoch)
+ch = strcmpi({EEG.chanlocs.labels}, 'T7');
+for e = 1:4:numel(EEG.event)
+    t = round(EEG.event(e).latency) + (0:round(0.5 * EEG.srate));
+    EEG.data(ch, t) = EEG.data(ch, t) + 400;
+end
+nqc_setBase(EEG);
+p = pipecompare.plan.Plan();
+p = p.add('highpass', 'cutoff', 0.5);
+p = p.add('epoch'); p = p.add('baseline');
+p = p.add('reject_threshold', 'uv', 100, 'interpolate', {0, 3});
+r = pipecompare.PipeCompare.optimize(p, nqc_c());
+verifyEqual(tc, {r.cands.status}, {'ok', 'ok'});
+verifyEmpty(tc, [r.cands.unmatched]);                          % decisions replayed, not re-run
+k = find(contains(r.labels, 'interpolate=3'));
+f = r.cands(k).steps{end};
+verifyGreaterThan(tc, f.epochsInterpolated, 0);
+verifyLessThan(tc, r.cands(k).rejectedEpochs, r.cands(3 - k).rejectedEpochs);
+L = pipecompare.simple.Presets.stepsText(r, k);
+verifyTrue(tc, any(contains(L, 'kept by interpolating up to 3 channel(s)')), strjoin(L, newline));
+end
+
 function c = nqc_c()
 c = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
     'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz','P3','P4'}});

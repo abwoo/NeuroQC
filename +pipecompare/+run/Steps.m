@@ -16,7 +16,9 @@ classdef Steps
     %   real data). ASR replays its recorded window-by-window
     %   reconstructions (pipecompare.run.AsrRecord, verified against EEGLAB's
     %   output); captured mark/remove workflows replay the epochs and
-    %   components they removed. Other native commands are re-run and
+    %   components they removed; epoch rejection replays the channels it
+    %   interpolated within epochs (same epochs, same channels) and the
+    %   epochs it removed. Other native commands are re-run and
     %   reported as not decision-matched.
 
     methods (Static)
@@ -120,7 +122,7 @@ classdef Steps
                     [EEG, com] = pop_rmbase(EEG, b, []);
                     coms = {com};
                 case {'reject_threshold','reject_jointprob','reject_kurtosis'}
-                    [EEG, coms, info] = pipecompare.run.Steps.rejectEpochs(EEG, inst.type, p);
+                    [EEG, coms, info] = pipecompare.run.Steps.rejectEpochs(EEG, inst.type, p, ctx);
                 case 'native'
                     [EEG, coms, info] = pipecompare.run.Steps.native(EEG, p.command);
                 otherwise
@@ -152,6 +154,9 @@ classdef Steps
                 case 'icremove'
                     if ~isempty(info.comps), EEG = pop_subcomp(EEG, info.comps, 0); end
                 case {'reject_threshold','reject_jointprob','reject_kurtosis'}
+                    if isfield(info, 'epochInterp') && ~isempty(info.epochInterp.chans)
+                        EEG = pipecompare.run.Steps.interpolateEpochs(EEG, info.epochInterp.chans, info.epochInterp.epochs);
+                    end
                     if ~isempty(info.rejIdx), EEG = pop_rejepoch(EEG, info.rejIdx, 0); end
                 case 'native'
                     if isfield(info, 'decisions') && ~isempty(info.decisions)
@@ -199,6 +204,14 @@ classdef Steps
                 src = pop_eegfiltnew(EEG, 'locutoff', hp, 'plotfreqz', 0, fa{:});
                 on = sprintf(' on a %g Hz high-passed copy', hp);
             end
+            % Flat channels (no signal) are bad whatever the measures say:
+            % kurtosis and probability are undefined on a constant, and left
+            % in, they would also spoil the normalisation over the others.
+            flat = elec(pipecompare.run.Steps.flatChannels(src.data(elec, :, :)));
+            elec = setdiff(elec, flat, 'stable');
+            if ~isempty(flat)
+                pipecompare.utils.log('Flat channel(s) (no signal) marked bad: %s', strjoin({EEG.chanlocs(flat).labels}, ', '));
+            end
             bad = [];
             for m = measures
                 args = {'elec', elec, 'threshold', p.threshold, 'norm', 'on', 'measure', m{1}};
@@ -207,11 +220,14 @@ classdef Steps
                 bad = union(bad, b(:)');
             end
             bad = elec(bad);   % pop_rejchan indexes the tested channels (it removes opt.elec(indelec) itself)
+            on = [on pipecompare.utils.ternary(isempty(flat), '', sprintf('; flat channels [%s] bad', ...
+                strjoin({EEG.chanlocs(flat).labels}, ' ')))];
+            bad = sort([bad flat]);
             labels = {EEG.chanlocs(bad).labels};
             info.badChannels = labels; info.badIdx = bad;
             if strcmp(p.action, 'remove')
                 info.removed = labels;
-                if ~copy && isscalar(measures)
+                if ~copy && isscalar(measures) && isempty(flat)
                     EEG = EEGrem;
                     coms = {com};
                     return;
@@ -232,6 +248,15 @@ classdef Steps
                 [EEG, com2] = pop_interp(EEG, bad, 'spherical');
                 coms{end+1} = com2;
             end
+        end
+
+        function flat = flatChannels(X)
+            % Which rows of X (channels x samples [x epochs]) are flat: a
+            % spread (SD) of zero, or under 1% of the median spread of the
+            % rows (a disconnected input records almost nothing).
+            X = reshape(double(X), size(X, 1), []);
+            sd = std(X, 0, 2)';
+            flat = sd == 0 | sd < 0.01 * median(sd);
         end
 
         function [EEG, coms, info] = listedChannels(EEG, p)
@@ -265,25 +290,82 @@ classdef Steps
             % history line is written here
             args = vararg2str(opts);
             applied = 0; if isfield(ctx, 'highpass'), applied = ctx.highpass; end
-            if p.fitHighpass > 0 && p.fitHighpass > applied
-                % Fit on a high-passed copy (stable decomposition), apply
-                % the weights to the data as they are (ERP signal kept).
-                fa = fftArgs(EEG, p.fitHighpass);
-                [tmp, ~] = pop_eegfiltnew(EEG, 'locutoff', p.fitHighpass, 'plotfreqz', 0, fa{:});
+            fitHp = p.fitHighpass > 0 && p.fitHighpass > applied;
+            clean = pipecompare.utils.fieldOr(p, 'fitClean', 1) > 0;
+            if fitHp || clean
+                % Fit on a copy: high-passed (stable decomposition) and/or
+                % without the stretches of extreme data (movement, bursts),
+                % which would otherwise claim components of their own; the
+                % weights are applied to the data as they are (ERP signal kept).
+                pre = {}; what = {};
+                if fitHp
+                    fa = fftArgs(EEG, p.fitHighpass);
+                    [tmp, ~] = pop_eegfiltnew(EEG, 'locutoff', p.fitHighpass, 'plotfreqz', 0, fa{:});
+                    fftTxt = ''; if ~isempty(fa), fftTxt = ', ''usefftfilt'', 1'; end
+                    pre{end+1} = sprintf('EEGica = pop_eegfiltnew(EEG, ''locutoff'', %g, ''plotfreqz'', 0%s);', p.fitHighpass, fftTxt);
+                    what{end+1} = sprintf('a %g Hz high-passed copy', p.fitHighpass);
+                else
+                    tmp = EEG;
+                    pre{end+1} = 'EEGica = eeg_checkset(EEG);';
+                end
+                if clean
+                    [tmp, left] = pipecompare.run.Steps.cleanForIca(tmp);
+                    pre{end+1} = 'EEGica = pipecompare.run.Steps.cleanForIca(EEGica);';
+                    if left > 0
+                        what{end+1} = sprintf('%.0f%% of the data left out as extreme', 100 * left);
+                        pipecompare.utils.log('ICA fitted without the most extreme %.0f%% of the data.', 100 * left);
+                    end
+                end
+                if isempty(what), what = {'the data as they are (nothing extreme to leave out)'}; end
                 tmp = pop_runica(tmp, opts{:});
                 EEG.icaweights = tmp.icaweights; EEG.icasphere = tmp.icasphere;
                 EEG.icachansind = tmp.icachansind; EEG.icawinv = []; EEG.icaact = [];
                 EEG = eeg_checkset(EEG);
                 c2 = sprintf('EEGica = pop_runica(EEGica, %s);', args);
-                fftTxt = ''; if ~isempty(fa), fftTxt = ', ''usefftfilt'', 1'; end
-                coms = {sprintf(['EEGica = pop_eegfiltnew(EEG, ''locutoff'', %g, ''plotfreqz'', 0%s); %s ', ...
+                coms = {sprintf(['%s %s ', ...
                     'EEG.icaweights = EEGica.icaweights; EEG.icasphere = EEGica.icasphere; ', ...
                     'EEG.icachansind = EEGica.icachansind; EEG.icawinv = []; EEG.icaact = []; ', ...
-                    'EEG = eeg_checkset(EEG); clear EEGica; %% PipeCompare: ICA fitted on a %g Hz high-passed copy'], ...
-                    p.fitHighpass, fftTxt, c2, p.fitHighpass)};
+                    'EEG = eeg_checkset(EEG); clear EEGica; %% PipeCompare: ICA fitted on %s'], ...
+                    strjoin(pre, ' '), c2, strjoin(what, ', '))};
             else
                 EEG = pop_runica(EEG, opts{:});
                 coms = {sprintf('EEG = pop_runica(EEG, %s);', args)};
+            end
+        end
+
+        function [T, left] = cleanForIca(T)
+            % The copy ICA is fitted on, without its most extreme stretches:
+            % 1 s windows of continuous data (or epochs) whose spread is far
+            % above the others' (robust z of the mean log SD over the EEG
+            % channels > 3, median and MAD over the windows), at most 20 %
+            % of them, worst first. left: the share of the data left out.
+            % EOG and other non-EEG channels do not count (blinks stay in, so
+            % that ICA learns them); every channel stays in the copy.
+            eeg = ~pipecompare.simple.Presets.isNonEeg(T.chanlocs(:)');
+            if T.trials > 1
+                n = T.trials; X = double(T.data(eeg, :, :));
+                s = squeeze(mean(log(std(X, 0, 2) + eps), 1))';
+            else
+                w = round(T.srate); n = floor(T.pnts / w);
+                s = zeros(1, n);
+                for k = 1:n
+                    s(k) = mean(log(std(double(T.data(eeg, (k - 1) * w + (1:w))), 0, 2) + eps));
+                end
+            end
+            left = 0;
+            if n < 10, return; end
+            mad = max(1.4826 * median(abs(s - median(s))), eps);
+            z = (s - median(s)) / mad;
+            [~, order] = sort(z, 'descend');
+            drop = order(z(order) > 3); drop = drop(1:min(numel(drop), floor(0.2 * n)));
+            if isempty(drop), return; end
+            if T.trials > 1
+                [~, T] = evalc('pop_select(T, ''notrial'', drop)');
+                left = numel(drop) / n;
+            else
+                drop = sort(drop);
+                [~, T] = evalc('pop_select(T, ''nopoint'', [(drop(:) - 1) * w + 1, drop(:) * w])');
+                left = numel(drop) * w / (n * w);
             end
         end
 
@@ -308,6 +390,19 @@ classdef Steps
             comps = find(EEG.reject.gcompreject(:)');
             info.icsTotal = size(EEG.icaweights, 1);
             info.icsRemoved = numel(comps);
+            info.icaPoints = EEG.pnts * EEG.trials;   % the data points ICA had (the ICA check)
+            % what ICLabel recognised: components it takes for brain
+            % activity (Brain >= 0.5) and those whose likeliest class is
+            % Other, and the median Other probability (the ICA check)
+            L = EEG.etc.ic_classification.ICLabel;
+            names = cellstr(L.classes); Pc = L.classifications;
+            iB = strcmp(names, 'Brain'); iO = strcmp(names, 'Other');
+            if any(iB) && any(iO) && ~isempty(Pc)
+                [~, top] = max(Pc, [], 2);
+                info.icsBrain = sum(Pc(:, iB) >= 0.5);
+                info.icsOther = sum(top == find(iO));
+                info.otherMedian = median(Pc(:, iO));
+            end
             info.comps = comps;
             coms = {c1, c2};
             if ~isempty(comps)
@@ -316,15 +411,22 @@ classdef Steps
             end
         end
 
-        function [EEG, coms, info] = rejectEpochs(EEG, type, p)
+        function [EEG, coms, info] = rejectEpochs(EEG, type, p, ctx)
             n0 = EEG.trials;
+            cInterp = '';
             chans = 1:EEG.nbchan;
             if isfield(p, 'exclude') && ~isempty(p.exclude)
                 chans = find(~ismember(lower({EEG.chanlocs.labels}), lower(cellstr(p.exclude))));
             end
             switch type
                 case 'reject_threshold'
-                    [EEG, ~, c1] = pop_eegthresh(EEG, 1, chans, -p.uv, p.uv, EEG.xmin, EEG.xmax, 0, 0);
+                    if strcmp(pipecompare.utils.fieldOr(p, 'method', 'absolute'), 'peaktopeak')
+                        win = pipecompare.utils.fieldOr(p, 'window', 200);
+                        EEG = pipecompare.run.Steps.markPeakToPeak(EEG, chans, p.uv, win);
+                        c1 = sprintf('EEG = pipecompare.run.Steps.markPeakToPeak(EEG, %s, %g, %g);', mat2str(chans), p.uv, win);
+                    else
+                        [EEG, ~, c1] = pop_eegthresh(EEG, 1, chans, -p.uv, p.uv, EEG.xmin, EEG.xmax, 0, 0);
+                    end
                     marks = EEG.reject.rejthresh; E = pipecompare.utils.fieldOr(EEG.reject, 'rejthreshE');
                 case 'reject_jointprob'
                     [EEG, ~, ~, ~, c1] = pop_jointprob(EEG, 1, chans, p.sd, p.sd, 0, 0, 0, [], 0);
@@ -332,6 +434,49 @@ classdef Steps
                 case 'reject_kurtosis'
                     [EEG, ~, ~, ~, c1] = pop_rejkurt(EEG, 1, chans, p.sd, p.sd, 0, 0, 0, [], 0);
                     marks = EEG.reject.rejkurt; E = pipecompare.utils.fieldOr(EEG.reject, 'rejkurtE');
+            end
+            info.epochsInterpolated = 0; info.epochsNotRepaired = 0;
+            info.epochInterp = struct('chans', {{}}, 'epochs', {{}});
+            nMax = pipecompare.utils.fieldOr(p, 'interpolate', 0);
+            if nMax > 0 && ~isempty(E) && size(E, 1) == EEG.nbchan
+                % Epochs failed by at most nMax channels keep them, interpolated
+                % within the epoch (spherical splines from the other
+                % channels), instead of being rejected; the decision is the
+                % test's own per-channel marks, taken before interpolating.
+                flagged = E ~= 0;
+                nf = sum(flagged, 1);
+                ok = @(v) isnumeric(v) && isscalar(v) && isfinite(v);
+                located = arrayfun(@(c) isfield(c, 'X') && ok(c.X) && ok(c.Y) && ok(c.Z), EEG.chanlocs(:)');
+                % never a measured electrode: an interpolated value is a
+                % weighted mean of its neighbours, with less noise than a real
+                % electrode, so repairing it would make the SME look better
+                % than it is; such an epoch is rejected
+                measured = false(1, EEG.nbchan);
+                if nargin > 3 && isfield(ctx, 'contract') && ~isempty(ctx.contract)
+                    measured = ismember(lower({EEG.chanlocs.labels}), lower(ctx.contract.allRoi()));
+                end
+                kept = find(marks(:)' & nf >= 1 & nf <= nMax & ~any(flagged & ~located(:), 1) & ~any(flagged & measured(:), 1));
+                info.epochsNotRepaired = sum(marks(:)' & nf >= 1 & nf <= nMax & any(flagged & measured(:), 1));
+                if info.epochsNotRepaired > 0
+                    pipecompare.utils.log('%d epoch(s) not repaired: an electrode you measure was over the limit in them.', ...
+                        info.epochsNotRepaired);
+                end
+                if ~isempty(kept)
+                    [sigs, ~, g] = unique(arrayfun(@(e) mat2str(find(flagged(:, e))'), kept, 'UniformOutput', false));
+                    sets = cellfun(@str2num, sigs(:)', 'UniformOutput', false); %#ok<ST2NM> (mat2str of index vectors)
+                    epochs = arrayfun(@(k) kept(g == k), 1:numel(sigs), 'UniformOutput', false);
+                    EEG = pipecompare.run.Steps.interpolateEpochs(EEG, sets, epochs);
+                    info.epochInterp = struct('chans', {sets}, 'epochs', {epochs});
+                    info.epochsInterpolated = numel(kept);
+                    field = rejField(type);
+                    EEG.reject.(field)(kept) = 0; EEG.reject.([field 'E'])(:, kept) = 0;   % kept: no longer marked
+                    marks(kept) = 0; E(:, kept) = 0;
+                    cInterp = sprintf(['EEG = pipecompare.run.Steps.interpolateEpochs(EEG, %s, %s); ', ...
+                        'EEG.reject.%s(%s) = 0; EEG.reject.%sE(:, %s) = 0; %% PipeCompare: %d epoch(s) kept with ', ...
+                        'up to %d flagged channel(s) interpolated in them'], cellText(sets), cellText(epochs), ...
+                        field, mat2str(kept), field, mat2str(kept), numel(kept), nMax);
+                    pipecompare.utils.log('%d epoch(s) kept by interpolating the 1 to %d channel(s) flagged in them.', numel(kept), nMax);
+                end
             end
             idx = find(marks);
             % which channels drive the rejections (a hint for bad channels)
@@ -347,13 +492,52 @@ classdef Steps
                 pipecompare.utils.log('%d/%d epochs rejected; channels most often over the limit: %s', ...
                     numel(idx), n0, info.topChannels);
             end
-            coms = {c1};
+            coms = {c1, cInterp};
             if ~isempty(idx)
                 assert(numel(idx) < n0, 'PipeCompare:AllRejected', 'every epoch would be rejected');
                 [EEG, c2] = pop_rejepoch(EEG, idx, 0);
                 coms{end+1} = c2;
             end
             info.rejected = numel(idx); info.rejIdx = idx; info.epochsBefore = n0;
+        end
+
+        function EEG = markPeakToPeak(EEG, chans, uv, win)
+            % Moving-window peak-to-peak test (ERPLAB's pop_artmwppth, as in
+            % ERP CORE): within each window of win ms, moved in 50 ms steps
+            % over the epoch, the highest minus the lowest value of a
+            % channel; an epoch is marked when this exceeds uv on any of the
+            % channels chans. Marks go where pop_eegthresh puts its own
+            % (EEG.reject.rejthresh, per channel rejthreshE), so they are
+            % removed and repaired the same way.
+            n = max(2, round(win / 1000 * EEG.srate));
+            step = max(1, round(0.050 * EEG.srate));
+            starts = 1:step:max(1, EEG.pnts - n + 1);
+            pp = zeros(numel(chans), EEG.trials);
+            for s0 = starts
+                X = double(EEG.data(chans, s0:min(EEG.pnts, s0 + n - 1), :));
+                pp = max(pp, reshape(max(X, [], 2) - min(X, [], 2), numel(chans), EEG.trials));
+            end
+            E = false(EEG.nbchan, EEG.trials);
+            E(chans, :) = pp > uv;
+            EEG.reject.rejthreshE = double(E);
+            EEG.reject.rejthresh = double(any(E, 1));
+            pipecompare.utils.log('%d/%d epochs over %g uV peak-to-peak (%g ms windows).', sum(any(E, 1)), EEG.trials, uv, win);
+        end
+
+        function EEG = interpolateEpochs(EEG, chans, epochs)
+            % Within the epochs epochs{k}, the channels chans{k} replaced by
+            % EEGLAB's spherical spline interpolation (eeg_interp, Perrin et
+            % al., 1989) from the other channels of the same epochs.
+            % eeg_interp is linear in the data, so its weights are read once
+            % per set of channels (its output for unit impulses) and applied
+            % to those epochs: the same numbers eeg_interp gives on them.
+            for k = 1:numel(chans)
+                bad = chans{k}; ep = epochs{k};
+                if isempty(bad) || isempty(ep), continue; end
+                W = interpWeights(EEG, bad);
+                X = reshape(double(EEG.data(:, :, ep)), EEG.nbchan, []);
+                EEG.data(bad, :, ep) = cast(reshape(W * X, numel(bad), EEG.pnts, numel(ep)), 'like', EEG.data);
+            end
         end
 
         function [EEG, coms, info] = native(EEG, command)
@@ -418,6 +602,28 @@ classdef Steps
             if ~decided, info.decisions = info.decisions([]); end   % not only marks and removals: re-run instead
         end
     end
+end
+
+function f = rejField(type)
+% the EEG.reject field a rejection step marks
+f = struct('reject_threshold', 'rejthresh', 'reject_jointprob', 'rejjp', 'reject_kurtosis', 'rejkurt');
+f = f.(type);
+end
+
+function t = cellText(c)
+% a cell of index vectors as MATLAB code
+t = ['{' strjoin(cellfun(@mat2str, c, 'UniformOutput', false), ', ') '}'];
+end
+
+function W = interpWeights(EEG, bad)
+% The rows of eeg_interp's spherical interpolation for channels bad: its
+% output on a one-trial dataset holding a unit impulse on each channel.
+n = EEG.nbchan;
+T = eeg_emptyset();
+T.chanlocs = EEG.chanlocs; T.chaninfo = EEG.chaninfo; T.nbchan = n;
+T.data = eye(n); T.pnts = n; T.trials = 1; T.srate = 1; T.xmin = 0; T.xmax = n - 1;
+[~, T] = evalc('eeg_interp(T, bad, ''spherical'')');
+W = double(T.data(bad, :));
 end
 
 function EEG = evalWithEEG(EEG, PIPECOMPARE_CMD__)

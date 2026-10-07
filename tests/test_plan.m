@@ -256,6 +256,35 @@ verifyNumElements(tc, p.enumerate(st, c), 1);
 verifyNumElements(tc, p3.enumerate(st, c), 1);
 end
 
+function testRepairingEpochsNeedsLocationsAndABalancedAverage(tc)
+% Interpolating channels within epochs needs channel locations, and after
+% an average reference the data must be averaged again (the interpolated
+% channels' old values are still in the average); a bad count is refused.
+st = nqc_fakeState(true, 250); st.nLocated = 30;
+c = nqc_contract();
+p = pipecompare.plan.Plan(); p = p.add('reject_threshold', 'uv', 100, 'interpolate', 3);
+verifyNumElements(tc, p.enumerate(st, c), 1);
+noloc = st; noloc.nLocated = 0;
+try
+    p.enumerate(noloc, c); verifyFail(tc, 'expected PipeCompare:NoLegalPipeline');
+catch ME
+    verifyEqual(tc, ME.identifier, 'PipeCompare:NoLegalPipeline');
+    verifyTrue(tc, contains(ME.message, 'within epochs') && contains(ME.message, 'channel locations'), ME.message);
+end
+p0 = pipecompare.plan.Plan(); p0 = p0.add('reject_threshold', 'uv', 100);
+verifyNumElements(tc, p0.enumerate(noloc, c), 1);                % off (0): no locations needed
+a = pipecompare.plan.Plan(); a = a.add('reref', 'mode', 'average'); a = a.add('reject_threshold', 'uv', 100, 'interpolate', 3);
+try
+    a.enumerate(st, c); verifyFail(tc, 'expected PipeCompare:NoLegalPipeline');
+catch ME
+    verifyTrue(tc, contains(ME.message, 'average'), ME.message);
+end
+a = a.add('reref', 'mode', 'average');
+verifyNumElements(tc, a.enumerate(st, c), 1);
+b = pipecompare.plan.Plan(); b = b.add('reject_jointprob', 'sd', 5, 'interpolate', {0, 2, 1.5});
+verifyNumElements(tc, b.enumerate(st, c), 2);                   % 1.5 channels is not a count
+end
+
 function testBadChannelMeasuresCanBeCombined(tc)
 % 'kurt+prob' flags a channel when either measure does; an unknown
 % measure makes the pipeline illegal, with the reason.

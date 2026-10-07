@@ -32,6 +32,24 @@ verifyGreaterThan(tc, e(end), 0.2);
 verifyTrue(tc, all(diff(e) >= -0.01));
 end
 
+function testInjectedSignalIsAsWideAsTheWindow(tc)
+% The known signal is as wide at half maximum as the measurement window (a
+% narrower one under-tests high-passes on broad components), but at least
+% 50 ms (a narrower one rings after low-passes a real component survives).
+EEG = tc.TestData.EEG; fs = EEG.srate;
+pz = find(strcmp({EEG.chanlocs.labels}, 'Pz'));
+ev = find(strcmp(cellfun(@(x) char(string(x)), {EEG.event.type}, 'UniformOutput', false), '11'), 1);
+c0 = round(EEG.event(ev).latency);
+for w = {[0.3 0.6], [0.11 0.15]}
+    c = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
+        'baseline', [-0.2 0], 'components', {'X', w{1}, {'Pz'}});
+    S = pipecompare.eval.Injection.prepare(EEG, c, pipecompare.eval.Measure.reference(EEG, c));
+    x = double(S.data(pz, c0 + (round(-0.2 * fs):round(fs))));
+    fwhm = sum(x >= max(x) / 2) / fs;
+    verifyEqual(tc, fwhm, max(diff(w{1}), 0.050), 'AbsTol', 2 / fs);
+end
+end
+
 function testReReferencingIsNotDistortion(tc)
 [S, truth] = pipecompare.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
 in = inst('reref', 'mode', 'average', 'channels', {});

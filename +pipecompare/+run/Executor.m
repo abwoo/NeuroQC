@@ -662,13 +662,17 @@ end
 
 function f = stepFacts(in, info)
 % What a step did, for the results' list of steps: its settings and the
-% decisions it made on these data (channels, components, epochs).
+% decisions it made on these data (channels, components, epochs, epochs
+% kept by interpolating channels in them), and for ICLabel how many
+% components it took for brain activity and for 'Other' and how many data
+% points ICA had (the ICA check).
 f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed', {{}}, ...
-    'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN);
+    'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN, 'epochsInterpolated', NaN, ...
+    'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN);
 for n = {'interpolated', 'removed'}
     if isfield(info, n{1}), f.(n{1}) = cellstr(info.(n{1})); end
 end
-for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore'}
+for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore', 'epochsInterpolated', 'icsBrain', 'icsOther', 'otherMedian', 'icaPoints'}
     if isfield(info, n{1}), f.(n{1}) = info.(n{1}); end
 end
 end

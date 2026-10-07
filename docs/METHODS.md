@@ -202,12 +202,21 @@ the artifactual-peak criterion of Zhang, Garrett and Luck (2024). Filters are li
 operators fixed by their design parameters (Widmann, Schröger & Maess, 2015), so re-running them on
 the copy applies the same operator.
 
-**Injected field.** One Gaussian per component, centred in its window with σ = window/4, but at
-least 21.2 ms (50 ms wide at half maximum). With σ = window/4 alone, N170's 40 ms window gave
-σ = 10 ms, about half a real N170's width: a 20 Hz low-pass then rang below the template by 7.5 %
-of its peak, past the 5 % artifact limit, so every pipeline with that filter was excluded, while it
-changes a realistic N170 (σ ≈ 20 ms) by about 0.1 % (simulation of EEGLAB's `pop_eegfiltnew` at
-250–1000 Hz; N2pc's template widens from 18.75 ms, and no other verdict changes). Over the
+**Injected field.** One Gaussian per component, centred in its window and as wide at half maximum
+as the window (σ = window/2.355; a component's measurement window is meant to cover most of it),
+but at least 50 ms wide at half maximum (σ ≥ 21.2 ms). The width matters in both directions
+(simulation of EEGLAB's `pop_eegfiltnew` at 250–1000 Hz, with assumed realistic widths of the ERP
+CORE components):
+- Too narrow a template rings after a low-pass that leaves the real component unchanged. N170's
+  40 ms window would give σ = 17 ms; at σ = 10 ms a 20 Hz low-pass rang by 7.5 % of the peak, past
+  the 5 % artifact limit, while it changes a realistic N170 (σ ≈ 20 ms) by about 0.1 %.
+- Too narrow a template also under-tests high-passes on broad components: their slow parts are
+  what a high-pass removes. With σ = window/4, a 1 Hz high-pass passed for the LRP although it
+  fails at the LRP's realistic width. With σ = window/2.355, the pass/fail verdicts of every filter
+  tested equal those at the realistic widths: a 1 Hz high-pass fails for N400, P3 and LRP, and
+  nothing at 0.5 Hz or below, and no low-pass of 20 Hz or above, fails.
+
+Over the
 scalp it is a Gaussian in the angle θ between a channel's unit position vector and the ROI
 centroid, w(θ) = exp(−θ²/(2·0.5²)), normalized to mean 1 over the ROI. Channels without coordinates
 (often EOG/ECG) have no defined scalp position: they get no field outside the ROI and the ROI's
@@ -225,6 +234,11 @@ is used only when no ROI channel has a position. [`pipecompare.eval.Injection`]
   interpolated.
 - **ICLabel needs channel locations.** Its features include the components' scalp maps
   (Pion-Tonachini et al., 2019), so `icremove` and native `pop_iclabel` are excluded without them.
+- **Flat channels are bad.** A channel whose SD is zero or under 1% of the median SD of the
+  channels tested has no signal (e.g. a disconnected input). Kurtosis and joint probability are
+  undefined on a constant, and `pop_rejchan` normalises them over the channels tested, so such a
+  channel is set aside before the measures and marked bad by the `badchannels` step. The data
+  line names flat EEG channels before a run (first 60 s). [`pipecompare.run.Steps.flatChannels`]
 - **Event types are matched exactly.** `pop_epoch` selects events with `strmatch(…, 'exact')`, so
   'S 1' and 's 1' are different types. The contract is validated the same way and names the
   near match.
@@ -290,6 +304,98 @@ This is the moving-block bootstrap (Künsch, 1989), with the block-length order 
 and Jing (1995). ERP trials, which are separated by inter-trial intervals and time-locked to
 different events, are resampled one by one as before.
 
+## 9. Repairing epochs: channels interpolated within an epoch
+
+A rejection step (`reject_threshold`, `reject_jointprob`, `reject_kurtosis`) with `interpolate` =
+*n* > 0 keeps an epoch that the test fails because of at most *n* channels, as FASTER's epoch-level
+channel interpolation does (Nolan, Whelan & Reilly, 2010). The decision is the test's own
+per-channel marks (`EEG.reject.rejthreshE`, `rejjpE`, `rejkurtE`), taken before anything is
+changed: an epoch with 1 to *n* flagged channels, all with a location, gets those channels replaced
+in that epoch by EEGLAB's spherical-spline interpolation (`eeg_interp`, Perrin et al., 1989) from
+the other channels of the same epoch, its marks are cleared, and it is kept; the other marked
+epochs are removed with `pop_rejepoch`. An epoch in which an electrode that is measured (any
+component's or band's ROI) is flagged is never repaired, but rejected: an interpolated value is a
+weighted mean of its neighbours and carries less noise than a real electrode, so repairing a
+measured electrode would lower its SME without measuring the signal more precisely. `eeg_interp` is linear in the data, so its weights for a
+set of channels are read once, as its output for a unit impulse on each channel, and applied to
+every epoch with that set: the numbers are those `eeg_interp` gives on the epochs themselves
+(checked in `test_engine`). Repaired epochs are not tested again.
+
+Interpolated values change the average reference of their epoch: the replaced values were part of
+it. As for whole channels (section 5), a plan that repairs epochs after an average reference must
+average again afterwards, or it is refused with the reason; the simple mode adds that second
+average reference. The signal check replays the same repairs (same channels in the same epochs)
+on the copy, so the change they make to the known signal is measured and limited like any other.
+The 20 % limit on interpolated channels concerns whole channels and does not count repairs.
+[`pipecompare.run.Steps.rejectEpochs`, `pipecompare.run.Steps.interpolateEpochs`]
+
+## 9a. Peak-to-peak rejection
+
+`reject_threshold` with `method` = `peaktopeak` marks an epoch when, on any tested channel, the
+range (maximum minus minimum) within a moving window of `window` ms (default 200), moved in 50 ms
+steps, exceeds `uv`: the moving-window peak-to-peak test of ERPLAB (Lopez-Calderon & Luck, 2014)
+used by ERP CORE (Kappenman et al., 2021). Unlike an absolute threshold it is insensitive to slow
+drifts and offsets within the epoch. The marks are written where `pop_eegthresh` writes its own
+(`EEG.reject.rejthresh`, per channel `rejthreshE`), so removal, repair (section 9) and replay on
+the signal copy are the same. [`pipecompare.run.Steps.markPeakToPeak`]
+
+## 9b. ICA fitted without extreme stretches
+
+The decomposition is fitted on a copy from which the stretches far noisier than the rest are left
+out: 1 s windows (or epochs) whose mean log SD over the EEG channels has a robust z (median, MAD)
+above 3, at most 20 % of them, worst first. Non-EEG channels do not count, so blinks stay in the
+fit. The unmixing matrix is applied to all of the data. Fitting ICA on data cleaned of
+non-stereotyped artifacts is standard practice, since such stretches otherwise take up components
+(Delorme & Makeig, 2004; the EEGLAB tutorial's advice to reject bad data before ICA). `fitClean` = 0
+turns it off. [`pipecompare.run.Steps.cleanForIca`]
+
+## 10. Montage check (before a run)
+
+Scalp potentials vary smoothly over the head, so after an average reference a channel resembles its
+nearest neighbours. `pipecompare.live.Montage.check` measures this on the located EEG channels (not
+EOG/ECG/..., not ear or mastoid sites; at least 8): a sample of the data (the first 600 s, or as
+many epochs as fit in 600 s with each epoch's mean removed; at most 2·10⁷ values) is band-passed
+1–30 Hz in the frequency domain and average-referenced, and for each channel *nn* is its mean
+Pearson correlation with its 3 nearest channels (straight-line distance between unit position
+vectors). With *m* the median and *s* = max(0.05, 1.4826 · MAD) over the channels, a channel is
+flagged when (*nn* − *m*)/*s* < −3, or when *nn* < 0.1 and *m* ≥ 0.3 (on sparse caps the
+neighbours are far apart and the absolute rule would flag good channels). Flagging is iterative:
+the worst flagged channel is set aside and *nn* is computed again with neighbours chosen among the
+remaining channels, so a swapped channel does not also lower its neighbours' *nn*; at most a
+quarter of the channels are flagged. For each flagged channel the two channels with the highest
+correlation are named; when none reaches 0.3 the channel resembles nothing and is more likely bad
+than mislabelled. The check only warns; it never changes the data or blocks a run.
+
+## 11. ICA check (after a run)
+
+ICLabel's features include the components' scalp maps (Pion-Tonachini et al., 2019), so channel
+labels that do not match the positions leave it unable to recognise components. After a run, the
+recommended pipeline's ICLabel step (else the first pipeline's with one) is read: fewer than 2
+components with Brain probability ≥ 0.5, or a median Other probability above 0.8, is reported as
+"recognised almost none"; no component removed in any pipeline is reported too, with the montage
+as the first thing to check when recognition was poor, and as expected on clean data when it was
+not. ICA fitted on fewer than 20 × n² data points (n components; the data points the ICA step
+had, all epochs together) is reported in any case, after the usual rule for a reliable infomax
+decomposition (Onton & Makeig, 2006). [`pipecompare.simple.Presets.icaText`]
+
+## 12. Measured electrodes that were rebuilt (after a run)
+
+For the same reason, a whole measured electrode interpolated as a bad (or previously removed)
+channel lowers the SME of the pipelines that interpolate it. No correction is sound here: the real
+electrode's noise is not known, since it was bad. When the recommended pipeline interpolated a
+measured electrode, the result says so and suggests measuring at other electrodes if it really is
+bad. [`pipecompare.simple.Presets.roiText`]
+
+## 13. Channels behind the rejected epochs (after a run)
+
+Each rejection step records, per channel, in how many of the epochs it rejected that channel was
+over the limit (`overLimit`, summed over the pipeline's rejection steps). When the recommended
+pipeline has a channel over the limit in at least half of its rejected epochs, and in at least 3,
+the result names it (up to 3 such channels) as likely bad over stretches the bad-channel test,
+which scores the whole recording, does not catch. When no pipeline passed, the same counts give
+`nextStep`'s list instead (channels with at least 10% of all over-limit marks).
+[`pipecompare.simple.Presets.rejectText`]
+
 ## References
 
 - Clayson, P. E., Baldwin, S. A., Rocha, H. A., & Larson, M. J. (2021). The data-processing
@@ -324,6 +430,10 @@ different events, are resampled one by one as before.
   *Psychophysiology, 58*(6), e13793.
 - McCarthy, P. J. (1969). Pseudo-replication: Half samples. *Review of the International
   Statistical Institute, 37*(3), 239–264.
+- Nolan, H., Whelan, R., & Reilly, R. B. (2010). FASTER: Fully Automated Statistical Thresholding for
+  EEG artifact Rejection. *Journal of Neuroscience Methods, 192*(1), 152–162.
+- Onton, J., & Makeig, S. (2006). Information-based modeling of event-related brain dynamics.
+  *Progress in Brain Research*, 159, 99–120.
 - Perrin, F., Pernier, J., Bertrand, O., & Echallier, J. F. (1989). Spherical splines for scalp
   potential and current density mapping. *Electroencephalography and Clinical Neurophysiology,
   72*(2), 184–187.

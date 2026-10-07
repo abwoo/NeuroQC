@@ -5,10 +5,43 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
-Small fixes. Scores and recommendations are unchanged, except on data cleaned with clean_rawdata
-from a script whose high-pass PipeCompare now sees, and on data with ear or mastoid channels (see
-below).
+Recommendations can change: ICA is now fitted without the noisiest stretches of data, the signal check now uses a known signal as wide as the measurement
+window, which excludes a 1 Hz high-pass for broad components such as the LRP, and repairs never
+touch a measured electrode (see below). Also changed: data cleaned with clean_rawdata from a script
+whose high-pass PipeCompare now sees, and data with ear or mastoid channels.
 
+- Montage check before a run: channels whose signal does not resemble their nearest neighbours
+  (1-30 Hz, average reference, first 10 minutes) are named with the channels they resemble most,
+  since their labels may not match the electrode positions. In the dialog's data line, the
+  Command Window and the advanced panel's data warnings; a warning only.
+- After a run, a note when ICA did nothing useful: ICLabel recognised almost no component (fewer
+  than 2 with Brain >= 0.5, or median Other above 0.8), or no pipeline removed a component. The
+  ICLabel line of each pipeline's step list gives the brain-like and Other counts. In the results
+  window, the Command Window and the advanced panel's notes.
+- ICA is fitted without the stretches of data far noisier than the rest (1 s windows or epochs
+  with a robust z of the log SD above 3, at most 20%), and applied to all of the data; parameter
+  `fitClean` of the ica step (1 by default). ICA results can change.
+- Peak-to-peak rejection (ERP CORE): `reject_threshold` takes `method` `peaktopeak` (range within
+  a moving 200 ms window, 50 ms steps) and `window`; simple mode offers it under the rejection
+  (*measure the limit peak-to-peak in 200 ms windows*, `'peaktopeak'`, limits 100, 150, 200 µV).
+- The signal check's known signal is now as wide at half maximum as the measurement window (was a
+  quarter-window SD): a 1 Hz high-pass is now caught for broad components such as the LRP, as at
+  their realistic widths. Results can change: such pipelines are now excluded.
+- Repairing epochs never repairs an electrode you measure (that epoch is rejected), and the result
+  says when the recommended pipeline interpolated a measured electrode as a bad channel: a
+  rebuilt electrode has less noise than a real one, so its SME looks better than it is.
+- Flat channels (no signal: a spread of zero or under 1% of the median) are named before a run and
+  are always bad in the bad-channel step, set aside before kurtosis and joint probability (which
+  are undefined on a constant).
+- After a run, a note when ICA had fewer than 20 x (components)² data points, and when one channel
+  was over the limit in at least half of the recommended pipeline's rejected epochs (likely a bad
+  channel the detection missed). In the same places.
+- Repairing epochs: a rejection step can keep an epoch failed by at most n channels, with those
+  channels interpolated within that epoch (parameter `interpolate` of every rejection step in the
+  advanced panel and scripts; simple mode: *instead, repair epochs with up to 3 channels over the
+  limit*, `'epochinterp'`, not part of *Standard*). The signal check replays the same repairs;
+  with the average reference, the data are averaged again after them. The simple mode's
+  *Standard (all)* button is now *Standard*.
 - Simple mode: instead of choosing between *Standard* and *Filters only*, tick the steps to
   compare in a list shown in the order they run (bad channels, reference, ICA, high-pass,
   low-pass, epochs, epoch rejection); the order stays fixed. *Standard (all)* and *Filters only*
