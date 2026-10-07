@@ -224,6 +224,35 @@ r.ranking.byStratum = struct('recommended', {});                 % nothing recom
 verifyEmpty(tc, P.detectableText(r));
 end
 
+function testStepsInWords(tc)
+% What a pipeline did, in order, with its decisions on the data.
+P = pipecompare.simple.Presets;
+f = @(type, params, varargin) struct('type', type, 'params', params, 'interpolated', {{}}, 'removed', {{}}, ...
+    'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN);
+s1 = f('badchannels', struct('measure', 'kurt+prob', 'threshold', 5, 'exclude', {{'EOG1'}}, 'detectHighpass', 1, 'action', 'interpolate'));
+s1.interpolated = {'O1', 'O2'};
+s2 = f('reref', struct('mode', 'average', 'channels', {{}}, 'exclude', {{'EOG1'}}));
+s3 = f('ica', struct('fitHighpass', 1, 'extended', 1));
+s4 = f('icremove', struct('threshold', 0.8, 'classes', {{'Eye', 'Muscle'}})); s4.icsRemoved = 3; s4.icsTotal = 30;
+s5 = f('epoch', struct());
+s6 = f('reject_threshold', struct('uv', 150, 'exclude', {{}})); s6.rejected = 5; s6.epochsBefore = 60;
+r.contract = P.contract(tc.TestData.EEG, 'P3', {'11', '31'});
+r.ref = struct('names', {{'11', '31'}}, 'n', [30 30]);
+r.cands = struct('steps', {{s1, s2, s3, s4, s5, s6}}, 'm', struct('kept', [28 27]));
+L = P.stepsText(r, 1);
+verifyEqual(tc, L{1}, ['1. Bad channels (kurtosis or joint probability over 5 SD, found on a 1 Hz high-passed copy): ', ...
+    'O1, O2 interpolated (not tested: EOG1)']);
+verifyEqual(tc, L{2}, '2. Average reference (left out: EOG1)');
+verifyTrue(tc, startsWith(L{3}, '3. ICA (extended runica), fitted on a 1 Hz high-passed copy'));
+verifyEqual(tc, L{4}, '4. ICLabel: 3 of 30 components removed (Eye, Muscle with probability 0.8 or more)');
+verifyEqual(tc, L{5}, '5. Epochs -200 to 800 ms around event type(s) 11, 31');
+verifyEqual(tc, L{6}, '6. Epochs beyond +/-150 uV on any channel rejected: 5 of 60');
+verifyEqual(tc, L{7}, 'Trials kept per condition: 11: 28 of 30; 31: 27 of 30');
+s1.interpolated = {}; r.cands.steps = {s1};
+L = P.stepsText(r, 1);
+verifyTrue(tc, contains(L{1}, 'none found'), L{1});
+end
+
 function testNextStepWhenRejectionRemovesTooMuch(tc)
 % Every pipeline lost too many epochs and the data keep their recorded
 % reference: the average reference is suggested.
@@ -578,6 +607,9 @@ w = pipecompare.gui.SimpleResults(r); c = onCleanup(@() delete(w.Fig)); %#ok<NAS
 verifyTrue(tc, startsWith(w.Headline.Text, sprintf('Use pipeline %d: high-pass ', r.ranking.recommended)));
 verifyFalse(tc, contains(w.Headline.Text, 'cutoff='));          % the settings in words, not the internal key
 verifyTrue(tc, contains(w.Headline.Text, 'to be told apart'), w.Headline.Text);   % how large a difference shows
+s = strjoin(w.Steps.Value, ' ');                                % the recommended pipeline, step by step
+verifyTrue(tc, startsWith(s, sprintf('Pipeline %d, step by step: 1. High-pass filter', r.ranking.recommended)), s);
+verifyTrue(tc, contains(s, 'Epochs -200 to 800 ms around event type(s) 11, 31') && contains(s, 'Trials kept per condition: 11: '), s);
 verifyTrue(tc, startsWith(w.Table.Data{1, 6}, 'high-pass '));
 verifyEqual(tc, size(w.Table.Data, 1), 5);
 verifyEqual(tc, w.Table.Data{1, 1}, sprintf('%d*', r.ranking.recommended));   % always shown, first

@@ -129,6 +129,8 @@ hint = pipecompare.simple.Presets.nextStep(result);
 if ~isempty(hint), pipecompare.utils.log('%s', hint); end
 detect = pipecompare.simple.Presets.detectableText(result);
 if ~isempty(detect), pipecompare.utils.log('%s', detect); end
+steps = pipecompare.simple.Presets.stepsText(result, result.ranking.recommended);
+if ~isempty(steps), pipecompare.utils.log('Pipeline %d, step by step:%s', result.ranking.recommended, sprintf('\n  %s', steps{:})); end
 % filters applied before PipeCompare are outside the pipelines' signal check
 try
     result.priorFilters = pipecompare.eval.Injection.priorFilters(result.root, c, state, result.options);

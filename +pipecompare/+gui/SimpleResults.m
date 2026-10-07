@@ -8,27 +8,31 @@ classdef SimpleResults < handle
     %   others. "Use this pipeline" stores the recommended (or the selected)
     %   candidate as a new EEGLAB dataset; Save script writes it as a
     %   function for any recording; "Show all pipelines" lists every
-    %   pipeline with the reason it was excluded. With no
+    %   pipeline with the reason it was excluded. Under the table, the
+    %   steps of the recommended (or the selected) pipeline in order, with
+    %   what each did on these data. With no
     %   feasible pipeline, the most common reason is said in one line; after
     %   a stop, how many pipelines were run.
 
     properties
         Result
-        Fig; Headline; Table; AllBox
+        Fig; Headline; Table; AllBox; Steps
     end
 
     methods
         function obj = SimpleResults(result)
             obj.Result = result;
-            obj.Fig = uifigure('Name', 'Pipeline comparison', 'Position', [220 220 900 380]);
-            g = uigridlayout(obj.Fig, [4 1]); g.RowHeight = {'fit', '1x', 22, 30};
+            obj.Fig = uifigure('Name', 'Pipeline comparison', 'Position', [220 120 900 540]);
+            g = uigridlayout(obj.Fig, [5 1]); g.RowHeight = {'fit', '1x', 22, 150, 30};
             obj.Headline = uilabel(g, 'Text', obj.headline(), 'WordWrap', 'on', 'FontWeight', 'bold', ...
                 'VerticalAlignment', 'top');
-            obj.Table = uitable(g, 'RowName', {});
+            obj.Table = uitable(g, 'RowName', {}, 'SelectionChangedFcn', @(~, ~) obj.showSteps());
             obj.showRows();
             uilabel(g, 'Text', obj.shared(), 'FontColor', [0.3 0.3 0.3]);
+            obj.Steps = uitextarea(g, 'Editable', 'off');
+            obj.showSteps();
             b = uigridlayout(g, [1 4]); b.Padding = [0 0 0 0]; b.ColumnWidth = {'1x', 150, 140, 120};
-            uilabel(b, 'Text', 'Select a row to use another pipeline.', 'FontColor', [0.4 0.4 0.4]);
+            uilabel(b, 'Text', 'Select a row to see its steps or to use it instead.', 'FontColor', [0.4 0.4 0.4]);
             obj.AllBox = uicheckbox(b, 'Text', 'Show all pipelines', 'ValueChangedFcn', @(~, ~) obj.showRows());
             uibutton(b, 'Text', 'Use this pipeline', 'FontWeight', 'bold', 'ButtonPushedFcn', @(~, ~) obj.adopt());
             uibutton(b, 'Text', 'Save script...', 'ButtonPushedFcn', @(~, ~) obj.saveScript());
@@ -76,6 +80,14 @@ classdef SimpleResults < handle
             if ~isempty(d), t = sprintf('%s %s', t, d); end
             prior = pipecompare.simple.Presets.priorFilterText(obj.Result);
             if ~isempty(prior), t = sprintf('%s %s', t, prior); end
+        end
+
+        function showSteps(obj)
+            % the steps of the selected pipeline (else the recommended one)
+            k = obj.chosen();
+            lines = pipecompare.simple.Presets.stepsText(obj.Result, k);
+            if isempty(lines), obj.Steps.Value = {''}; return; end
+            v = [{sprintf('Pipeline %d, step by step:', k)} lines]; obj.Steps.Value = v(:);
         end
 
         function showRows(obj)

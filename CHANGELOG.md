@@ -9,6 +9,10 @@ Small fixes. Scores and recommendations are unchanged, except on data cleaned wi
 from a script whose high-pass PipeCompare now sees, and on data with ear or mastoid channels (see
 below).
 
+- The results window lists what the recommended (or the selected) pipeline did, step by step in
+  order: each step's settings and its decisions on the data (bad channels interpolated, ICA
+  components removed, epochs rejected), then the trials kept per condition. Also in the Command
+  Window and in the advanced panel's details of a result row.
 - The result says how large a difference the recording can show: with the recommended pipeline's
   SME, two conditions must differ by about 2.8 x sqrt(SME_a² + SME_b²) (80% power, two-sided
   p < .05; one condition: 2.8 x SME against 0) to be told apart. When the differences seen are

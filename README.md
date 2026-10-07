@@ -221,6 +221,28 @@ works the same for amplitudes (uV), latencies (ms) and band power (log10 uV²). 
 appears in the Command Window and in the advanced panel's result notes. It describes this one
 recording, trial by trial; a group study's power depends on the number of participants instead.
 
+Under the table, the window lists what the recommended pipeline did, step by step in the order the
+steps ran; select another row to see that pipeline's steps instead. Each line gives the step's
+settings and what it decided on these data, for example:
+
+```
+1. Bad channels (kurtosis or joint probability over 5 SD, found on a 1 Hz high-passed copy): O1, O2 interpolated (not tested: VEOG, HEOG)
+2. Average reference (left out: VEOG, HEOG)
+3. ICA (extended runica), fitted on a 1 Hz high-passed copy and applied to the data
+4. High-pass filter 0.5 Hz
+5. Low-pass filter 40 Hz
+6. ICLabel: 4 of 60 components removed (Muscle, Eye, Heart, Line Noise, Channel Noise with probability 0.8 or more)
+7. Epochs -200 to 800 ms around event type(s) ...
+8. Baseline -200 to 0 ms removed
+9. Epochs beyond +/-150 uV on any channel rejected: 12 of 120
+Trials kept per condition: ...
+```
+
+This is a readable summary of the pipeline's `EEG.history`; the dataset you get with *Use this
+pipeline* keeps the full history (every EEGLAB command) unchanged. The same list is printed in the
+Command Window after a run from `pop_pipecompare`, and the advanced panel shows it under *Steps*
+when you select a result row.
+
 For any EEGLAB step, order search, several components or different constraints, open
 **Advanced…** in the dialog, or **Tools > PipeCompare > Advanced panel…**. The panel defines the
 same measures as the dialog (ERP components, N2pc and LRP contralateral minus ipsilateral, band

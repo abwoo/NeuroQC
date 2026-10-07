@@ -1412,6 +1412,8 @@ classdef Panel < handle
                             pipecompare.gui.PanelText.pctText(T.ampError(k)), T.latencyShiftMs(k), pipecompare.gui.PanelText.pctText(T.artifactPct(k)), T.waveformCorr(k), T.topoCorr(k));
                         c = obj.Result.cands(k);
                         if ~isempty(c.unmatched), v{end+1} = ['Signal check not decision-matched for: ' strjoin(c.unmatched, ', ')]; end
+                        steps = pipecompare.simple.Presets.stepsText(obj.Result, k);   % as in the simple mode's results
+                        if ~isempty(steps), v = [v {'Steps:'} steps]; end
                         v = [v {'EEGLAB commands:'} c.coms(:)'];
                 end
                 obj.DetailArea.Value = v(:);

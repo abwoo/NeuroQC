@@ -316,6 +316,84 @@ classdef Presets
                 'recorded reference, which often makes amplitudes large. Try the average reference (', how, ').']);
         end
 
+        function lines = stepsText(result, k)
+            % What pipeline k did, step by step in order, in words: each
+            % step's settings and its decisions on these data (channels
+            % interpolated, components and epochs removed), then the trials
+            % kept per condition. A summary of the pipeline's EEG.history
+            % (the history itself is unchanged). {} when the pipeline did
+            % not run to the end.
+            lines = {};
+            if isempty(k) || k > numel(result.cands) || ~isfield(result.cands(k), 'steps'), return; end
+            c = result.cands(k); con = result.contract;
+            for q = 1:numel(c.steps)
+                f = c.steps{q}; p = f.params;
+                switch f.type
+                    case 'highpass', t = sprintf('High-pass filter %g Hz', p.cutoff);
+                    case 'lowpass', t = sprintf('Low-pass filter %g Hz', p.cutoff);
+                    case 'badchannels'
+                        how = strrep(strrep(strrep(p.measure, 'kurt', 'kurtosis'), 'prob', 'joint probability'), '+', ' or ');
+                        t = sprintf('Bad channels (%s over %g SD', how, p.threshold);
+                        if pipecompare.utils.fieldOr(p, 'detectHighpass', 0) > 0
+                            t = sprintf('%s, found on a %g Hz high-passed copy', t, p.detectHighpass);
+                        end
+                        t = [t '): ' listText(pipecompare.utils.ternary(isempty(f.removed), f.interpolated, f.removed), ...
+                            pipecompare.utils.ternary(isempty(f.removed), 'interpolated', 'removed'), 'none found')];
+                        t = [t notTested(p)];
+                    case 'channels'
+                        t = sprintf('Named channels %s: %s', pipecompare.utils.ternary(strcmp(p.action, 'remove'), ...
+                            'removed', 'interpolated'), strjoin(cellstr(p.labels), ', '));
+                    case 'restore'   % (labels in lower case: in the data's spelling)
+                        pool = [pipecompare.utils.fieldOr(pipecompare.utils.fieldOr(result, 'state', struct()), 'removedChannels', {}), ...
+                            pipecompare.utils.fieldOr(pipecompare.utils.fieldOr(result, 'state', struct()), 'labels', {})];
+                        [ok, at] = ismember(f.interpolated, lower(pool));
+                        names = f.interpolated; names(ok) = pool(at(ok));
+                        t = ['Channels removed before PipeCompare: ' listText(names, 'interpolated back', 'none')];
+                    case 'reref'
+                        if strcmp(p.mode, 'average'), t = 'Average reference';
+                        else, t = ['Re-referenced to ' strjoin(cellstr(p.channels), ', ')]; end
+                        if isfield(p, 'exclude') && ~isempty(p.exclude)
+                            t = sprintf('%s (left out: %s)', t, strjoin(cellstr(p.exclude), ', '));
+                        end
+                    case 'ica'
+                        t = 'ICA (extended runica)';
+                        if pipecompare.utils.fieldOr(p, 'fitHighpass', 0) > 0
+                            t = sprintf('%s, fitted on a %g Hz high-passed copy and applied to the data', t, p.fitHighpass);
+                        end
+                    case 'icremove'
+                        t = sprintf('ICLabel: %s of %s components removed (%s with probability %g or more)', ...
+                            numText(f.icsRemoved), numText(f.icsTotal), strjoin(cellstr(p.classes), ', '), p.threshold);
+                    case 'epoch'
+                        if con.isSegmented(), t = sprintf('Cut into %g s segments', con.segment);
+                        else
+                            t = sprintf('Epochs %g to %g ms around event type(s) %s', 1000 * con.epoch, ...
+                                strjoin(cellfun(@(e) char(string(e)), con.allEvents(), 'UniformOutput', false), ', '));
+                        end
+                    case 'baseline', t = sprintf('Baseline %g to %g ms removed', 1000 * con.baseline);
+                    case 'reject_threshold'
+                        t = sprintf('Epochs beyond +/-%g uV on any channel rejected: %s', p.uv, ofText(f));
+                        t = [t notTested(p)];
+                    case {'reject_jointprob', 'reject_kurtosis'}
+                        t = sprintf('Epochs rejected by %s (%g SD): %s', pipecompare.utils.ternary(strcmp(f.type, ...
+                            'reject_kurtosis'), 'kurtosis', 'joint probability'), p.sd, ofText(f));
+                        t = [t notTested(p)];
+                    case 'asr', t = sprintf('ASR burst correction (%g SD)', p.cutoff);
+                    case 'native'
+                        cmd = strtrim(char(p.command));
+                        if numel(cmd) > 100, cmd = [cmd(1:97) '...']; end
+                        t = ['EEGLAB command: ' cmd];
+                    otherwise
+                        d = pipecompare.plan.Catalog.get(f.type); t = d.label;
+                end
+                lines{end+1} = sprintf('%d. %s', q, t); %#ok<AGROW>
+            end
+            if ~isempty(c.m) && isfield(c.m, 'kept') && isfield(result, 'ref') && ~isempty(result.ref)
+                kept = arrayfun(@(i) sprintf('%s: %d of %d', result.ref.names{i}, c.m.kept(i), result.ref.n(i)), ...
+                    1:numel(c.m.kept), 'UniformOutput', false);
+                lines{end+1} = sprintf('Trials kept per condition: %s', strjoin(kept, '; '));
+            end
+        end
+
         function t = detectableText(result)
             % How large a difference this recording can show, in words,
             % from the recommended pipeline's own measurement error (SME,
@@ -471,6 +549,28 @@ classdef Presets
             if standard, plan = plan.add('reject_threshold', exclusion{:}); end
         end
     end
+end
+
+function t = listText(labels, done, none)
+% channels and what was done to them, or none
+if isempty(labels), t = none; else, t = sprintf('%s %s', strjoin(cellstr(labels), ', '), done); end
+end
+
+function t = notTested(p)
+% the channels a step left out
+t = '';
+if isfield(p, 'exclude') && ~isempty(p.exclude), t = sprintf(' (not tested: %s)', strjoin(cellstr(p.exclude), ', ')); end
+end
+
+function t = numText(v)
+if isfinite(v), t = sprintf('%d', v); else, t = '?'; end
+end
+
+function t = ofText(f)
+% epochs removed of those there were
+if ~isfinite(f.rejected), t = '?';
+elseif isfinite(f.epochsBefore), t = sprintf('%d of %d', f.rejected, f.epochsBefore);
+else, t = sprintf('%d', f.rejected); end
 end
 
 function t = unitText(v, unit)
