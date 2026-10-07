@@ -8,19 +8,60 @@
 ![EEGLAB](https://img.shields.io/badge/EEGLAB-2024.2%2B-blueviolet)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-PipeCompare is an [EEGLAB](https://github.com/sccn/eeglab) plugin that answers a common question in EEG analysis: *which
-preprocessing choices give the most precise measurement for these data?* You specify which steps
-and parameter values are open to choice. PipeCompare runs every admissible pipeline through
-EEGLAB's own functions, discards pipelines that violate constraints or distort a known signal, and
-ranks the rest by the **standardized measurement error (SME)** of your measure (Luck et al., 2021),
-corrected for the gain each pipeline applies to the signal. The recommended pipeline is returned as
-a new EEGLAB dataset and as a runnable script.
+PipeCompare is an [EEGLAB](https://github.com/sccn/eeglab) plugin that chooses how to preprocess
+an EEG recording, based on the recording itself. It compares complete preprocessing pipelines
+(filters, reference, bad channels, ICA with ICLabel, epoch rejection) and recommends the one that
+measures your ERP or band power most precisely, without distorting it.
+
+## What PipeCompare does
+
+Before an ERP amplitude or a band power can be measured, the raw recording has to be cleaned: it
+is filtered, re-referenced, bad channels are found and repaired, eye and muscle artifacts are
+removed with ICA, the data are cut into epochs and noisy epochs are rejected. Every one of these
+steps has settings, such as the high-pass cutoff, the ICLabel threshold for removing a component
+or the amplitude limit for rejecting an epoch. One complete set of steps and settings is a
+*pipeline*. Published studies use many different pipelines, and the choice changes how much noise
+is left in the final measurement. In practice the settings are usually copied from an earlier
+paper or kept out of habit, without checking how well they work on the data at hand.
+
+PipeCompare makes this choice from the data, in these steps:
+
+1. **It reads the dataset open in EEGLAB**, including what has already been done to it (from
+   `EEG.history`), so earlier processing is neither repeated nor ignored.
+2. **You say what will be measured**: an ERP component (mean amplitude, peak amplitude or peak
+   latency in a time window, at the electrodes you choose, time-locked to the events you choose),
+   or the power in a frequency band. Presets cover the ERP CORE components and the classic
+   frequency bands.
+3. **It builds every pipeline** from the steps and settings left open. The *Standard* recipe, for
+   example, compares up to 108 combinations of high-pass and low-pass filters, ICLabel thresholds and
+   epoch-rejection thresholds; you can also decide the steps and values yourself.
+4. **It runs each pipeline** with EEGLAB's own functions, on your data.
+5. **It removes pipelines that harm the data.** A pipeline is excluded when it keeps too few
+   trials, interpolates too many channels, or changes the brain signal. To check the last point,
+   a known artificial signal is added to a copy of the data and carried through the same pipeline;
+   if it comes out smaller, shifted or reshaped, the pipeline is excluded.
+6. **It ranks the rest by precision.** The measure is the standardized measurement error (SME;
+   Luck et al., 2021): how much your averaged value would vary if the experiment were repeated.
+   It is corrected for how much each pipeline shrinks the signal, so a pipeline cannot look good
+   just by making everything smaller. A bootstrap test then finds the pipelines that cannot be
+   told apart from the best.
+7. **It recommends one pipeline**, among those as good as the best the one that keeps the most
+   trials and changes the signal least, and explains why. You can adopt it as a new EEGLAB dataset,
+   already epoched and cleaned and ready to average, or save it as a MATLAB script to process your
+   other recordings the same way.
 
 The comparison never uses an experimental effect (condition differences, p-values), so selecting a
 pipeline does not bias the statistical test you run afterwards.
 
+PipeCompare is useful when you start working with a new dataset, paradigm or recording setup and
+want preprocessing settings with a documented, data-based reason, or want to check whether your
+usual settings suit these data. It works on one recording at a time, and covers ERP and band-power
+measures; time-frequency, connectivity and source analysis are not covered (see
+[Limitations](#limitations)).
+
 ## Contents
 
+- [What PipeCompare does](#what-pipecompare-does)
 - [Features](#features)
 - [Where PipeCompare fits in an analysis](#where-pipecompare-fits-in-an-analysis)
 - [Requirements](#requirements)
