@@ -795,17 +795,24 @@ verifyEqual(tc, E2.data(:, :, 1), E.data(:, :, 1));            % other epochs un
 S = pipecompare.run.Steps.replayDecision(in, E, info, x);       % the same decisions on a copy
 verifyEqual(tc, double(S.data), double(E2.data), 'AbsTol', 1e-4);
 in.params.interpolate = 0;                                      % off: rejected
-[~, info0] = pipecompare.run.Steps.run(in, E, x);
+[~, ~, info0] = pipecompare.run.Steps.run(in, E, x);
 verifyEqual(tc, sort(info0.rejIdx), [3 7 12 20]);
 in.params.interpolate = 1;                                      % epoch 7 has two channels over: rejected
-[~, info1] = pipecompare.run.Steps.run(in, E, x);
+[~, ~, info1] = pipecompare.run.Steps.run(in, E, x);
 verifyEqual(tc, sort(info1.rejIdx), [7 20]);
 end
 
 function testRepairedEpochsInASearch(tc)
 % In a search, repairing epochs is compared like any setting; its
 % decisions are replayed on the signal copy and listed in the steps.
-EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30, 'noisyChannels', {{'T7'}}, 'noisyUv', 40));
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30));
+% T7 loses contact after every 4th event: far over the limit in those
+% epochs only (a channel noisy all the time would fail every epoch)
+ch = strcmpi({EEG.chanlocs.labels}, 'T7');
+for e = 1:4:numel(EEG.event)
+    t = round(EEG.event(e).latency) + (0:round(0.5 * EEG.srate));
+    EEG.data(ch, t) = EEG.data(ch, t) + 400;
+end
 nqc_setBase(EEG);
 p = pipecompare.plan.Plan();
 p = p.add('highpass', 'cutoff', 0.5);
