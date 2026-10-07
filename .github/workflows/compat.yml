@@ -23,8 +23,18 @@ jobs:
           # R2022b is not in the list: on this virtual display a dialog test
           # hangs inside MATLAB's own uialert (on Ubuntu 22.04 and 24.04)
           - { matlab: R2021b, eeglab: 2026.0.0, os: ubuntu-22.04 }
+          - { matlab: R2022a, eeglab: 2026.0.0, os: ubuntu-22.04 }
+          - { matlab: R2022b, eeglab: 2026.0.0, os: ubuntu-22.04 }
           - { matlab: R2023b, eeglab: 2026.0.0 }
           - { matlab: R2024b, eeglab: 2026.0.0 }
+          - { matlab: R2022a, eeglab: '2022.0', os: ubuntu-22.04 }
+          - { matlab: latest, eeglab: '2022.0' }
+          - { matlab: latest, eeglab: '2022.1' }
+          - { matlab: latest, eeglab: '2023.0' }
+          - { matlab: latest, eeglab: '2023.1' }
+          - { matlab: latest, eeglab: '2024.0' }
+          - { matlab: latest, eeglab: '2024.1' }
+          - { matlab: latest, eeglab: '2024.2' }
           - { matlab: latest, eeglab: 2024.2.1 }
           - { matlab: latest, eeglab: 2025.1.0 }
     env:
