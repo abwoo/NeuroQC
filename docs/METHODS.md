@@ -337,7 +337,19 @@ recommended pipeline's ICLabel step (else the first pipeline's with one) is read
 components with Brain probability ≥ 0.5, or a median Other probability above 0.8, is reported as
 "recognised almost none"; no component removed in any pipeline is reported too, with the montage
 as the first thing to check when recognition was poor, and as expected on clean data when it was
-not. [`pipecompare.simple.Presets.icaText`]
+not. ICA fitted on fewer than 20 × n² data points (n components; the data points the ICA step
+had, all epochs together) is reported in any case, after the usual rule for a reliable infomax
+decomposition (Onton & Makeig, 2006). [`pipecompare.simple.Presets.icaText`]
+
+## 12. Channels behind the rejected epochs (after a run)
+
+Each rejection step records, per channel, in how many of the epochs it rejected that channel was
+over the limit (`overLimit`, summed over the pipeline's rejection steps). When the recommended
+pipeline has a channel over the limit in at least half of its rejected epochs, and in at least 3,
+the result names it (up to 3 such channels) as likely bad over stretches the bad-channel test,
+which scores the whole recording, does not catch. When no pipeline passed, the same counts give
+`nextStep`'s list instead (channels with at least 10% of all over-limit marks).
+[`pipecompare.simple.Presets.rejectText`]
 
 ## References
 
@@ -375,6 +387,8 @@ not. [`pipecompare.simple.Presets.icaText`]
   Statistical Institute, 37*(3), 239–264.
 - Nolan, H., Whelan, R., & Reilly, R. B. (2010). FASTER: Fully Automated Statistical Thresholding for
   EEG artifact Rejection. *Journal of Neuroscience Methods, 192*(1), 152–162.
+- Onton, J., & Makeig, S. (2006). Information-based modeling of event-related brain dynamics.
+  *Progress in Brain Research*, 159, 99–120.
 - Perrin, F., Pernier, J., Bertrand, O., & Echallier, J. F. (1989). Spherical splines for scalp
   potential and current density mapping. *Electroencephalography and Clinical Neurophysiology,
   72*(2), 184–187.

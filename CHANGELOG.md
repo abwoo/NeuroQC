@@ -17,6 +17,9 @@ below).
   than 2 with Brain >= 0.5, or median Other above 0.8), or no pipeline removed a component. The
   ICLabel line of each pipeline's step list gives the brain-like and Other counts. In the results
   window, the Command Window and the advanced panel's notes.
+- After a run, a note when ICA had fewer than 20 x (components)² data points, and when one channel
+  was over the limit in at least half of the recommended pipeline's rejected epochs (likely a bad
+  channel the detection missed). In the same places.
 - Repairing epochs: a rejection step can keep an epoch failed by at most n channels, with those
   channels interpolated within that epoch (parameter `interpolate` of every rejection step in the
   advanced panel and scripts; simple mode: *instead, repair epochs with up to 3 channels over the

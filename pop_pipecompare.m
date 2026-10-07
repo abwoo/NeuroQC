@@ -45,8 +45,9 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %
 %   Before the run, the montage check (pipecompare.live.Montage) names
 %   channels that do not resemble their neighbours (labels that may not
-%   match the positions); after it, a note when ICA did nothing useful
-%   (Presets.icaText). The Command Window shows each step and pipeline as
+%   match the positions); after it, a note when ICA did nothing useful or
+%   had too little data (Presets.icaText), and when one channel caused
+%   most rejected epochs (Presets.rejectText). The Command Window shows each step and pipeline as
 %   it runs, then a summary; the same log (every EEGLAB command of every pipeline) is kept
 %   in pipecompare_last_run.log in tempdir. The dataset is not modified
 %   (EEG is returned unchanged); the result is also stored in the base
@@ -153,6 +154,8 @@ detect = pipecompare.simple.Presets.detectableText(result);
 if ~isempty(detect), pipecompare.utils.log('%s', detect); end
 ica = pipecompare.simple.Presets.icaText(result);
 if ~isempty(ica), pipecompare.utils.log('%s', ica); end
+rej = pipecompare.simple.Presets.rejectText(result);
+if ~isempty(rej), pipecompare.utils.log('%s', rej); end
 did = pipecompare.simple.Presets.stepsText(result, result.ranking.recommended);
 if ~isempty(did), pipecompare.utils.log('Pipeline %d, step by step:%s', result.ranking.recommended, sprintf('\n  %s', did{:})); end
 % filters applied before PipeCompare are outside the pipelines' signal check

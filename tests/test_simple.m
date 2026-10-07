@@ -903,6 +903,39 @@ r.cands(2).steps = {ic(2, 30, 1, 25, 0.85)};                     % few brain com
 verifyTrue(tc, contains(P.icaText(r), 'almost none') && ~contains(P.icaText(r), 'removed nothing'));
 r.cands = struct('id', {1}, 'steps', {{struct('type', 'highpass', 'params', struct())}});
 verifyEmpty(tc, P.icaText(r));                                   % no ICA: nothing said
+% too little data for ICA (fewer than 20 x components^2 points) is said
+% even when ICA otherwise worked
+f = ic(4, 30, 15, 3, 0.1); f.icaPoints = 10000;
+r.cands = struct('id', {1}, 'steps', {{f}}); r.ranking.recommended = 1;
+t = P.icaText(r);
+verifyTrue(tc, contains(t, 'too little data: 10000 data points for 30 components') && contains(t, '18000'), t);
+f.icaPoints = 18000; r.cands(1).steps = {f};
+verifyEmpty(tc, P.icaText(r));                                   % enough
+f.icsRemoved = 0; f.icsBrain = 0; f.otherMedian = 0.9; f.icaPoints = 5000; r.cands(1).steps = {f};
+t = P.icaText(r);
+verifyTrue(tc, contains(t, 'almost none') && contains(t, 'too little data'), t);
+end
+
+function testOneChannelBehindRejectionsIsNamed(tc)
+% A channel over the limit in most of the recommended pipeline's rejected
+% epochs is named (likely a bad channel the detection missed); channels
+% over the limit in a few rejected epochs are not.
+P = pipecompare.simple.Presets;
+r.ranking = struct('recommended', 2);
+r.cands = struct('id', {1, 2}, 'rejectedEpochs', {50, 45}, ...
+    'overLimit', {struct('labels', {{'Fz'}}, 'counts', 50), struct('labels', {{'O1', 'T7', 'Fz'}}, 'counts', [5 40 3])});
+t = P.rejectText(r);
+verifyTrue(tc, contains(t, 'one channel') && contains(t, 'T7 was over the limit in 40 of the 45 epochs rejected in pipeline 2'), t);
+verifyFalse(tc, contains(t, 'O1') || contains(t, 'Fz'), t);
+r.cands(2).overLimit = struct('labels', {{'T7', 'T8'}}, 'counts', [30 25]);
+t = P.rejectText(r);
+verifyTrue(tc, contains(t, 'a few channels') && contains(t, 'T7 was over the limit in 30, T8 was over the limit in 25'), t);
+r.cands(2).overLimit = struct('labels', {{'O1', 'T7'}}, 'counts', [10 12]);
+verifyEmpty(tc, P.rejectText(r));                                % spread over channels
+r.cands(2).rejectedEpochs = 0; r.cands(2).overLimit = struct('labels', {{}}, 'counts', []);
+verifyEmpty(tc, P.rejectText(r));                                % nothing rejected
+r.ranking.recommended = [];
+verifyEmpty(tc, P.rejectText(r));                                % no pipeline passed (nextStep says it)
 end
 
 function testMontageCheckFindsSwappedLabels(tc)

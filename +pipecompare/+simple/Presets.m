@@ -56,6 +56,8 @@ classdef Presets
         EpochInterpMax = 3   % epochinterp: at most this many channels interpolated in an epoch (else it is rejected)
         IcaMinBrain = 2      % ICA check: fewer components with Brain >= 0.5 than this = almost nothing recognised
         IcaMaxOther = 0.8    % ICA check: a median Other probability above this = almost nothing recognised
+        IcaMinK = 20         % ICA check: ICA needs at least this x (components)^2 data points
+        RejectOneChannel = 0.5   % one channel over the limit in at least this share of the rejected epochs is named
     end
 
     methods (Static)
@@ -559,18 +561,20 @@ classdef Presets
             % first pipeline that did. Almost nothing recognised usually
             % means the channel labels do not match the electrode
             % positions (ICLabel reads the components' scalp maps), or too
-            % little clean recording for ICA.
+            % little clean recording for ICA. Fewer data points than
+            % IcaMinK x (components)^2 is said in any case (a usual rule
+            % for a reliable decomposition).
             t = '';
             P = pipecompare.simple.Presets;
             if ~isfield(result, 'cands') || isempty(result.cands) || ~isfield(result.cands, 'steps'), return; end
-            rows = zeros(0, 5);   % pipeline, removed, total, brain, other (median Other probability below)
+            rows = zeros(0, 6);   % pipeline, removed, total, brain, other, data points (median Other probability below)
             med = [];
             for c = result.cands(:)'
                 for q = 1:numel(c.steps)
                     f = c.steps{q};
                     if ~strcmp(f.type, 'icremove') || ~isfinite(f.icsTotal), continue; end
                     rows(end+1, :) = [c.id f.icsRemoved f.icsTotal pipecompare.utils.fieldOr(f, 'icsBrain', NaN) ...
-                        pipecompare.utils.fieldOr(f, 'icsOther', NaN)]; %#ok<AGROW>
+                        pipecompare.utils.fieldOr(f, 'icsOther', NaN) pipecompare.utils.fieldOr(f, 'icaPoints', NaN)]; %#ok<AGROW>
                     med(end+1) = pipecompare.utils.fieldOr(f, 'otherMedian', NaN); %#ok<AGROW>
                 end
             end
@@ -580,7 +584,15 @@ classdef Presets
             if isempty(r), r = 1; end
             poor = rows(r, 4) < P.IcaMinBrain || med(r) > P.IcaMaxOther;   % (NaN: not known, not poor)
             none = all(rows(:, 2) == 0);
+            need = P.IcaMinK * rows(r, 3) ^ 2;
+            if rows(r, 6) < need   % (NaN: not known, not short)
+                t = sprintf(['ICA had too little data: %d data points for %d components, while a reliable ', ...
+                    'decomposition needs about %d x %d x %d = %d or more (more is better). Its components may mix ', ...
+                    'brain activity and artifacts. Use a longer recording if you can.'], rows(r, 6), rows(r, 3), ...
+                    P.IcaMinK, rows(r, 3), rows(r, 3), need);
+            end
             if ~poor && ~none, return; end
+            t0 = t;
             if poor
                 t = sprintf(['ICLabel recognised almost none of the %d ICA components: %d look like brain activity ', ...
                     '(Brain 50%% or more) and %d were labelled Other'], rows(r, 3), rows(r, 4), rows(r, 5));
@@ -596,6 +608,33 @@ classdef Presets
                 if isfinite(rows(r, 4)), t = sprintf('%s (%d of %d components look like brain activity)', t, rows(r, 4), rows(r, 3)); end
                 t = [t '. On clean data this is expected.'];
             end
+            t = strtrim([t ' ' t0]);
+        end
+
+        function t = rejectText(result)
+            % A hint when one channel caused most of the rejected epochs of
+            % the recommended pipeline ('' otherwise): a channel over the
+            % limit in at least RejectOneChannel of them (and in 3 or more)
+            % is likely a bad channel the detection missed. With no
+            % recommended pipeline, nextStep names such channels instead.
+            t = '';
+            P = pipecompare.simple.Presets;
+            if ~isfield(result, 'cands') || ~isfield(result.cands, 'overLimit') || ~isfield(result, 'ranking') || ...
+                    ~isfield(result.ranking, 'recommended') || isempty(result.ranking.recommended), return; end
+            c = result.cands([result.cands.id] == result.ranking.recommended);
+            if isempty(c) || ~isfield(c, 'rejectedEpochs') || ~(c.rejectedEpochs > 0), return; end
+            n = c.overLimit.counts(:)'; labels = c.overLimit.labels(:)';
+            [n, order] = sort(n, 'descend'); labels = labels(order);
+            top = find(n >= max(3, P.RejectOneChannel * c.rejectedEpochs), 3);
+            if isempty(top), return; end
+            items = arrayfun(@(k) sprintf('%s was over the limit in %d', labels{k}, n(k)), top, 'UniformOutput', false);
+            t = sprintf(['Most rejected epochs are due to %s: %s of the %d epochs rejected in pipeline %d. ', ...
+                '%s may be bad: look at %s in the data (Plot > Channel data (scroll)); if %s bad, mark %s as ', ...
+                'bad or interpolate %s (Tools > Interpolate electrodes) and run again, to keep more trials.'], ...
+                pipecompare.utils.ternary(numel(top) > 1, 'a few channels', 'one channel'), strjoin(items, ', '), ...
+                c.rejectedEpochs, c.id, pipecompare.utils.ternary(numel(top) > 1, 'These channels', 'This channel'), ...
+                pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'), pipecompare.utils.ternary(numel(top) > 1, 'they are', 'it is'), ...
+                pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'), pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'));
         end
 
         function t = priorFilterText(result)

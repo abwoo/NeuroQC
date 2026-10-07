@@ -1535,7 +1535,8 @@ end
 function lines = resultNotes(r)
 % What the dialog's result window also says: the settings compared make
 % no difference, what to try when no pipeline passed, how large a
-% difference these data can show, ICA that recognised or removed nothing,
+% difference these data can show, ICA that recognised or removed nothing
+% or had too little data, one channel that caused most rejected epochs,
 % and filters applied before PipeCompare that already change the signal.
 lines = {};
 if pipecompare.eval.Rank.sameScores(r.ranking)
@@ -1547,6 +1548,8 @@ detect = pipecompare.simple.Presets.detectableText(r);
 if ~isempty(detect), lines{end+1} = detect; end
 ica = pipecompare.simple.Presets.icaText(r);
 if ~isempty(ica), lines{end+1} = ica; end
+rej = pipecompare.simple.Presets.rejectText(r);
+if ~isempty(rej), lines{end+1} = rej; end
 prior = pipecompare.simple.Presets.priorFilterText(r);
 if ~isempty(prior), lines{end+1} = prior; end
 end

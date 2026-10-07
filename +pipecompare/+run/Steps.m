@@ -313,6 +313,7 @@ classdef Steps
             comps = find(EEG.reject.gcompreject(:)');
             info.icsTotal = size(EEG.icaweights, 1);
             info.icsRemoved = numel(comps);
+            info.icaPoints = EEG.pnts * EEG.trials;   % the data points ICA had (the ICA check)
             % what ICLabel recognised: components it takes for brain
             % activity (Brain >= 0.5) and those whose likeliest class is
             % Other, and the median Other probability (the ICA check)

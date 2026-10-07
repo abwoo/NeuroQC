@@ -84,8 +84,9 @@ why and the dialog stays open. The result window says in one
 sentence which pipeline to use and why, naming pipelines by the settings compared (e.g. high-pass
 0.5 Hz, low-pass 30 Hz), lists it (*) with the best others (checks, noise (SME), trials kept,
 signal change, settings) above one line with the steps every pipeline shares. When ICA did
-nothing useful (ICLabel recognised almost no component, or none was removed), the headline says
-so. *Show all
+nothing useful (ICLabel recognised almost no component, or none was removed) or had too little
+data, and when one channel caused most of the recommended pipeline's rejected epochs, the
+headline says so. *Show all
 pipelines* lists every pipeline with the reason it was excluded. *Use this pipeline* builds the
 pipeline again (with the ICA decomposition of the comparison) as a new EEGLAB dataset, which is in memory
 until saved; a pipeline that did not pass the checks is used only after a confirmation that says
@@ -158,7 +159,7 @@ runs on its own copy.
   `pipecompare_result`. Options: data unit, checkpoint folder, parallel. Below the results the
   panel says what the dialog's result window says: that the settings make no difference, what to
   try when no pipeline passed, how large a difference the data can show, when ICA did nothing
-  useful, and when filters applied before PipeCompare already change the known signal beyond a
+  useful or had too little data, when one channel caused most rejected epochs, and when filters applied before PipeCompare already change the known signal beyond a
   pipeline's limit.
 - **Results.** Selecting a row shows its full pipeline, reason, measures and commands below the
   table. *Inspect selected* opens a rebuilt candidate (not adopted) or the source in EEGLAB's

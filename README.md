@@ -130,7 +130,10 @@ Along the way PipeCompare also takes care of the following, so you do not have t
   channels whose signal does not look like their neighbours' (see [Montage check](#montage-check)).
   This is a warning only.
 - **It tells you when ICA did nothing useful**: when ICLabel recognised almost none of the
-  components, or no pipeline removed any component (see [When ICA does nothing](#when-ica-does-nothing)).
+  components, or no pipeline removed any component, and when the recording was too short for ICA
+  (see [When ICA does nothing](#when-ica-does-nothing)).
+- **It tells you when one channel caused most rejected epochs**, which usually means it is a bad
+  channel the detection missed (see [Reading the result](#reading-the-result)).
 
 - **It respects what was done before.** Processing already applied (read from `EEG.history`) is
   listed and not repeated. A filter the data already have is kept as one of the choices
@@ -375,6 +378,15 @@ rejection, it names the channels most often over the rejection limit (likely bad
 remove or interpolate before running again) and, for data that keep their recorded reference,
 suggests the average reference.
 
+When pipelines do pass, PipeCompare still looks at why the recommended pipeline rejected its
+epochs. If one channel (or two or three) was over the limit in at least half of the rejected
+epochs, and in at least 3 of them, the result names it, for example *Most rejected epochs are due
+to one channel: T7 was over the limit in 40 of the 45 epochs rejected in pipeline 2*. Such a
+channel is probably bad for long stretches without being bad enough over the whole recording for
+the bad-channel test. Look at it in **Plot > Channel data (scroll)**; if it is bad, mark it as bad
+or interpolate it (**Tools > Interpolate electrodes**) and run again, which keeps more trials. The
+note appears after the headline, in the Command Window and in the advanced panel's notes.
+
 The result also says how large a difference this recording can show, for example *With this many
 trials and this noise, two conditions must differ in P3 by about 6 uV to be told apart; smaller
 differences need more trials.* This comes from the recommended pipeline's own measurement error
@@ -503,6 +515,13 @@ it has no ICA, the first pipeline with ICA), and says so when:
   same. In that case the ICA step changed nothing useful.
 - No pipeline removed any component. If ICLabel did recognise brain components, the message says
   that no component passed the artifact threshold, which is expected on clean data.
+- ICA had too little data. A usual rule is that ICA needs at least 20 × (number of components)²
+  data points for a reliable decomposition, more being better: with 60 components, 72 000 points,
+  that is 4.8 minutes at 250 Hz or 72 seconds at 1000 Hz. With fewer, the components can mix brain
+  activity and artifacts, and ICLabel cannot sort them. The message gives the numbers, for example
+  *ICA had too little data: 30000 data points for 61 components, while a reliable decomposition
+  needs about 20 x 61 x 61 = 74420 or more*. This is said whatever ICLabel recognised. The fix is
+  a longer recording; fewer channels (fewer components) also lower the need.
 
 The note appears in the result window after the headline, in the Command Window, and in the
 advanced panel's notes below the results. Each pipeline's step list also gives, on its ICLabel
