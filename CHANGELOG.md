@@ -8,6 +8,13 @@ release has a git tag `vX.Y.Z`.
 Small fixes. Scores and recommendations are unchanged, except on data cleaned with clean_rawdata
 from a script whose high-pass PipeCompare now sees (see below).
 
+- While a comparison runs, the Command Window prints each step and each finished pipeline as it
+  happens (in the simple mode it used to stay silent until the end); the same text is still kept
+  in `pipecompare_last_run.log`.
+- The progress window shows the step running now (e.g. *fitting ICA*) and the time so far,
+  updated every second. Before the first pipeline is done the bar moves back and forth, since
+  that first pipeline also runs the shared steps such as ICA, which can take minutes. The same
+  window is used by the simple mode and the panel, also when the search runs in parallel.
 - *Save script…* for ERPs now writes the components (name, window, electrodes, measure) into the
   script's analysis contract, so that contract can be used to score data again. The script's steps
   were already complete.

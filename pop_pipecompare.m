@@ -32,11 +32,12 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %              (stopping keeps the pipelines already run) and opens the
 %              results window; 'off' does neither
 %
-%   The Command Window shows a short summary; the full log (every EEGLAB
-%   command of every pipeline) goes to pipecompare_last_run.log in
-%   tempdir. The dataset is not modified (EEG is returned unchanged); the
-%   result is also stored in the base variable pipecompare_result. com is the command
-%   that repeats this comparison (EEGLAB puts it in ALLCOM). The panel
+%   The Command Window shows each step and pipeline as it runs, then a
+%   summary; the same log (every EEGLAB command of every pipeline) is kept
+%   in pipecompare_last_run.log in tempdir. The dataset is not modified
+%   (EEG is returned unchanged); the result is also stored in the base
+%   variable pipecompare_result. com is the command that repeats this
+%   comparison (EEGLAB puts it in ALLCOM). The panel
 %   (EEGLAB > Tools > PipeCompare > Advanced panel) offers every option.
 com = ''; result = [];
 assert(nargin >= 1 && ~isempty(EEG) && isfield(EEG, 'data'), 'PipeCompare:NoDataset', ...
@@ -92,19 +93,21 @@ if strcmp(state.unitGuess, 'V'), pipecompare.utils.log('The data are in volts (j
 prog = pipecompare.gui.Progress.empty;
 if ~strcmp(opts.show, 'off')
     prog = pipecompare.gui.Progress(nTotal, any(strcmp({plan.Slots.id}, 'ica')));
-    runOpts.progress = @(n) prog.step(n);
+    runOpts.progress = @(n, varargin) prog.step(n, varargin{:});
 end
 closeProg = onCleanup(@() delete(prog)); %#ok<NASGU>   % also on an error
-% the full log goes to a file; the Command Window gets the summary
-t0 = tic; err = []; searchFcn = @runSearch;   % (evalc here may only assign existing variables)
-logText = evalc('[result, err] = searchFcn(plan, c, runOpts);');
-delete(prog);
+% the search prints as it goes, and the same text is kept in a log file
+t0 = tic;
 logFile = fullfile(tempdir, 'pipecompare_last_run.log');
-fid = fopen(logFile, 'w');
-if fid > 0, fprintf(fid, '%s', logText); fclose(fid); end
+if isfile(logFile), delete(logFile); end   % (the diary appends)
+logging = keepDiary(logFile);
+[result, err] = runSearch(plan, c, runOpts);
+clear logging   % the diary stops here
+delete(prog);
+hasLog = isfile(logFile);
 if ~isempty(err)
-    % the log says how far the search got; it would be lost with the error
-    if fid > 0, pipecompare.utils.log('The comparison stopped with an error; full log: %s', logFile); end
+    % the log says how far the search got
+    if hasLog, pipecompare.utils.log('The comparison stopped with an error; full log: %s', logFile); end
     rethrow(err);
 end
 T = result.ranking.table;
@@ -132,7 +135,7 @@ catch ME
 end
 prior = pipecompare.simple.Presets.priorFilterText(result);
 if ~isempty(prior), pipecompare.utils.log('%s', prior); end
-if fid > 0, pipecompare.utils.log('Full log (every EEGLAB command): %s', logFile); end
+if hasLog, pipecompare.utils.log('Full log (every EEGLAB command): %s', logFile); end
 assignin('base', 'pipecompare_result', result);
 args = {'measure', opts.measure};
 if strcmpi(opts.measure, 'custom'), args = [args {'window', opts.window}]; end
@@ -152,9 +155,23 @@ com = sprintf('EEG = pop_pipecompare(EEG, %s);', vararg2str(args));
 if ~strcmp(opts.show, 'off'), pipecompare.gui.SimpleResults(result); end
 end
 
+function restore = keepDiary(logFile)
+% The Command Window's text also goes to logFile until restore is cleared;
+% a diary the user had on goes on afterwards.
+was = get(0, 'Diary'); file = get(0, 'DiaryFile');
+diary(logFile);
+restore = onCleanup(@() restoreDiary(was, file));
+end
+
+function restoreDiary(was, file)
+diary off;
+set(0, 'DiaryFile', file);
+if strcmp(char(was), 'on'), diary on; end
+end
+
 function [result, err] = runSearch(plan, c, runOpts)
-% The search, with its error returned rather than thrown, so that the log
-% captured around it is written either way.
+% The search, with its error returned rather than thrown, so that the
+% log's location can be printed before the error.
 result = []; err = [];
 try
     result = pipecompare.PipeCompare.optimize(plan, c, runOpts);

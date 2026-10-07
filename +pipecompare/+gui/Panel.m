@@ -1320,7 +1320,7 @@ classdef Panel < handle
                     s = pipecompare.live.DataState.fromEEG(pipecompare.live.Session.current());
                     n = numel(obj.Plan.enumerate(s, c, struct('maxLeaves', opts.maxLeaves)));
                     prog = pipecompare.gui.Progress(n, any(strcmp({obj.Plan.Slots.id}, 'ica')));
-                    opts.progress = @(k) prog.step(k);
+                    opts.progress = @(k, varargin) prog.step(k, varargin{:});
                 end
                 closeProg = onCleanup(@() delete(prog)); %#ok<NASGU>   % also on an error
                 r = pipecompare.PipeCompare.optimize(obj.Plan, c, opts);

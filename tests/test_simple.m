@@ -439,10 +439,12 @@ end
 function testPopFunctionFromAScript(tc)
 EEG = tc.TestData.EEG;
 nqc_setBase(EEG);
-txt = evalc('[out, com, r] = pop_pipecompare(EEG, ''measure'', ''P3'', ''events'', {''11'', ''31''}, ''recipe'', ''filters'', ''show'', ''off'');');
-verifyLessThanOrEqual(tc, numel(splitlines(strtrim(txt))), 4);  % a summary in the Command Window
-verifyTrue(tc, contains(txt, '12 pipelines compared'));
-verifyTrue(tc, contains(fileread(fullfile(tempdir, 'pipecompare_last_run.log')), 'pop_eegfiltnew'));   % the full log
+[out, com, r] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'recipe', 'filters', 'show', 'off');
+logText = fileread(fullfile(tempdir, 'pipecompare_last_run.log'));   % what the Command Window showed as it ran
+verifyTrue(tc, contains(logText, 'pop_eegfiltnew'));            % every command
+verifyTrue(tc, contains(logText, 'candidate 12'));              % every pipeline
+verifyFalse(tc, contains(logText, 'pipelines compared'));       % not the summary after it
+verifyEqual(tc, char(get(0, 'Diary')), 'off');                  % the diary is off again
 verifyEqual(tc, out, EEG);                                      % the dataset is not modified
 verifyEqual(tc, numel(r.cands), 12);
 verifyEqual(tc, com, ['EEG = pop_pipecompare(EEG, ''measure'',''P3'',''events'',{''11'',''31''},''recipe'',''filters'',', ...
@@ -553,6 +555,34 @@ w = pipecompare.gui.SimpleResults(r); cw = onCleanup(@() delete(w.Fig)); %#ok<NA
 verifyTrue(tc, startsWith(w.Headline.Text, 'Stopped after 3 of 12 pipelines'));
 end
 
+function testProgressIsToldEachStep(tc)
+EEG = tc.TestData.EEG;
+nqc_setBase(EEG);
+c = pipecompare.simple.Presets.contract(EEG, 'P3', {'11', '31'});
+plan = pipecompare.simple.Presets.recipe('filters', pipecompare.live.DataState.fromEEG(EEG), c);
+m = containers.Map({'types'}, {{}});
+r = pipecompare.PipeCompare.optimize(plan, c, struct('progress', @(n, varargin) noteStep(m, varargin{:})));
+verifyTrue(tc, any(strcmp(m('types'), 'highpass')));          % a callback of two arguments hears of each step
+verifyTrue(tc, any(strcmp(m('types'), 'lowpass')));
+verifyEqual(tc, r.notRun, 0);
+end
+
+function testProgressWindowShowsTheStepAndTheTime(tc)
+p = pipecompare.gui.Progress(10, true); c = onCleanup(@() delete(p)); %#ok<NASGU>
+verifyEqual(tc, char(p.Dlg.Indeterminate), 'on');               % moving, with no fill level before the first pipeline
+verifyFalse(tc, p.step(0, struct('type', 'ica', 'params', struct(), 'label', 'ica')));
+msg = @() strjoin(cellstr(p.Dlg.Message), ' ');
+verifyTrue(tc, contains(msg(), 'Now: fitting ICA'));
+t1 = regexp(msg(), 'Time so far: [^.]*', 'match', 'once');
+pause(2.5);                                                     % the time moves while a step runs
+verifyNotEqual(tc, regexp(msg(), 'Time so far: [^.]*', 'match', 'once'), t1);
+verifyFalse(tc, p.step(1));
+verifyEqual(tc, char(p.Dlg.Indeterminate), 'off');
+verifyEqual(tc, p.Dlg.Value, 0.1, 'AbsTol', 1e-12);
+delete(p);
+verifyEmpty(tc, timerfind('Name', 'PipeCompare progress'));     % its clock is gone with it
+end
+
 function testProgressWindowStopsWhenClosed(tc)
 p = pipecompare.gui.Progress(10, false); c = onCleanup(@() delete(p)); %#ok<NASGU>
 verifyFalse(tc, p.step(0));
@@ -586,6 +616,11 @@ verifyEqual(tc, evalin('base', 'numel(ALLEEG)'), n0);           % nothing stored
 w.adopt('Use anyway');
 verifyEqual(tc, evalin('base', 'EEG.setname'), sprintf('%s PipeCompare#%d', EEG.setname, k));
 nqc_setBase(EEG);
+end
+
+function stop = noteStep(m, in)
+if nargin > 1, m('types') = [m('types') {in.type}]; end
+stop = false;
 end
 
 function stop = countTo(m, n, limit)
