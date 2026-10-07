@@ -169,7 +169,7 @@ verifyTrue(tc, all(ismember({'A1', 'POL A2', 'm1', 'EOG1', 'EOG2'}, ex)), strjoi
 verifyFalse(tc, ismember('TP9', ex));
 verifyFalse(tc, any(ismember({'A1', 'POL A2', 'm1'}, P.eegChannels(E))));
 B = E; B.chanlocs(strcmp(L, 'Cz')).labels = 'A3';                 % a numbered cap: A1 is scalp there
-verifyFalse(tc, any(P.isRefSite(B.chanlocs)));
+verifyEqual(tc, {B.chanlocs(P.isRefSite(B.chanlocs)).labels}, {'m1'});   % (the M channels are not numbered)
 T = E; [T.chanlocs.type] = deal('');
 T.chanlocs(strcmp(L, 'F3')).type = 'EEG';                        % typed EEG on purpose: scalp
 T.chanlocs(strcmp(L, 'Pz')).type = 'REF';                        % typed REF: a reference site
