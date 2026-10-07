@@ -14,6 +14,9 @@ from a script whose high-pass PipeCompare now sees (see below).
   are buttons that tick their steps. Steps the data cannot take are greyed out with the reason.
   `pop_pipecompare` takes `'steps'`, e.g. `{'highpass', 'lowpass', 'reject'}`; `'recipe'` works
   as before.
+- Simple mode: the electrodes of a preset (an ERP component, or a band) can be changed with
+  *Electrodes…*; they start from the component's ERP CORE site(s) and several are averaged.
+  N2pc and LRP keep their pair. `pop_pipecompare(..., 'channels', {...})` does the same.
 
 - While a comparison runs, the Command Window prints each step and each finished pipeline as it
   happens (in the simple mode it used to stay silent until the end); the same text is still kept

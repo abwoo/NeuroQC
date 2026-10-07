@@ -140,7 +140,10 @@ pipecompare_setup                         % run from the PipeCompare folder
    frequency band, or your own time window or band with the electrodes you pick. The list only
    offers what the data support. The electrodes and time window of each ERP component are not
    taken from your data but from the published ERP CORE conventions (Kappenman et al., 2021),
-   for example P3 at Pz, 300–600 ms. When several electrodes are chosen, PipeCompare averages
+   for example P3 at Pz, 300–600 ms. You can change a component's electrodes with
+   **Electrodes…** next to its time window (for example Pz, CPz and POz for the P3); the window
+   stays the convention's. N2pc and LRP keep their electrode pair, since they are scored as the
+   difference between the two sides. When several electrodes are chosen, PipeCompare averages
    them first and scores that average waveform; for band power, the power of each chosen
    electrode is computed and then averaged. The simple mode scores one measure per run; to compare pipelines on several
    components at once, each with its own electrodes, use the advanced panel (*Add component…*).
@@ -253,6 +256,9 @@ EEG = pop_pipecompare(EEG, 'measure', 'alpha', 'recipe', 'filters');
 % Only some steps (any of 'badchannels', 'ica', 'highpass', 'lowpass', 'reject'),
 % always run in that order
 EEG = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'target'}, 'steps', {'highpass', 'lowpass', 'reject'});
+
+% A component with your own electrodes instead of its ERP CORE site
+EEG = pop_pipecompare(EEG, 'measure', 'P3', 'channels', {'Pz', 'CPz', 'POz'}, 'events', {'target'});
 
 % Your own window (s) and electrodes; or 'measure', 'band', 'band', [8 12]
 EEG = pop_pipecompare(EEG, 'measure', 'custom', 'window', [0.25 0.5], 'channels', {'Cz', 'CPz'}, ...

@@ -111,6 +111,34 @@ p = pipecompare.simple.Presets.recipe('filters', st, pipecompare.simple.Presets.
 verifyEqual(tc, p.Slots(strcmp({p.Slots.id}, 'lowpass')).alternatives{1}.params.cutoff, {20, 30, 40});   % Filters only compares them
 end
 
+function testPresetElectrodesCanBeChanged(tc)
+% A preset starts from its ERP CORE site(s) (a band from all EEG channels);
+% your electrodes replace them and are averaged. N2pc and LRP keep their pair.
+EEG = tc.TestData.EEG;
+P = pipecompare.simple.Presets;
+own = @(ch) struct('window', [], 'band', [], 'channels', {ch});
+c = P.contract(EEG, 'P3', {'11'}, 2, false, own({'pz', 'Cz'}));
+verifyEqual(tc, c.components.roi, {'Pz', 'Cz'});                 % the dataset's own spelling
+verifyEqual(tc, c.components.window, [0.3 0.6], 'AbsTol', 1e-12);   % the window stays ERP CORE's
+verifyEqual(tc, P.contract(EEG, 'P3', {'11'}).components.roi, {'Pz'});
+b = P.contract(EEG, 'alpha', {}, 2, false, own({'Pz'}));
+verifyEqual(tc, b.bands.roi, {'Pz'});
+verifyError(tc, @() P.contract(EEG, 'N2pc', struct('left', {{'11'}}, 'right', {{'31'}}), 2, false, own({'Pz'})), ...
+    'PipeCompare:Simple');
+d = pipecompare.gui.SimpleDialog(EEG); cleanD = onCleanup(@() delete(d)); %#ok<NASGU>
+d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
+verifyEqual(tc, d.Grid.RowHeight{3}, 22);                       % the electrodes row, for a preset too
+verifyEqual(tc, d.Channels, {'Pz'});
+verifyEqual(tc, d.WindowField.Value, '300 600');
+verifyEmpty(tc, d.options().channels);                          % unchanged: not repeated
+d.Channels = {'Pz', 'Cz'}; d.update();
+o = d.options();
+verifyEqual(tc, o.channels, {'Pz', 'Cz'});
+verifyEqual(tc, d.contract(o).components.roi, {'Pz', 'Cz'});
+d.MeasureDrop.Value = 'N2pc'; d.measureChanged();
+verifyEqual(tc, d.Grid.RowHeight{3}, 0);                        % a fixed pair
+end
+
 function testLateralComponentsScoreContraMinusIpsi(tc)
 % N2pc and LRP are measured contralateral minus ipsilateral (ERP CORE):
 % one condition per side, each scored as the electrode contralateral to
@@ -373,7 +401,7 @@ verifyTrue(tc, ismember('ERP: P3 (Pz, 300-600 ms)', d.MeasureDrop.Items));
 verifyEmpty(tc, d.EventList.Value);
 verifyEqual(tc, pipecompare.simple.Presets.recipeOf(d.chosenSteps()), 'standard');   % preselected
 verifyEqual(tc, char(d.RunButton.Enable), 'off');
-verifyEqual(tc, d.Grid.RowHeight{3}, 0);                        % no custom row for a preset
+verifyEqual(tc, d.Grid.RowHeight{3}, 0);                        % nothing chosen yet
 d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
 [n, msg] = d.update();
 verifyEqual(tc, n, 4 * 3 * 3 * 3);                              % filters x ICLabel threshold x rejection threshold
@@ -533,6 +561,10 @@ verifyTrue(tc, contains(com, '''recipe'',''filters'''));         % the steps of 
 verifyEqual(tc, numel(rs.cands), 12);
 [~, com] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'steps', {'lowpass'}, 'show', 'off');
 verifyTrue(tc, contains(com, '''steps'',{''lowpass''}'));
+[~, com, rc] = pop_pipecompare(EEG, 'measure', 'P3', 'channels', {'Pz', 'Cz'}, 'events', {'11', '31'}, ...
+    'steps', {'lowpass'}, 'show', 'off');
+verifyTrue(tc, contains(com, '''channels'',{''Pz'',''Cz''}'));
+verifyEqual(tc, rc.contract.components.roi, {'Pz', 'Cz'});
 [~, ~, rn] = pop_pipecompare(EEG, 'measure', 'P3', 'events', [11 31], 'recipe', 'filters', 'show', 'off');
 verifyEqual(tc, {rn.contract.conditions.name}, {'11', '31'});    % numeric event types
 [~, com, rl] = pop_pipecompare(EEG, 'measure', 'N2pc', 'left', {'11'}, 'right', 31, 'recipe', 'filters', 'show', 'off');

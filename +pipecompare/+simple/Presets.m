@@ -199,7 +199,10 @@ classdef Presets
             % and right, the event types of each side (target side,
             % response hand), one condition per side. custom: struct with window ([t1
             % t2] s, 'custom'), band ([f1 f2] Hz, 'band') and channels
-            % (labels; for 'band' all EEG channels when empty).
+            % (labels; for 'band' all EEG channels when empty). channels
+            % also replace the electrodes of a preset: an ERP component's
+            % ERP CORE site(s) (not N2pc and LRP, scored on their pair) or
+            % a band's all EEG channels; several are averaged.
             if nargin < 4 || isempty(segment), segment = 2; end
             if nargin < 5, pool = false; end
             if nargin < 6, custom = struct('window', [], 'band', [], 'channels', {{}}); end
@@ -218,7 +221,8 @@ classdef Presets
                     segment = max(segment, ceil(2 / f(1)));   % two cycles of the lowest frequency
                 else
                     f = P.band(measure); name = lower(measure);
-                    roi = P.eegChannels(EEG);
+                    roi = P.channels(labels, custom.channels);
+                    if isempty(roi), roi = P.eegChannels(EEG); end
                 end
                 c = pipecompare.eval.Contract('analysis', 'bandpower', 'segment', segment, 'bands', {name, f, roi});
                 return;
@@ -233,6 +237,11 @@ classdef Presets
                     'baseline', [-0.2 0], 'sites', {roi}, 'window', w, 'polarity', 'positive', 'contra', {{}}, 'side', '');
             else
                 p = P.component(measure);
+                if ~isempty(custom.channels)
+                    assert(isempty(p.contra), 'PipeCompare:Simple', ['%s is scored on the pair %s (contralateral minus ', ...
+                        'ipsilateral); its electrodes cannot be changed here (Advanced... can).'], p.name, strjoin(p.sites, '/'));
+                    p.sites = P.channels(labels, custom.channels);   % your electrodes instead of ERP CORE's
+                end
             end
             if EEG.trials > 1, p = fitEpochs(p, EEG); end
             [ok, at] = ismember(lower(p.sites), lower(labels));

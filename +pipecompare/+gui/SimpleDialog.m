@@ -249,16 +249,23 @@ classdef SimpleDialog < handle
 
         function measureChanged(obj)
             m = obj.MeasureDrop.Value;
+            P = pipecompare.simple.Presets;
             custom = any(strcmp(m, {obj.CustomErp, obj.CustomBand}));
-            obj.Grid.RowHeight{3} = pipecompare.utils.ternary(custom, 22, 0);
-            obj.CustomLabel.Text = pipecompare.utils.ternary(strcmp(m, obj.CustomBand), 'Band (Hz)', 'Window (ms)');
-            obj.WindowField.Placeholder = pipecompare.utils.ternary(strcmp(m, obj.CustomBand), 'e.g. 8 12', 'e.g. 300 600');
-            if custom && ~strcmp(m, obj.ChannelsFor)
-                % a band starts from all EEG channels, as the preset bands;
-                % a window from none
-                obj.Channels = {};
-                if strcmp(m, obj.CustomBand), obj.Channels = pipecompare.simple.Presets.eegChannels(obj.EEG); end
+            band = strcmp(m, obj.CustomBand) || P.isBand(m);
+            % a preset's electrodes can be changed too (not N2pc and LRP,
+            % scored on their pair); its window or band is shown, fixed
+            preset = ~custom && ~strcmp(m, obj.Choose) && ~P.isLateral(m);
+            obj.Grid.RowHeight{3} = pipecompare.utils.ternary(custom || preset, 22, 0);
+            obj.CustomLabel.Text = pipecompare.utils.ternary(band, 'Band (Hz)', 'Window (ms)');
+            obj.WindowField.Placeholder = pipecompare.utils.ternary(band, 'e.g. 8 12', 'e.g. 300 600');
+            obj.WindowField.Editable = pipecompare.utils.ternary(custom, 'on', 'off');
+            if (custom || preset) && ~strcmp(m, obj.ChannelsFor)
+                % a band starts from all EEG channels, a component from its
+                % ERP CORE site(s), your own window from none
+                obj.Channels = obj.defaultChannels(m);
                 obj.WindowField.Value = '';   % ms of a window are not Hz of a band
+                if preset && band, obj.WindowField.Value = sprintf('%g %g', P.band(m)); end
+                if preset && ~band, obj.WindowField.Value = sprintf('%g %g', 1000 * P.component(m).window); end
                 obj.ChannelsFor = m;
             end
             obj.showChannels();
@@ -274,6 +281,15 @@ classdef SimpleDialog < handle
             obj.RightList.Enable = obj.EventList.Enable;
             obj.PoolBox.Enable = pipecompare.utils.ternary(erp && ~lateral, 'on', 'off');   % one condition per side
             obj.update();
+        end
+
+        function c = defaultChannels(obj, m)
+            % the electrodes a measure starts with
+            P = pipecompare.simple.Presets;
+            if strcmp(m, obj.CustomErp), c = {};
+            elseif strcmp(m, obj.CustomBand) || P.isBand(m), c = P.eegChannels(obj.EEG);
+            else, c = P.component(m).sites;
+            end
         end
 
         function pickChannels(obj)
@@ -316,6 +332,12 @@ classdef SimpleDialog < handle
                 if numel(v) ~= 2 || isempty(obj.Channels), o = []; return; end
                 o.channels = obj.Channels;
                 if strcmp(m, obj.CustomErp), o.window = v / 1000; else, o.band = v; end
+            elseif ~lateral
+                % a preset: your electrodes when they differ from its own
+                if isempty(obj.Channels), o = []; return; end
+                if ~isequal(sort(lower(obj.Channels)), sort(lower(obj.defaultChannels(m))))
+                    o.channels = obj.Channels;
+                end
             end
         end
 
@@ -335,6 +357,9 @@ classdef SimpleDialog < handle
                 msg = 'Choose what to measure.';
                 if any(strcmp(obj.MeasureDrop.Value, {obj.CustomErp, obj.CustomBand}))
                     msg = 'Enter two numbers and choose the electrodes.';
+                elseif isempty(obj.Channels) && ~strcmp(obj.MeasureDrop.Value, obj.Choose) && ...
+                        ~pipecompare.simple.Presets.isLateral(obj.MeasureDrop.Value)
+                    msg = 'Choose the electrodes.';
                 elseif obj.isErp()
                     msg = 'Choose the event types.';
                 end

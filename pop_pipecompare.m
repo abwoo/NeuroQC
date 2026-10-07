@@ -13,8 +13,10 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %              see pipecompare.simple.Presets
 %   'window'   'custom': [start end] in s after the event, e.g. [0.3 0.6]
 %   'band'     'band': [low high] in Hz, e.g. [8 12]
-%   'channels' 'custom' and 'band': electrode labels ('band': all EEG
-%              channels when omitted)
+%   'channels' electrode labels, averaged: required for 'custom'; for
+%              'band' and the preset bands all EEG channels when omitted;
+%              for an ERP component, instead of its ERP CORE site(s) (not
+%              N2pc and LRP)
 %   'events'   ERP: the time-locking event types, one condition each
 %   'pool'     ERP: true scores all the event types as one condition
 %              (default false)

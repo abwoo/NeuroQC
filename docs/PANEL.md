@@ -11,7 +11,11 @@ Two choices (what to measure; for ERP, the event types); the steps are preselect
    numbers (window in ms after the event, e.g. `300 600`, or band in Hz, e.g. `8 12`) and pick
    the electrodes with *Electrodes…* (EEGLAB's channel list; a band starts with all EEG
    channels). Your own window uses a −200 ms epoch start and a −200–0 ms baseline, and the band
-   lengthens the segments to hold two cycles of its low edge. ERP: the time-locking event
+   lengthens the segments to hold two cycles of its low edge. A preset's electrodes can be
+   changed the same way: its window (or band) is shown, fixed, next to *Electrodes…*, which starts
+   from the component's ERP CORE site(s) (a preset band from all EEG channels); not for N2pc and
+   LRP, which are scored on their electrode pair. Several electrodes are averaged (ERP: the
+   waveform; band power: each electrode's power). ERP: the time-locking event
    types. Each type is one condition,
    or tick *Score the selected event types as one condition* when several codes mean one
    condition (e.g. one code per block). `boundary` markers are not offered; on epoched data the
