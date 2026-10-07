@@ -320,6 +320,17 @@ med = median(abs(double(x(:))));
 if med > 0 && med < 1e-3
     w{end+1} = sprintf('Median |amplitude| is %.2g: data look like volts, not microvolts. Amplitude thresholds (e.g. 100 uV) would be meaningless.', med);
 end
+% Flat EEG channels (no signal), on up to the first 60 s
+eeg = find(~pipecompare.simple.Presets.isNonEeg(EEG.chanlocs(:)'));
+if numel(eeg) >= 2
+    flat = eeg(pipecompare.run.Steps.flatChannels(EEG.data(eeg, 1:min(EEG.pnts, round(60*EEG.srate)), 1)));
+    if ~isempty(flat)
+        w{end+1} = sprintf(['Flat channel(s), with no signal: %s. The bad-channel step marks them bad; without ', ...
+            'it, remove or interpolate them first (Edit > Select data, Tools > Interpolate electrodes): an ', ...
+            'average reference would otherwise spread the missing signal to every channel.'], ...
+            strjoin({EEG.chanlocs(flat).labels}, ', '));
+    end
+end
 if EEG.srate ~= round(EEG.srate) && abs(EEG.srate - round(EEG.srate)) < 1e-6
     w{end+1} = sprintf('EEG.srate is %.17g, not an exact integer (common after EDF import); ICLabel fails on such data. PipeCompare rounds it on its own copy.', EEG.srate);
 end

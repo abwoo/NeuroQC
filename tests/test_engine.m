@@ -646,6 +646,32 @@ verifyFalse(tc, any(ismember(info.badChannels, {E.chanlocs.labels})));
 verifyEqual(tc, E.nbchan, EEG.nbchan - numel(info.badChannels));
 end
 
+function testFlatChannelsAreBad(tc)
+% A channel with no signal (a constant, or almost nothing) is bad whatever
+% the measures say, and does not keep the others from being detected; the
+% data line names it before the run.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'noisyChannels', {{'T7'}}, 'noisyUv', 200));
+f1 = find(strcmp({EEG.chanlocs.labels}, 'Cz')); f2 = find(strcmp({EEG.chanlocs.labels}, 'O1'));
+EEG.data(f1, :) = 0;                                                % disconnected: a constant
+EEG.data(f2, :) = 1e-3 * randn(1, EEG.pnts);                        % almost nothing
+p = struct('measure', 'kurt+prob', 'threshold', 5, 'exclude', {{'EOG1', 'EOG2'}}, ...
+    'detectHighpass', 1, 'action', 'interpolate');
+[E, coms, info] = pipecompare.run.Steps.badChannels(EEG, p, struct('highpass', 0));
+verifyTrue(tc, all(ismember({'Cz', 'O1', 'T7'}, info.badChannels)), strjoin(info.badChannels, ' '));
+verifyTrue(tc, contains(coms{1}, 'flat channels [Cz O1]'), coms{1});
+verifyGreaterThan(tc, std(double(E.data(f1, :))), 1);              % interpolated from its neighbours
+p.action = 'remove'; p.detectHighpass = 0; p.measure = 'kurt';      % the copy-free path
+[E, ~, info] = pipecompare.run.Steps.badChannels(EEG, p, struct('highpass', 0));
+verifyTrue(tc, all(ismember({'Cz', 'O1'}, info.badChannels)), strjoin(info.badChannels, ' '));
+verifyFalse(tc, any(ismember({'Cz', 'O1'}, {E.chanlocs.labels})));
+s = pipecompare.live.DataState.fromEEG(EEG);
+w = s.warnings(contains(s.warnings, 'Flat channel'));
+verifyNumElements(tc, w, 1);
+verifyTrue(tc, contains(w{1}, 'Cz, O1') && ~contains(w{1}, 'T7'), w{1});
+s = pipecompare.live.DataState.fromEEG(nqc_synth(struct('seconds', 30, 'nPerCond', 5)));
+verifyFalse(tc, any(contains(s.warnings, 'Flat channel')));        % none on normal data
+end
+
 function testFixedEeglabCommandsAreDecisionMatched(tc)
 % A fixed EEGLAB transform re-run on the injected copy is the same
 % operation (not flagged); a data-driven one (pop_rejchan) is flagged.

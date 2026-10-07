@@ -204,6 +204,14 @@ classdef Steps
                 src = pop_eegfiltnew(EEG, 'locutoff', hp, 'plotfreqz', 0, fa{:});
                 on = sprintf(' on a %g Hz high-passed copy', hp);
             end
+            % Flat channels (no signal) are bad whatever the measures say:
+            % kurtosis and probability are undefined on a constant, and left
+            % in, they would also spoil the normalisation over the others.
+            flat = elec(pipecompare.run.Steps.flatChannels(src.data(elec, :, :)));
+            elec = setdiff(elec, flat, 'stable');
+            if ~isempty(flat)
+                pipecompare.utils.log('Flat channel(s) (no signal) marked bad: %s', strjoin({EEG.chanlocs(flat).labels}, ', '));
+            end
             bad = [];
             for m = measures
                 args = {'elec', elec, 'threshold', p.threshold, 'norm', 'on', 'measure', m{1}};
@@ -212,11 +220,14 @@ classdef Steps
                 bad = union(bad, b(:)');
             end
             bad = elec(bad);   % pop_rejchan indexes the tested channels (it removes opt.elec(indelec) itself)
+            on = [on pipecompare.utils.ternary(isempty(flat), '', sprintf('; flat channels [%s] bad', ...
+                strjoin({EEG.chanlocs(flat).labels}, ' ')))];
+            bad = sort([bad flat]);
             labels = {EEG.chanlocs(bad).labels};
             info.badChannels = labels; info.badIdx = bad;
             if strcmp(p.action, 'remove')
                 info.removed = labels;
-                if ~copy && isscalar(measures)
+                if ~copy && isscalar(measures) && isempty(flat)
                     EEG = EEGrem;
                     coms = {com};
                     return;
@@ -237,6 +248,15 @@ classdef Steps
                 [EEG, com2] = pop_interp(EEG, bad, 'spherical');
                 coms{end+1} = com2;
             end
+        end
+
+        function flat = flatChannels(X)
+            % Which rows of X (channels x samples [x epochs]) are flat: a
+            % spread (SD) of zero, or under 1% of the median spread of the
+            % rows (a disconnected input records almost nothing).
+            X = reshape(double(X), size(X, 1), []);
+            sd = std(X, 0, 2)';
+            flat = sd == 0 | sd < 0.01 * median(sd);
         end
 
         function [EEG, coms, info] = listedChannels(EEG, p)

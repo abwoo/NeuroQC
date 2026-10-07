@@ -225,6 +225,11 @@ is used only when no ROI channel has a position. [`pipecompare.eval.Injection`]
   interpolated.
 - **ICLabel needs channel locations.** Its features include the components' scalp maps
   (Pion-Tonachini et al., 2019), so `icremove` and native `pop_iclabel` are excluded without them.
+- **Flat channels are bad.** A channel whose SD is zero or under 1% of the median SD of the
+  channels tested has no signal (e.g. a disconnected input). Kurtosis and joint probability are
+  undefined on a constant, and `pop_rejchan` normalises them over the channels tested, so such a
+  channel is set aside before the measures and marked bad by the `badchannels` step. The data
+  line names flat EEG channels before a run (first 60 s). [`pipecompare.run.Steps.flatChannels`]
 - **Event types are matched exactly.** `pop_epoch` selects events with `strmatch(…, 'exact')`, so
   'S 1' and 's 1' are different types. The contract is validated the same way and names the
   near match.

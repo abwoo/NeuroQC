@@ -88,7 +88,11 @@ pipeline, so that the comparison is about the settings that matter.
    over the whole montage.
 2. **Bad channels are found and repaired.** A channel is marked bad when its signal is much
    spikier (kurtosis) or much noisier (joint probability, e.g. a poorly connected electrode) than
-   the other channels, more than 5 standard deviations away. The test looks at a copy of the data
+   the other channels, more than 5 standard deviations away. A **flat channel** (no signal, as when
+   an electrode is disconnected: its spread is zero or under 1 % of the median spread of the
+   channels tested) is always bad; it is set aside before the two measures, which cannot be
+   computed on a constant and would otherwise be thrown off for all the other channels too. The
+   test looks at a copy of the data
    high-passed at 1 Hz, so slow drifts are not mistaken for bad channels. Bad channels are then
    interpolated from their neighbours (spherical interpolation), so the dataset keeps all its
    channels. EOG, ECG and EMG channels (by channel type, or by name such as VEOG or ECG1) are never
@@ -126,6 +130,9 @@ channels, or any operation from EEGLAB's menus, plugins included.
 
 Along the way PipeCompare also takes care of the following, so you do not have to:
 
+- **It names flat channels** (no signal, e.g. a disconnected electrode) before the run, in the
+  dialog's first line and the panel's data warnings, and the bad-channel step always marks them
+  bad. Without that step, remove or interpolate them yourself before an average reference.
 - **It checks that the channel labels fit the electrode positions** before the run, and names
   channels whose signal does not look like their neighbours' (see [Montage check](#montage-check)).
   This is a warning only.
@@ -320,7 +327,8 @@ pipecompare_setup                         % run from the PipeCompare folder
 
    Bad channels are detected once and ICA is fitted once, before the filters, so every filter
    setting shares one decomposition. A channel is bad when its kurtosis (spiky) or joint
-   probability (noisy, e.g. poor contact) is more than 5 SD from the other channels'. Both steps
+   probability (noisy, e.g. poor contact) is more than 5 SD from the other channels', or when it is
+   flat (no signal). Both steps
    look at a 1 Hz high-passed copy, so slow drifts do not mislead them; the data themselves are
    filtered only by the settings being compared. EOG, ECG
    and EMG channels (by type or by name, such as VEOG) are not tested as bad channels and do not
