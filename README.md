@@ -105,7 +105,25 @@ and `CURRENTSET`, and stores adopted pipelines there.
 
 ## Installation
 
-**From a release (recommended)**
+PipeCompare is listed in EEGLAB's extension manager, so the simplest way to install it is from
+inside EEGLAB. The other two ways are for computers without internet access in MATLAB and for
+working with the source code.
+
+Keep only one copy of PipeCompare in `eeglab/plugins/`. EEGLAB loads every plugin folder it finds,
+so two copies (for example one from the extension manager and one unzipped by hand) both add
+their menus and their functions shadow each other.
+
+**From EEGLAB's extension manager (recommended)**
+
+1. Start EEGLAB and choose **File > Manage EEGLAB extensions**.
+2. Find **PipeCompare** in the list (typing its name in the search field narrows the list), tick
+   it and press **Install/Update**.
+3. The menu **Tools > PipeCompare** appears; if it does not, restart EEGLAB.
+
+EEGLAB downloads the release zip and places it in `eeglab/plugins/PipeCompare<version>/`. When a
+newer version is listed, the same window offers it, and installing it replaces the old folder.
+
+**From a GitHub release**
 
 1. Download `PipeCompare<version>.zip` from the
    [Releases](https://github.com/abwoo/PipeCompare/releases) page.
