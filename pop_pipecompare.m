@@ -154,6 +154,8 @@ detect = pipecompare.simple.Presets.detectableText(result);
 if ~isempty(detect), pipecompare.utils.log('%s', detect); end
 ica = pipecompare.simple.Presets.icaText(result);
 if ~isempty(ica), pipecompare.utils.log('%s', ica); end
+roi = pipecompare.simple.Presets.roiText(result);
+if ~isempty(roi), pipecompare.utils.log('%s', roi); end
 rej = pipecompare.simple.Presets.rejectText(result);
 if ~isempty(rej), pipecompare.utils.log('%s', rej); end
 did = pipecompare.simple.Presets.stepsText(result, result.ranking.recommended);

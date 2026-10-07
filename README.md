@@ -139,6 +139,9 @@ Along the way PipeCompare also takes care of the following, so you do not have t
 - **It tells you when ICA did nothing useful**: when ICLabel recognised almost none of the
   components, or no pipeline removed any component, and when the recording was too short for ICA
   (see [When ICA does nothing](#when-ica-does-nothing)).
+- **It tells you when an electrode you measure was rebuilt** from its neighbours by the
+  recommended pipeline (as a bad channel). A rebuilt electrode has less noise than a real one, so
+  that pipeline's noise looks smaller than it is (see [Reading the result](#reading-the-result)).
 - **It tells you when one channel caused most rejected epochs**, which usually means it is a bad
   channel the detection missed (see [Reading the result](#reading-the-result)).
 
@@ -386,6 +389,14 @@ rejection, it names the channels most often over the rejection limit (likely bad
 remove or interpolate before running again) and, for data that keep their recorded reference,
 suggests the average reference.
 
+When the recommended pipeline interpolated an electrode you measure (it was detected as a bad
+channel, or deleted before PipeCompare and put back), the result says so, for example *Pipeline 3
+rebuilt Pz, which you measure, from the electrodes around it*. A rebuilt electrode is a weighted
+average of its neighbours and has less noise than a real electrode, so that pipeline's noise
+(SME) looks smaller than it is and it is favoured over pipelines that keep the electrode. The
+real electrode's noise cannot be known (it was bad), so this is not corrected; if the electrode is
+really bad, measure at other electrodes (**Electrodes…**) and run again.
+
 When pipelines do pass, PipeCompare still looks at why the recommended pipeline rejected its
 epochs. If one channel (or two or three) was over the limit in at least half of the rejected
 epochs, and in at least 3 of them, the result names it, for example *Most rejected epochs are due
@@ -547,7 +558,10 @@ epoch:
    tested).
 2. If 1, 2 or 3 channels are over the limit, and they all have locations, those channels are
    replaced in that epoch only by spherical-spline interpolation from the other channels of the
-   same epoch (the same computation as EEGLAB's `eeg_interp`), and the epoch is kept.
+   same epoch (the same computation as EEGLAB's `eeg_interp`), and the epoch is kept. An electrode
+   you measure (for example Pz for the P3) is never repaired: if it is one of the channels over the
+   limit, the epoch is rejected. A rebuilt electrode is an average of its neighbours and has less
+   noise than a real one, so repairing it would make the pipeline look more precise than it is.
 3. If more than 3 channels are over the limit, the epoch is rejected as before.
 
 This is the idea of the epoch-level channel interpolation in FASTER (Nolan, Whelan & Reilly,
@@ -691,8 +705,9 @@ descriptive and not used in the ranking. The full derivations are in
 
 - **The analysis contract is fixed by you.** Event types, epoch and baseline windows, regions of
   interest and measurement windows define what is measured, and are never searched.
-- **The signal check is necessary, not sufficient.** The known signal has an assumed topography
-  centred on the region of interest. Real components may be affected differently.
+- **The signal check is necessary, not sufficient.** The known signal has an assumed shape: a
+  smooth bump as wide at half maximum as your measurement window (at least 50 ms), with a
+  topography centred on the region of interest. Real components may be affected differently.
 - **Some steps are re-run on the signal copy.** EEGLAB commands added as steps that make their
   own data-driven decisions, other than mark-and-remove workflows, are re-run on the copy carrying
   the known signal rather than replayed; this includes ASR added as an EEGLAB command. The built-in

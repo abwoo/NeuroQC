@@ -84,6 +84,9 @@ classdef SimpleResults < handle
             % ICA that recognised or removed nothing
             ica = pipecompare.simple.Presets.icaText(obj.Result);
             if ~isempty(ica), t = sprintf('%s %s', t, ica); end
+            % a measured electrode the recommended pipeline interpolated
+            roi = pipecompare.simple.Presets.roiText(obj.Result);
+            if ~isempty(roi), t = sprintf('%s %s', t, roi); end
             % one channel that caused most rejected epochs
             rej = pipecompare.simple.Presets.rejectText(obj.Result);
             if ~isempty(rej), t = sprintf('%s %s', t, rej); end

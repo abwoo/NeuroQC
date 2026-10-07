@@ -803,13 +803,16 @@ ch = find(strcmpi({E.chanlocs.labels}, 'T7')); ch2 = find(strcmpi({E.chanlocs.la
 E.data(ch, :, [3 7 12]) = E.data(ch, :, [3 7 12]) + 500;      % one channel far over the limit
 E.data(ch2, :, 7) = E.data(ch2, :, 7) - 500;                   % two in epoch 7
 E.data(:, :, 20) = E.data(:, :, 20) + 500;                     % every channel: rejected
+pz = find(strcmpi({E.chanlocs.labels}, 'Pz'));
+E.data(pz, :, 25) = E.data(pz, :, 25) + 500;                   % a measured electrode: rejected, not repaired
 in = struct('type', 'reject_threshold', 'params', struct('uv', 400, 'exclude', {{}}, 'interpolate', 3), ...
     'key', 'rej', 'slot', 'rej', 'label', 'rej');
 x = struct('contract', nqc_c(), 'highpass', 0);
 [E2, coms, info] = pipecompare.run.Steps.run(in, E, x);
 verifyEqual(tc, info.epochsInterpolated, 3);
-verifyEqual(tc, info.rejIdx, 20);
-verifyEqual(tc, E2.trials, E.trials - 1);
+verifyEqual(tc, info.epochsNotRepaired, 1);
+verifyEqual(tc, info.rejIdx, [20 25]);
+verifyEqual(tc, E2.trials, E.trials - 2);
 verifyTrue(tc, any(contains(coms, 'pipecompare.run.Steps.interpolateEpochs')));
 [~, R] = evalc('pop_select(E, ''trial'', [3 12])');
 [~, R] = evalc('eeg_interp(R, ch, ''spherical'')');
@@ -822,10 +825,10 @@ S = pipecompare.run.Steps.replayDecision(in, E, info, x);       % the same decis
 verifyEqual(tc, double(S.data), double(E2.data), 'AbsTol', 1e-4);
 in.params.interpolate = 0;                                      % off: rejected
 [~, ~, info0] = pipecompare.run.Steps.run(in, E, x);
-verifyEqual(tc, sort(info0.rejIdx), [3 7 12 20]);
+verifyEqual(tc, sort(info0.rejIdx), [3 7 12 20 25]);
 in.params.interpolate = 1;                                      % epoch 7 has two channels over: rejected
 [~, ~, info1] = pipecompare.run.Steps.run(in, E, x);
-verifyEqual(tc, sort(info1.rejIdx), [7 20]);
+verifyEqual(tc, sort(info1.rejIdx), [7 20 25]);
 end
 
 function testRepairedEpochsInASearch(tc)

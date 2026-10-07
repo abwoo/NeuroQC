@@ -611,6 +611,34 @@ classdef Presets
             t = strtrim([t ' ' t0]);
         end
 
+        function t = roiText(result)
+            % A warning when the recommended pipeline interpolated an
+            % electrode that is measured ('' otherwise): an interpolated
+            % channel is a weighted mean of its neighbours, with less noise
+            % than a real electrode, so its noise (SME) looks smaller than
+            % it is, and pipelines that interpolate it are favoured.
+            t = '';
+            if ~isfield(result, 'cands') || ~isfield(result.cands, 'steps') || ~isfield(result, 'contract') || ...
+                    ~isfield(result, 'ranking') || ~isfield(result.ranking, 'recommended') || isempty(result.ranking.recommended), return; end
+            c = result.cands([result.cands.id] == result.ranking.recommended);
+            if isempty(c), return; end
+            done = {};
+            for q = 1:numel(c.steps)
+                f = c.steps{q};
+                if isfield(f, 'interpolated'), done = [done cellstr(f.interpolated)]; end %#ok<AGROW>
+            end
+            roi = result.contract.allRoi();
+            hit = roi(ismember(lower(roi), lower(done)));
+            if isempty(hit), return; end
+            t = sprintf(['Pipeline %d rebuilt %s, which you measure, from the electrodes around %s (%s marked bad ', ...
+                'or missing). A rebuilt electrode is an average of its neighbours and has less noise than a real one, ', ...
+                'so this pipeline''s noise (SME) looks smaller than it is and it is favoured over pipelines that keep ', ...
+                'the electrode. If %s really bad, consider measuring at other electrodes (Electrodes...).'], ...
+                c.id, strjoin(hit, ', '), pipecompare.utils.ternary(numel(hit) > 1, 'them', 'it'), ...
+                pipecompare.utils.ternary(numel(hit) > 1, 'they were', 'it was'), ...
+                pipecompare.utils.ternary(numel(hit) > 1, 'they are', 'it is'));
+        end
+
         function t = rejectText(result)
             % A hint when one channel caused most of the rejected epochs of
             % the recommended pipeline ('' otherwise): a channel over the

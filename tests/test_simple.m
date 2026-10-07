@@ -916,6 +916,25 @@ t = P.icaText(r);
 verifyTrue(tc, contains(t, 'almost none') && contains(t, 'too little data'), t);
 end
 
+function testMeasuredElectrodeRebuiltIsSaid(tc)
+% When the recommended pipeline interpolated an electrode that is measured,
+% the result says that its noise looks smaller than it is.
+P = pipecompare.simple.Presets;
+r.contract = pipecompare.eval.Contract('conditions', {'t', {'11'}}, 'epoch', [-0.2 1], ...
+    'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz', 'P3'}});
+bc = @(labels) struct('type', 'badchannels', 'params', struct(), 'interpolated', {labels});
+r.ranking = struct('recommended', 2);
+r.cands = struct('id', {1, 2}, 'steps', {{bc({'T7'})}, {bc({'T7', 'Pz'}), struct('type', 'highpass', 'params', struct())}});
+t = P.roiText(r);
+verifyTrue(tc, contains(t, 'Pipeline 2 rebuilt Pz, which you measure') && contains(t, 'looks smaller than it is'), t);
+r.cands(2).steps = {bc({'pz'})};                                 % restore steps give lower-case labels
+verifyTrue(tc, contains(P.roiText(r), 'rebuilt Pz'));
+r.cands(2).steps = {bc({'T7'})};
+verifyEmpty(tc, P.roiText(r));                                   % not a measured electrode
+r.ranking.recommended = [];
+verifyEmpty(tc, P.roiText(r));
+end
+
 function testOneChannelBehindRejectionsIsNamed(tc)
 % A channel over the limit in most of the recommended pipeline's rejected
 % epochs is named (likely a bad channel the detection missed); channels

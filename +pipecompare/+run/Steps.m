@@ -122,7 +122,7 @@ classdef Steps
                     [EEG, com] = pop_rmbase(EEG, b, []);
                     coms = {com};
                 case {'reject_threshold','reject_jointprob','reject_kurtosis'}
-                    [EEG, coms, info] = pipecompare.run.Steps.rejectEpochs(EEG, inst.type, p);
+                    [EEG, coms, info] = pipecompare.run.Steps.rejectEpochs(EEG, inst.type, p, ctx);
                 case 'native'
                     [EEG, coms, info] = pipecompare.run.Steps.native(EEG, p.command);
                 otherwise
@@ -354,7 +354,7 @@ classdef Steps
             end
         end
 
-        function [EEG, coms, info] = rejectEpochs(EEG, type, p)
+        function [EEG, coms, info] = rejectEpochs(EEG, type, p, ctx)
             n0 = EEG.trials;
             cInterp = '';
             chans = 1:EEG.nbchan;
@@ -372,7 +372,7 @@ classdef Steps
                     [EEG, ~, ~, ~, c1] = pop_rejkurt(EEG, 1, chans, p.sd, p.sd, 0, 0, 0, [], 0);
                     marks = EEG.reject.rejkurt; E = pipecompare.utils.fieldOr(EEG.reject, 'rejkurtE');
             end
-            info.epochsInterpolated = 0;
+            info.epochsInterpolated = 0; info.epochsNotRepaired = 0;
             info.epochInterp = struct('chans', {{}}, 'epochs', {{}});
             nMax = pipecompare.utils.fieldOr(p, 'interpolate', 0);
             if nMax > 0 && ~isempty(E) && size(E, 1) == EEG.nbchan
@@ -384,7 +384,20 @@ classdef Steps
                 nf = sum(flagged, 1);
                 ok = @(v) isnumeric(v) && isscalar(v) && isfinite(v);
                 located = arrayfun(@(c) isfield(c, 'X') && ok(c.X) && ok(c.Y) && ok(c.Z), EEG.chanlocs(:)');
-                kept = find(marks(:)' & nf >= 1 & nf <= nMax & ~any(flagged & ~located(:), 1));
+                % never a measured electrode: an interpolated value is a
+                % weighted mean of its neighbours, with less noise than a real
+                % electrode, so repairing it would make the SME look better
+                % than it is; such an epoch is rejected
+                measured = false(1, EEG.nbchan);
+                if nargin > 3 && isfield(ctx, 'contract') && ~isempty(ctx.contract)
+                    measured = ismember(lower({EEG.chanlocs.labels}), lower(ctx.contract.allRoi()));
+                end
+                kept = find(marks(:)' & nf >= 1 & nf <= nMax & ~any(flagged & ~located(:), 1) & ~any(flagged & measured(:), 1));
+                info.epochsNotRepaired = sum(marks(:)' & nf >= 1 & nf <= nMax & any(flagged & measured(:), 1));
+                if info.epochsNotRepaired > 0
+                    pipecompare.utils.log('%d epoch(s) not repaired: an electrode you measure was over the limit in them.', ...
+                        info.epochsNotRepaired);
+                end
                 if ~isempty(kept)
                     [sigs, ~, g] = unique(arrayfun(@(e) mat2str(find(flagged(:, e))'), kept, 'UniformOutput', false));
                     sets = cellfun(@str2num, sigs(:)', 'UniformOutput', false); %#ok<ST2NM> (mat2str of index vectors)
