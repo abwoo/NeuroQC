@@ -91,7 +91,7 @@ jobs:
           command: |
             disp(version); addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
             cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
-            % R2022b and R2023a: MATLAB's uialert never returns on this virtual display
+            % R2022b and R2023a: MATLAB's uialert and uiprogressdlg never return on this virtual display
             if any(strcmp(version('-release'), {'2022b', '2023a'})), addpath(fullfile(pwd, 'tests', 'shims')); end
             r = run_all({'test_history', 'test_plan', 'test_panel_text', 'test_statistics', 'test_invariants', ...
                          'test_simple', 'test_eeglab', 'test_signal', 'test_engine'});
