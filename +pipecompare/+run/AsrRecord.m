@@ -12,7 +12,7 @@ classdef AsrRecord
     %   previous and the new R with a raised cosine. Given the sequence of
     %   R, the operation is linear. record() recomputes that sequence for
     %   the call PipeCompare makes (pop_clean_rawdata with only the burst
-    %   criterion, Euclidean distance, MaxMem 64), using clean_rawdata's own
+    %   criterion, Euclidean distance, MaxMem from maxMemMB), using clean_rawdata's own
     %   calibration (clean_windows, asr_calibrate); apply() applies the same
     %   decisions to any data of the same size (e.g. the injected signal).
     %
@@ -28,11 +28,19 @@ classdef AsrRecord
     %   EEGLAB's own output; otherwise ASR is re-run (and flagged).
 
     properties (Constant)
-        MaxMemMB = 64          % passed to pop_clean_rawdata ('MaxMem')
         MaxStoredMB = 300      % above this the decisions are not stored
     end
 
     methods (Static)
+        function mb = maxMemMB(C, fs)
+            % 'MaxMem' passed to pop_clean_rawdata: 64 MB, or more when ASR's
+            % lookahead buffer (C*C*P*24 bytes) needs it. clean_rawdata
+            % before 2.8 (EEGLAB 2022) stops with "Not enough memory"
+            % instead of raising it (many channels or high sampling rates).
+            P = round(max(0.5, 1.5 * C / fs) / 2 * fs);
+            mb = max(64, ceil(2 * C * C * P * 24 / 2^20));
+        end
+
         function rec = record(EEG, cutoff)
             % Same defaults as clean_asr when called by clean_artifacts.
             X0 = double(EEG.data);
@@ -45,7 +53,7 @@ classdef AsrRecord
             if exist('hlp_diskcache', 'file')
                 [~, state] = evalc('hlp_diskcache(''filterdesign'', @asr_calibrate, ref.data, ref.srate, cutoff)');
             else
-                [~, state] = evalc('asr_calibrate(ref.data, ref.srate, cutoff, [], [], [], [], [], [], [], pipecompare.run.AsrRecord.MaxMemMB)');
+                [~, state] = evalc('asr_calibrate(ref.data, ref.srate, cutoff, [], [], [], [], [], [], [], pipecompare.run.AsrRecord.maxMemMB(C, fs))');
             end
             pad = round(windowlen / 2 * fs);
             S = n + pad;
@@ -54,7 +62,7 @@ classdef AsrRecord
             sigData = padded(X0, pad);
             carry = repmat(2 * sigData(:, 1), 1, P) - sigData(:, 1 + mod(((P + 1):-1:2) - 1, S));
             D = [carry sigData]; D(~isfinite(D)) = 0;
-            maxmem = pipecompare.run.AsrRecord.MaxMemMB;
+            maxmem = pipecompare.run.AsrRecord.maxMemMB(C, fs);
             assert(maxmem * 1024 * 1024 - C * C * P * 8 * 3 >= 0, 'PipeCompare:Asr', 'ASR memory split not reproducible.');
             splits = ceil((C*C*S*8*8 + C*C*8*S/stepsize + C*S*8*2 + S*8*5) / (maxmem*1024*1024 - C*C*P*8*3));
             splits = min(splits, 10000);

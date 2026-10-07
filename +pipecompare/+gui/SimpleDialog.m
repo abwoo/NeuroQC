@@ -76,7 +76,7 @@ classdef SimpleDialog < handle
             obj.Types = s.eventTypes(keep); obj.Counts = s.eventCounts(keep);
             [isLock, at] = ismember(obj.Types, s.lockingTypes);
             obj.Counts(isLock) = s.lockingCounts(at(isLock));
-            obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', [200 100 720 696], ...
+            obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', pipecompare.utils.onScreen([200 100 720 696]), ...
                 'CloseRequestFcn', @(~, ~) obj.close());
             g = uigridlayout(obj.Fig, [9 2]); obj.Grid = g;
             g.RowHeight = {'fit', 22, 0, '1x', 22, 'fit', 22, 44, 30};

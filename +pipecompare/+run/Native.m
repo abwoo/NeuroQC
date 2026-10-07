@@ -372,7 +372,7 @@ classdef Native
             slow = {'resample','highpass','lowpass','linenoise','filter','asr','badchannels','ica'};
             if any(strcmp(type, slow))
                 if EEG.trials == 1
-                    EEG = pop_select(EEG, 'time', [0 min(30, (EEG.pnts - 1) / EEG.srate)]);
+                    EEG = pipecompare.utils.selectPoints(EEG, 'time', [0 min(30, (EEG.pnts - 1) / EEG.srate)]);
                 else
                     EEG = pop_select(EEG, 'trial', 1:min(20, EEG.trials));
                 end
@@ -425,6 +425,18 @@ classdef Native
             else
                 tryStr = 'try, ';
                 catchStr = ' catch, eeglab_error; LASTCOM = ''''; end; eeglab_new;';
+                if ~exist('eeglab_new', 'file')   % EEGLAB before 2023.0: its own strings, spelled out
+                    catchStr = ' catch, eeglab_error; LASTCOM = ''''; end; EEG = eegh(LASTCOM, EEG); if ~isempty(LASTCOM) && ~isempty(EEG), ';
+                    if store
+                        catchStr = [catchStr '[ALLEEG, EEG] = eeg_store(ALLEEG, EEG, CURRENTSET); ', ...
+                            'eegh(''[ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);''); end; eeglab(''redraw'');'];
+                    else
+                        % (DEBUG_EEGLAB_MENUS: no "new dataset" dialog, as in eeglab_new)
+                        catchStr = [catchStr 'if exist(''DEBUG_EEGLAB_MENUS'', ''var''), [ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG, CURRENTSET); ', ...
+                            'else, [ALLEEG, EEG, CURRENTSET, LASTCOM] = pop_newset(ALLEEG, EEG, CURRENTSET, ''study'', ~isempty(STUDY)+0); ', ...
+                            'eegh(LASTCOM); end; end; eeglab(''redraw'');'];
+                    end
+                end
             end
         end
     end

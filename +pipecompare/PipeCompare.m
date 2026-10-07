@@ -22,7 +22,7 @@ classdef PipeCompare
     %   See pipecompare.plan.Plan, pipecompare.eval.Contract, pipecompare.eval.Rank.
 
     properties (Constant)
-        Version = '0.9.2'
+        Version = '0.9.3'
     end
 
     methods (Static)
@@ -65,7 +65,16 @@ classdef PipeCompare
             % single recommendation) or none feasible it is an error and
             % no file is written.
             idx = pipecompare.run.Executor.pickCandidate(result, idx);
-            [~, name] = fileparts(file);
+            [folder, name] = fileparts(file);
+            % the file name is the function's name: a valid MATLAB name
+            % that is not already a function (EEGLAB's own, for example)
+            assert(isvarname(name), 'PipeCompare:Export', ['"%s" cannot be the name of a MATLAB function: use only ', ...
+                'English letters, digits and underscores, starting with a letter (for example my_pipeline.m).'], name);
+            if isempty(folder), folder = pwd; end
+            if ~startsWith(folder, filesep) && isempty(regexp(folder, '^[A-Za-z]:', 'once')), folder = fullfile(pwd, folder); end
+            w = which(name);
+            assert(isempty(w) || strcmp(w, fullfile(folder, [name '.m'])), 'PipeCompare:Export', ...
+                '"%s" is already the name of a MATLAB or EEGLAB function (%s): choose another file name.', name, w);
             c = result.contract;
             L = {sprintf('function EEG = %s(EEG)', name), ...
                 sprintf('%% PipeCompare %s, pipeline %d: %s', pipecompare.PipeCompare.Version, idx, result.labels{idx}), ...
@@ -104,7 +113,7 @@ classdef PipeCompare
             L = [L {'    };', 'EEG = pipecompare.PipeCompare.apply(EEG, steps, contract);', 'end', '', ...
                 sprintf('%% The EEGLAB commands this pipeline ran on %s:', result.state.setname)}, ...
                 cellfun(@(x) ['% ' strrep(x, newline, [newline '% '])], scriptLines(result, idx), 'UniformOutput', false)];
-            fid = fopen(file, 'w'); assert(fid > 0, 'PipeCompare:Export', 'Cannot write %s', file);
+            fid = fopen(file, 'w', 'n', 'UTF-8'); assert(fid > 0, 'PipeCompare:Export', 'Cannot write %s', file);
             fprintf(fid, '%s\n', L{:}); fclose(fid);
             pipecompare.utils.log('Wrote %s', file);
         end

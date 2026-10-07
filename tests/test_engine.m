@@ -433,7 +433,7 @@ function testRestoreChannelsRemovedBeforePipeCompare(tc)
 % by the plan (restore demanded a removal inside the plan).
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
 n = EEG.nbchan;
-EEG = pop_select(EEG, 'rmchannel', {'O1', 'O2'});
+EEG = pop_select(EEG, 'nochannel', {'O1', 'O2'});
 assert(numel(EEG.chaninfo.removedchans) >= 2);
 nqc_setBase(EEG);
 p = pipecompare.plan.Plan(); p = p.add('highpass', 'cutoff', 0.1); p = p.add('restore'); p = p.add('epoch'); p = p.add('baseline');
@@ -771,7 +771,7 @@ function testRoiOnAChannelRestoredByThePlan(tc)
 % The ROI check must not refuse this, the restored Pz carries the known
 % signal, and a pipeline without the restore fails with that reason.
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0));
-E = pop_select(EEG, 'rmchannel', {'Pz'});
+E = pop_select(EEG, 'nochannel', {'Pz'});
 nqc_setBase(E);
 c = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
     'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz'}});
@@ -1038,4 +1038,31 @@ M = load(fullfile(d, 'manifest.mat'));
 verifyEmpty(tc, M.result.options.progress);
 res = pipecompare.PipeCompare.resume(d);
 verifyTrue(tc, all(strcmp({res.cands.status}, 'ok')));
+end
+
+function testIcaMatchesPopRunica(tc)
+% EEGLAB before 2025.1 opens runica's Interrupt window for every
+% pop_runica call; there PipeCompare fits ICA itself, as pop_runica does
+% (same rank, weights and component order), without that window.
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10, 'artifactTrials', 0));
+[~, EEG] = evalc('pop_reref(EEG, [])');   % rank deficient: PCA to one dimension less
+in = struct('type', 'ica', 'params', struct('extended', 1, 'fitHighpass', 0, 'fitClean', 0), ...
+    'key', 'ica', 'slot', 'ica', 'label', 'ica');
+[~, A] = evalc('pipecompare.run.Steps.run(in, EEG, struct())');
+[~, B] = evalc('pop_runica(EEG, ''icatype'', ''runica'', ''extended'', 1, ''rndreset'', ''no'', ''interrupt'', ''off'')');
+verifyEqual(tc, size(A.icaweights), size(B.icaweights));
+verifyEqual(tc, A.icaweights, B.icaweights, 'AbsTol', 1e-8);
+verifyEqual(tc, A.icasphere, B.icasphere, 'AbsTol', 1e-8);
+verifyEqual(tc, double(A.icawinv), double(B.icawinv), 'AbsTol', 1e-6);
+end
+
+function testAsrMemoryFitsManyChannels(tc)
+% clean_rawdata before 2.8 (EEGLAB 2022) stops with "Not enough memory"
+% when MaxMem cannot hold ASR's lookahead buffer: it is raised with the
+% number of channels and the sampling rate, and stays 64 MB otherwise.
+verifyEqual(tc, pipecompare.run.AsrRecord.maxMemMB(64, 1000), 64);
+for cf = [64 1000; 160 1000; 256 2048]'
+    C = cf(1); P = round(max(0.5, 1.5 * C / cf(2)) / 2 * cf(2));
+    verifyGreaterThan(tc, pipecompare.run.AsrRecord.maxMemMB(C, cf(2)) * 2^20, C * C * P * 24);
+end
 end

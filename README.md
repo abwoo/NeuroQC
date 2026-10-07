@@ -3,7 +3,7 @@
 **Data-driven comparison of EEG preprocessing pipelines in EEGLAB.**
 
 [![MATLAB tests](https://github.com/abwoo/PipeCompare/actions/workflows/matlab-tests.yml/badge.svg)](https://github.com/abwoo/PipeCompare/actions/workflows/matlab-tests.yml)
-![Version](https://img.shields.io/badge/version-0.9.2-2f6fed)
+![Version](https://img.shields.io/badge/version-0.9.3-2f6fed)
 ![MATLAB](https://img.shields.io/badge/MATLAB-R2021b%2B-orange)
 ![EEGLAB](https://img.shields.io/badge/EEGLAB-2024.2%2B-blueviolet)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -227,17 +227,29 @@ epochs) from each recording's own data.
 | Component | Requirement |
 |---|---|
 | MATLAB | R2021b or later (see the tested versions below). GNU Octave is not supported: the interface uses `uifigure`. |
-| [EEGLAB](https://github.com/sccn/eeglab) | 2024.2.1 or later. The PipeCompare menu and *Add EEGLAB menu step…* need EEGLAB's main window; scripts also run after `eeglab nogui` |
+| [EEGLAB](https://github.com/sccn/eeglab) | 2022.0 or later. The PipeCompare menu and *Add EEGLAB menu step…* need EEGLAB's main window; scripts also run after `eeglab nogui` |
 | EEGLAB plugins | firfilt (bundled with EEGLAB); ICLabel for IC removal; clean_rawdata for ASR |
 | Optional | Parallel Computing Toolbox, for parallel execution; Signal Processing Toolbox, for ASR at sampling rates other than 100, 128, 200, 256, 300, 500 and 512 Hz and for faster low-frequency high-pass filtering |
 
 MATLAB R2026a with EEGLAB 2026.0.0 is the combination run by hand
 ([docs/COVERAGE.md](docs/COVERAGE.md)). Continuous integration runs the full automated test suite
-on MATLAB R2021b, R2023b, R2024b and the latest release with EEGLAB 2026.0.0, on the latest MATLAB
-with EEGLAB 2024.2.1, 2025.1.0 and the current head of EEGLAB's default branch. MATLAB R2022b is
-not in that list: in the test machines' virtual display one dialog test stops responding inside
-MATLAB's own alert window, so that release is untested. Older MATLAB and EEGLAB releases have not
-been tested. PipeCompare reads the current dataset from EEGLAB's base-workspace variables `EEG`, `ALLEEG`
+on every MATLAB release from R2021b to R2026a and the latest release with EEGLAB 2026.0.0, and on
+every EEGLAB release from 2022.0 to 2025.1.0 with both MATLAB R2022a and the latest MATLAB. On
+R2022b and R2023a, MATLAB's own message box (`uialert`) and progress box (`uiprogressdlg`) never
+return on the test machines' virtual display, even in an empty window, so there the tests use
+stand-ins that print the messages instead of drawing the boxes.
+
+Two known problems of older EEGLAB releases, which PipeCompare works around or reports:
+
+- EEGLAB 2024.0 and older, on recent MATLAB releases, stop with "Colon operands must be real
+  scalars" when cutting time ranges out of continuous data (EEGLAB's own *Edit > Select data*).
+  PipeCompare makes these cuts itself when that happens, with the same result.
+- EEGLAB 2024.0 comes with ICLabel 1.5, which classifies components wrongly (its scalp maps are
+  rotated, so eye components are mostly missed). When IC removal runs with that ICLabel, the
+  Command Window shows a warning; update ICLabel to 1.6 or later in *File > Manage EEGLAB
+  extensions* before comparing pipelines with IC removal.
+
+PipeCompare reads the current dataset from EEGLAB's base-workspace variables `EEG`, `ALLEEG`
 and `CURRENTSET`, and stores adopted pipelines there.
 
 ## Installation
@@ -634,7 +646,33 @@ channels are those over the per-channel limit.
 
 ### From the command line
 
-The menu dialog records an equivalent command in EEGLAB's command history (`ALLCOM`):
+Everything in the menu can also be started from MATLAB's Command Window. PipeCompare works on the
+dataset that is current in EEGLAB, so start EEGLAB and load the dataset first; this creates the
+variables `EEG`, `ALLEEG` and `CURRENTSET` that PipeCompare reads and writes:
+
+```matlab
+eeglab                                                       % start EEGLAB (adds PipeCompare to the path)
+EEG = pop_loadset('filename', 'mydata.set', 'filepath', '/path/to/folder');
+[ALLEEG, EEG, CURRENTSET] = eeg_store(ALLEEG, EEG, 0);       % make it the current EEGLAB dataset
+eeglab redraw
+```
+
+When the dataset is already open in EEGLAB's window, skip these lines. If `EEG` in the Command
+Window is not the dataset selected in EEGLAB (for example after `EEG = ...` on another dataset),
+`pop_pipecompare` stops with *make this dataset current first*; `EEG = ALLEEG(CURRENTSET);` makes
+them the same again.
+
+Open the windows of the menu:
+
+```matlab
+[EEG, LASTCOM] = pop_pipecompare(EEG); if ~isempty(LASTCOM), eegh(LASTCOM); end   % the simple dialog (Tools > PipeCompare > Compare pipelines...)
+pipecompare.PipeCompare.app();                          % the advanced panel (Tools > PipeCompare > Advanced panel...)
+```
+
+`eegh(LASTCOM)` adds the command that repeats your choices to EEGLAB's history, as the menu does.
+
+Or skip the dialog and give the choices as options. The menu dialog records an equivalent
+command in EEGLAB's command history (`ALLCOM`):
 
 ```matlab
 % ERP: compare pipelines for the P3, one condition per event type
@@ -662,8 +700,32 @@ EEG = pop_pipecompare(EEG, 'measure', 'custom', 'window', [0.25 0.5], 'channels'
     'events', {'target'}, 'recipe', 'standard');
 ```
 
-Replace `'target'` and `'standard'` with the event types in your dataset. The dataset is returned
-unchanged, and the result is also stored in the base-workspace variable `pipecompare_result`. Type
+Replace `'target'` and `'standard'` with the event types in your dataset. With options, the
+progress window (with **Stop**) and the result window open as from the menu; add `'show', 'off'`
+to run without any window, for example in a script that runs unattended (the Command Window
+still prints each step):
+
+```matlab
+EEG = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'target'}, 'reference', 'average', 'show', 'off');
+```
+
+The dataset is returned unchanged. The result is stored in the variable `pipecompare_result`
+(also the third output, `[EEG, com, result] = pop_pipecompare(...)`), and these commands do what
+the result window's buttons do:
+
+```matlab
+pipecompare.PipeCompare.adopt(pipecompare_result);           % Use this pipeline: new EEGLAB dataset, now current
+pipecompare.PipeCompare.adopt(pipecompare_result, 12);       % ... or pipeline 12 (one that passed the checks)
+pipecompare.PipeCompare.writeScript(pipecompare_result, [], 'my_pipeline.m');   % Save script...
+pipecompare.PipeCompare.script(pipecompare_result);          % print the recommended pipeline's EEGLAB commands
+```
+
+After `adopt`, `EEG` in the Command Window is the new dataset (cut into epochs and cleaned); save
+it with `pop_saveset`. The saved script is a function: run it on any recording with the same
+channels and event types, for example `EEG = my_pipeline(EEG);` (the file must be in the current
+folder or on the MATLAB path). The file name is the function's name, so it may contain only
+English letters, digits and underscores, must start with a letter, and must not be the name of an
+existing MATLAB or EEGLAB function (such as `pop_epoch`); PipeCompare refuses other names. Type
 `help pop_pipecompare` for all options.
 
 ## Scripting interface
@@ -820,7 +882,7 @@ If you use PipeCompare in published work, please cite it:
   author  = {abwoo},
   title   = {PipeCompare: data-driven comparison of EEG preprocessing pipelines in EEGLAB},
   year    = {2026},
-  version = {0.9.2},
+  version = {0.9.3},
   url     = {https://github.com/abwoo/PipeCompare}
 }
 ```

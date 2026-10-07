@@ -283,7 +283,7 @@ verifyEqual(tc, V('resample', com, EEG), struct('fs', 125));
 verifyEqual(tc, V('reref', com, EEG), struct('mode', 'channels', 'channels', {L(5:6)}, 'exclude', {L(1)}));
 [~, com] = pop_reref(EEG, []);
 verifyEqual(tc, V('reref', com, EEG), struct('mode', 'average'));
-[~, com] = pop_select(EEG, 'rmchannel', {'O1', 'O2'});
+[~, com] = pop_select(EEG, 'nochannel', {'O1', 'O2'});
 verifyEqual(tc, V('channels', com, EEG), struct('labels', {{'O1', 'O2'}}, 'action', 'remove'));
 [~, ~, com] = pop_eegthresh(Ep, 1, 1:30, -80, 80, -0.2, 0.996, 0, 0);
 verifyEqual(tc, V('reject_threshold', com, Ep), struct('exclude', {L(31:32)}, 'uv', 80));
@@ -352,16 +352,28 @@ nqc_setBase(EEG);
 app = pipecompare.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.EpochField.Value = '-0.2 1';   % set by the user (nothing is prefilled)
 app.addCondition('target', {'11'}); app.addCondition('standard', {'31'});
-[~, com] = pop_select(EEG, 'time', [30 120]);          % what EEGLAB's data selection returns
+com = selectCom(EEG, 'time', [30 120]);                % what EEGLAB's data selection returns
 app.trialRuleFromTimeSelection(com, 120);
 verifyEqual(tc, app.TrialRule.ranges, [30 120]);
-[~, com] = pop_select(EEG, 'notime', [0 30; 100 110]);  % removed ranges -> kept complement
+com = selectCom(EEG, 'notime', [0 30; 100 110]);      % removed ranges -> kept complement
 app.trialRuleFromTimeSelection(com, 120);
 verifyEqual(tc, app.TrialRule.ranges, [30 100; 110 120]);
 verifyTrue(tc, contains(app.TrialLabel.Text, 'pop_select'));
 lat = ([EEG.event.latency] - 1) / EEG.srate;
 n = sum(strcmp({EEG.event.type}, '11') & ((lat >= 30 & lat < 100) | (lat >= 110 & lat < 120)));
 verifyTrue(tc, contains(app.SummaryLabel.Text, sprintf('target %d of 30', n)));
+end
+
+function com = selectCom(EEG, opt, val)
+% The command EEGLAB's pop_select returns. EEGLAB 2024.0 and older stop in
+% eegrej on recent MATLAB releases before returning it; it is then written
+% as pop_select writes it.
+try
+    [~, com] = pop_select(EEG, opt, val);
+catch ME
+    if ~strcmp(ME.identifier, 'MATLAB:colon:operandsNotRealScalar'), rethrow(ME); end
+    com = sprintf('EEG = pop_select( EEG, %s);', vararg2str({opt, val}));
+end
 end
 
 function testEveryPartShowsItsFullContent(tc)
@@ -459,7 +471,8 @@ Ep2 = Ep; Ep2.setname = 'other'; Ep2 = pop_select(Ep2, 'trial', 1:20);
 nqc_setBase(Ep2); app.refreshLive(false);
 verifyEqual(tc, app.CondField.Value, 'target: 11; standard: 31');              % typed: kept
 verifyEqual(tc, str2num(app.EpochField.Value), [Ep2.xmin Ep2.xmax], 'AbsTol', 1e-3); %#ok<ST2NM>
-NL = EEG; NL.chanlocs = rmfield(NL.chanlocs, {'X', 'Y', 'Z'});
+NL = EEG; NL.chanlocs = rmfield(NL.chanlocs, intersect(fieldnames(NL.chanlocs), {'X', 'Y', 'Z', 'theta', 'radius', ...
+    'sph_theta', 'sph_phi', 'sph_radius'}));   % no positions in any form (older EEGLAB rebuilds X, Y, Z from the others)
 nqc_setBase(NL); app.refreshLive(false);
 verifyTrue(tc, contains(app.DatasetLabel.Text, 'channel locations: NONE'));
 end
@@ -816,6 +829,12 @@ r = pipecompare.PipeCompare.optimize(p, c);
 d = tempname; mkdir(d); cleanup = onCleanup(@() rmdir(d, 's')); %#ok<NASGU>
 f = fullfile(d, 'nqc_pipeline_test.m');
 pipecompare.PipeCompare.writeScript(r, 1, f);
+% the file name is the function's name: refused when MATLAB cannot call it
+% or when it would hide an EEGLAB function
+for bad = {'my pipeline.m', 'pipeline-final.m', '1st.m', 'pop_epoch.m'}
+    verifyError(tc, @() pipecompare.PipeCompare.writeScript(r, 1, fullfile(d, bad{1})), 'PipeCompare:Export', bad{1});
+    verifyFalse(tc, isfile(fullfile(d, bad{1})), bad{1});
+end
 addpath(d); c2 = onCleanup(@() rmpath(d)); %#ok<NASGU>
 out = nqc_pipeline_test(EEG);
 m = pipecompare.eval.Measure.candidate(out, c, r.ref);

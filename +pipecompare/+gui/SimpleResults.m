@@ -25,7 +25,7 @@ classdef SimpleResults < handle
     methods
         function obj = SimpleResults(result)
             obj.Result = result;
-            obj.Fig = uifigure('Name', 'Pipeline comparison', 'Position', [220 120 900 540]);
+            obj.Fig = uifigure('Name', 'Pipeline comparison', 'Position', pipecompare.utils.onScreen([220 120 900 540]));
             g = uigridlayout(obj.Fig, [5 1]); g.RowHeight = {'fit', '1x', 22, 150, 30};
             obj.Headline = uilabel(g, 'Text', obj.headline(), 'WordWrap', 'on', 'FontWeight', 'bold', ...
                 'VerticalAlignment', 'top');

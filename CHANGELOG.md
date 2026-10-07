@@ -3,7 +3,35 @@
 All notable changes. Versions follow `PipeCompare.Version` (`NeuroQC.Version` up to 0.7.1); each
 release has a git tag `vX.Y.Z`.
 
-## Unreleased
+## 0.9.3 (2026-10-07)
+
+PipeCompare now works with EEGLAB 2022.0 and later (it needed 2024.2.1).
+
+- EEGLAB 2022.0 to 2024.2: menu items, removing channels, the dataset history in the panel and
+  cutting data work there too. On EEGLAB 2024.0 and older with recent MATLAB, cutting time ranges
+  out of continuous data no longer stops with "Colon operands must be real scalars".
+- A warning in the Command Window when IC removal runs with ICLabel 1.5 (bundled with EEGLAB
+  2024.0), which classifies components wrongly; update ICLabel to 1.6 or later.
+- EEGLAB 2022.0 to 2024.2: ICA no longer opens runica's *Interrupt* window for every fit (a click
+  stopped the fit half way). PipeCompare fits ICA there as pop_runica does, without the window.
+- EEGLAB 2022: ASR no longer stops with "Not enough memory" for many channels or high sampling
+  rates; the memory ASR may use is raised to what its buffer needs (64 MB as before otherwise).
+- EEGLAB 2025.1 and later: a channel removed by re-referencing to it before PipeCompare is no
+  longer taken for a removed channel and interpolated back.
+- Interpolated bad channels and listed channels are now written in `EEG.history` (EEGLAB's
+  pop_interp gives no command when called from a script, so the line was missing).
+- *Save script…* refuses file names that MATLAB cannot use as a function name (spaces, Chinese
+  characters, hyphens, a leading digit) or that would hide an existing MATLAB or EEGLAB function,
+  and writes the file in UTF-8.
+- Without the firfilt plugin, filter steps (and the high-passed copies for bad-channel detection
+  and ICA) are refused before the search with that reason, instead of failing in every pipeline.
+- `pop_pipecompare` accepts options written as MATLAB strings (`"P3"`), which made it stop after
+  the search.
+- The dialog, the panel and the results window fit on small screens (e.g. 1366 x 768) instead of
+  opening with the title bar off screen.
+- The full test suite runs automatically on every MATLAB release from R2021b to R2026a and on every
+  EEGLAB release from 2022.0 to 2026.0.0. The README lists the combinations.
+- README: how to start PipeCompare and use its results from the MATLAB command line.
 
 Recommendations can change: ICA is now fitted without the noisiest stretches of data, the signal check now uses a known signal as wide as the measurement
 window, which excludes a 1 Hz high-pass for broad components such as the LRP, and repairs never

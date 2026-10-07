@@ -68,6 +68,7 @@ if nargin < 2
 else
     opts = struct('measure', '', 'events', {{}}, 'left', {{}}, 'right', {{}}, 'pool', false, 'window', [], 'band', [], ...
         'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'reference', 'asis', 'segment', 2, 'show', 'on');
+    [varargin{:}] = convertStringsToChars(varargin{:});   % "P3" as well as 'P3'
     for k = 1:2:numel(varargin)
         f = lower(char(varargin{k}));
         assert(isfield(opts, f), 'PipeCompare:Simple', ['Unknown option %s (measure, events, left, right, pool, window, ', ...
