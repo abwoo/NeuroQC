@@ -138,7 +138,12 @@ pipecompare_setup                         % run from the PipeCompare folder
 2. Open **Tools > PipeCompare > Compare pipelines…**
 3. Choose what to measure: an ERP component (with the event types it is time-locked to) or a
    frequency band, or your own time window or band with the electrodes you pick. The list only
-   offers what the data support.
+   offers what the data support. The electrodes and time window of each ERP component are not
+   taken from your data but from the published ERP CORE conventions (Kappenman et al., 2021),
+   for example P3 at Pz, 300–600 ms. When several electrodes are chosen, PipeCompare averages
+   them first and scores that average waveform; for band power, the power of each chosen
+   electrode is computed and then averaged. The simple mode scores one measure per run; to compare pipelines on several
+   components at once, each with its own electrodes, use the advanced panel (*Add component…*).
 
    Then tick the steps you want. They are listed in the order they run, and that order is fixed,
    so you only decide which steps are done, never in which order:
