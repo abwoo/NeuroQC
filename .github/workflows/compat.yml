@@ -19,15 +19,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # R2021b on Ubuntu 22.04, the newest Ubuntu MathWorks supports for it.
-          # R2022b is not in the list: on this virtual display a dialog test
-          # hangs inside MATLAB's own uialert (on Ubuntu 22.04 and 24.04)
+          # R2021b-R2023a on Ubuntu 22.04, the newest Ubuntu MathWorks supports for them.
+          # every MATLAB release with the current EEGLAB
           - { matlab: R2021b, eeglab: 2026.0.0, os: ubuntu-22.04 }
           - { matlab: R2022a, eeglab: 2026.0.0, os: ubuntu-22.04 }
           - { matlab: R2022b, eeglab: 2026.0.0, os: ubuntu-22.04 }
+          - { matlab: R2023a, eeglab: 2026.0.0, os: ubuntu-22.04 }
           - { matlab: R2023b, eeglab: 2026.0.0 }
+          - { matlab: R2024a, eeglab: 2026.0.0 }
           - { matlab: R2024b, eeglab: 2026.0.0 }
-          - { matlab: R2022a, eeglab: '2022.0', os: ubuntu-22.04 }
+          - { matlab: R2025a, eeglab: 2026.0.0 }
+          - { matlab: R2025b, eeglab: 2026.0.0 }
+          - { matlab: R2026a, eeglab: 2026.0.0 }
+          - { matlab: latest, eeglab: 2026.0.0 }
+          # every EEGLAB release with the newest MATLAB
           - { matlab: latest, eeglab: '2022.0' }
           - { matlab: latest, eeglab: '2022.1' }
           - { matlab: latest, eeglab: '2023.0' }
@@ -35,8 +40,20 @@ jobs:
           - { matlab: latest, eeglab: '2024.0' }
           - { matlab: latest, eeglab: '2024.1' }
           - { matlab: latest, eeglab: '2024.2' }
-          - { matlab: latest, eeglab: 2024.2.1 }
-          - { matlab: latest, eeglab: 2025.1.0 }
+          - { matlab: latest, eeglab: '2024.2.1' }
+          - { matlab: latest, eeglab: '2025.0.0' }
+          - { matlab: latest, eeglab: '2025.1.0' }
+          # every EEGLAB release with the oldest MATLAB of 2022
+          - { matlab: R2022a, eeglab: '2022.0', os: ubuntu-22.04 }
+          - { matlab: R2022a, eeglab: '2022.1', os: ubuntu-22.04 }
+          - { matlab: R2022a, eeglab: '2023.0', os: ubuntu-22.04 }
+          - { matlab: R2022a, eeglab: '2023.1', os: ubuntu-22.04 }
+          - { matlab: R2022a, eeglab: '2024.0', os: ubuntu-22.04 }
+          - { matlab: R2022a, eeglab: '2024.1', os: ubuntu-22.04 }
+          - { matlab: R2022a, eeglab: '2024.2', os: ubuntu-22.04 }
+          - { matlab: R2022a, eeglab: '2024.2.1', os: ubuntu-22.04 }
+          - { matlab: R2022a, eeglab: '2025.0.0', os: ubuntu-22.04 }
+          - { matlab: R2022a, eeglab: '2025.1.0', os: ubuntu-22.04 }
     env:
       DISPLAY: ":99"
     steps:

@@ -22,7 +22,7 @@ classdef PipeCompare
     %   See pipecompare.plan.Plan, pipecompare.eval.Contract, pipecompare.eval.Rank.
 
     properties (Constant)
-        Version = '0.9.2'
+        Version = '0.9.3'
     end
 
     methods (Static)

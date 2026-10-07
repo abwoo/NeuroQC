@@ -3,7 +3,18 @@
 All notable changes. Versions follow `PipeCompare.Version` (`NeuroQC.Version` up to 0.7.1); each
 release has a git tag `vX.Y.Z`.
 
-## Unreleased
+## 0.9.3 (2026-10-07)
+
+PipeCompare now works with EEGLAB 2022.0 and later (it needed 2024.2.1).
+
+- EEGLAB 2022.0 to 2024.2: menu items, removing channels, the dataset history in the panel and
+  cutting data work there too. On EEGLAB 2024.0 and older with recent MATLAB, cutting time ranges
+  out of continuous data no longer stops with "Colon operands must be real scalars".
+- A warning in the Command Window when IC removal runs with ICLabel 1.5 (bundled with EEGLAB
+  2024.0), which classifies components wrongly; update ICLabel to 1.6 or later.
+- The full test suite runs automatically on every MATLAB release from R2021b to R2026a and on every
+  EEGLAB release from 2022.0 to 2026.0.0. The README lists the combinations.
+- README: how to start PipeCompare and use its results from the MATLAB command line.
 
 Recommendations can change: ICA is now fitted without the noisiest stretches of data, the signal check now uses a known signal as wide as the measurement
 window, which excludes a 1 Hz high-pass for broad components such as the LRP, and repairs never
