@@ -5,10 +5,10 @@ name: installed from EEGLAB
 # EEGLAB with its window, checks the Tools menu, then runs the installed
 # copy's own tests and a comparison from the command line.
 
+# Run it by hand (Actions > installed from EEGLAB > Run workflow) after each
+# upload to EEGLAB's extension list.
 on:
   workflow_dispatch:
-  pull_request:
-    paths: [.github/workflows/installed.yml]
 
 jobs:
   installed:
