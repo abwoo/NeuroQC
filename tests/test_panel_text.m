@@ -76,6 +76,14 @@ verifyEqual(tc, T(720), '12 min');
 verifyEqual(tc, T(3570), '1 h 0 min');
 verifyEqual(tc, T(7170), '2 h 0 min');
 verifyEqual(tc, T(7800), '2 h 10 min');
+C = @pipecompare.gui.Progress.clockText;                    % the time so far, to the second
+verifyEqual(tc, C(45.7), '45 s');
+verifyEqual(tc, C(372), '6 min 12 s');
+verifyEqual(tc, C(3780), '1 h 3 min');
+S = @(type, p) pipecompare.gui.Progress.stepText(struct('type', type, 'params', p, 'label', 'plan label'));
+verifyEqual(tc, S('highpass', struct('cutoff', 0.5)), 'high-pass filter 0.5 Hz');
+verifyEqual(tc, S('ica', struct()), 'fitting ICA (the slow part)');
+verifyEqual(tc, S('native', struct()), 'plan label');
 end
 
 function testValuesEditTextRoundTrip(tc)

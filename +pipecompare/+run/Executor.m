@@ -31,6 +31,9 @@ classdef Executor
     %                   returns true, no further step runs and the
     %                   candidates not run are 'failed' ("not run"), so the
     %                   ranking covers the finished ones. Serial runs only.
+    %                   A callback that takes two arguments is also told
+    %                   each step as it starts: f(0, inst), inst being the
+    %                   plan's step (type, params, label).
 
     methods (Static)
         function result = run(plan, contract, opts)
@@ -187,8 +190,8 @@ classdef Executor
             for child = tree(node).children
                 under = leavesUnder(tree, child);
                 if all(env.done(under)), continue; end
-                if tick(env, 0), continue; end   % stopped: nothing more runs
                 in = tree(child).inst;
+                if tick(env, 0, in), continue; end   % stopped: nothing more runs
                 t0 = tic;
                 try
                     pipecompare.utils.log('step %s', in.label);
@@ -227,6 +230,7 @@ classdef Executor
             while isscalar(tree(node).children)
                 child = tree(node).children;
                 in = tree(child).inst;
+                if tick(env, 0, in), return; end   % stopped: nothing more runs
                 pipecompare.utils.log('step %s (shared trunk)', in.label);
                 t0 = tic;
                 try
@@ -258,8 +262,8 @@ classdef Executor
             if ~isempty(prog)
                 try
                     q = parallel.pool.DataQueue;
-                    afterEach(q, @(n) relayProgress(prog, n, stopFile));
-                    env.opts.progress = @(n) workerProgress(q, n, stopFile);
+                    afterEach(q, @(args) relayProgress(prog, args, stopFile));
+                    env.opts.progress = @(varargin) workerProgress(q, stopFile, varargin);
                 catch ME
                     pipecompare.utils.log('Progress and Stop are not available while the pool runs (%s).', ME.message);
                 end
@@ -711,22 +715,29 @@ else
 end
 end
 
-function stop = tick(env, n)
-% Tell the caller's opts.progress that n more candidates are evaluated and
-% return its request to stop.
+function stop = tick(env, n, in)
+% Tell the caller's opts.progress that n more candidates are evaluated (and,
+% before a step, which step starts) and return its request to stop.
 stop = false;
-if isfield(env.opts, 'progress') && ~isempty(env.opts.progress), stop = env.opts.progress(n); end
+if ~isfield(env.opts, 'progress') || isempty(env.opts.progress), return; end
+if nargin < 3, stop = callProgress(env.opts.progress, {n}); else, stop = callProgress(env.opts.progress, {n, in}); end
 end
 
-function relayProgress(prog, n, stopFile)
+function stop = callProgress(f, args)
+% a callback of one argument is only told the count
+if nargin(f) == 1, args = args(1); end
+stop = f(args{:});
+end
+
+function relayProgress(prog, args, stopFile)
 % client side of a parallel run: show the workers' progress; Stop pressed
 % there leaves the file the workers look for
-if prog(n) && ~isfile(stopFile), fclose(fopen(stopFile, 'w')); end
+if callProgress(prog, args) && ~isfile(stopFile), fclose(fopen(stopFile, 'w')); end
 end
 
-function stop = workerProgress(q, n, stopFile)
+function stop = workerProgress(q, stopFile, args)
 % worker side of a parallel run (the progress callback tick() calls)
-send(q, n);
+send(q, args);
 stop = isfile(stopFile);
 end
 

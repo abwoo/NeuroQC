@@ -170,9 +170,13 @@ pipecompare_setup                         % run from the PipeCompare folder
    a filter alone already distorts the measured signal. With the average reference, EEG channels
    removed before PipeCompare are interpolated back first, so the average covers the whole
    montage.
-4. Press **Run**. A progress window shows how many pipelines are done and the time left; **Stop**
-   ends the search and keeps the pipelines already finished. The Command Window gets a short
-   summary; the full log goes to `pipecompare_last_run.log` in MATLAB's `tempdir`.
+4. Press **Run**. A progress window shows how many pipelines are done, the step running now (for
+   example *fitting ICA*), the time so far and the time left. Before the first pipeline is done
+   (it runs the steps all pipelines share, such as ICA, which can take several minutes) the bar
+   moves back and forth instead of filling. **Stop** ends the search and keeps the pipelines
+   already finished. The Command Window prints each step and each finished pipeline as the
+   search runs, then a summary; the same log is kept in `pipecompare_last_run.log` in MATLAB's
+   `tempdir`.
 5. The result window says which pipeline to use and why, naming each pipeline by its settings
    (for example *high-pass 0.5 Hz, low-pass 30 Hz*). **Use this pipeline** stores it as a new
    EEGLAB dataset; **Save script…** writes it as a MATLAB function that you can run on your other

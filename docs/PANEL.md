@@ -52,11 +52,12 @@ Two choices (what to measure; for ERP, the event types); the recipe is preselect
    searched: the reference changes what is measured, so it is chosen for your analysis, not by
    noise. Filtering and re-referencing are both linear, so their order does not matter.
 
-*Run* shows a progress window (pipelines done, time left) with *Stop*: stopping keeps the
-pipelines already run, and the result covers those. The time left is estimated from the
-pipelines after the first, which alone runs the shared steps (ICA included). Data stored in volts
-are recognised from the amplitude scale and compared in µV. The Command Window gets a two-line
-summary; the full log (every EEGLAB command of every pipeline) is written to
+*Run* shows a progress window (pipelines done, the step running now, time so far, time left)
+with *Stop*: stopping keeps the pipelines already run, and the result covers those. The time left
+is estimated from the pipelines after the first, which alone runs the shared steps (ICA
+included); until it is done the bar moves without filling. Data stored in volts are recognised
+from the amplitude scale and compared in µV. The Command Window prints every EEGLAB command and
+every finished pipeline as the search runs, then a summary; the same log is kept in
 `pipecompare_last_run.log` in MATLAB's `tempdir`, replaced by the next run.
 
 *Advanced…* opens the panel below with these choices filled in. When the choices cannot be filled in (e.g. a component's electrode is missing), it says
@@ -126,8 +127,8 @@ runs on its own copy.
   does is refused with the reason.
 - **Apply now in EEGLAB.** Runs the step on the current dataset through EEGLAB's own menu code path
   (`EEG.history`, `ALLCOM`, new dataset), so the plan starts after it.
-- **Run search / Options… / Resume…** A progress window shows the pipelines done and the time left;
-  *Stop* (or closing it) stops after the current step and ranks the pipelines already finished.
+- **Run search / Options… / Resume…** A progress window shows the pipelines done, the step running
+  now, the time so far and the time left; *Stop* (or closing it) stops after the current step and ranks the pipelines already finished.
   Every command and score is printed in the Command Window and the result is stored in
   `pipecompare_result`. Options: data unit, checkpoint folder, parallel. Below the results the
   panel says what the dialog's result window says: that the settings make no difference, what to
