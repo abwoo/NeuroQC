@@ -95,7 +95,9 @@ classdef Rank
                 c = cands(i);
                 if isfield(c, 'stratum') && ~isempty(c.stratum), stratum{i} = c.stratum; end
                 if isfield(c, 'notes') && ~isempty(c.notes), notes{i} = strjoin(c.notes, '; '); end
-                if strcmp(c.status, 'rejected')      % e.g. a rejection step removed every epoch
+                if strcmp(c.status, 'excluded')      % excluded before it ran (e.g. its filters alone distort the signal)
+                    status{i} = 'rejected'; whyList{i} = {c.message}; reasons{i} = c.message; continue;
+                elseif strcmp(c.status, 'rejected')      % e.g. a rejection step removed every epoch
                     status{i} = 'rejected'; minRet(i) = 0; whyList{i} = {sprintf('retention 0%% (%s)', c.message)};
                     reasons{i} = whyList{i}{1}; continue;
                 elseif ~strcmp(c.status, 'ok')
@@ -121,21 +123,7 @@ classdef Rank
                 if isempty(sg)
                     why{end+1} = 'signal check missing'; %#ok<AGROW>
                 else
-                    na = {}; if isfield(sg, 'notApplicable'), na = cellstr(sg.notApplicable); end
-                    lim = {'amplitudeError', opts.maxAmplitudeError, 1, 'component amplitude changed by %.0f%%', 100; ...
-                        'latencyShiftMs', opts.maxLatencyShiftMs, 1, 'peak latency shifted by %.0f ms', 1; ...
-                        'artifactPct', opts.maxArtifactPct, 1, 'artifactual deflection of %.0f%%', 100; ...
-                        'waveformCorr', opts.minWaveformCorr, -1, 'recovered waveform r = %.2f', 1; ...
-                        'topoCorr', opts.minTopoCorr, -1, 'recovered topography r = %.2f', 1};
-                    for q = 1:size(lim, 1)
-                        if any(strcmp(lim{q, 1}, na)), continue; end
-                        v = sg.(lim{q, 1});
-                        if ~isfinite(v)
-                            why{end+1} = sprintf('%s: %s not computed', sg.source, lim{q, 1}); %#ok<AGROW>
-                        elseif ~(lim{q, 3} * v <= lim{q, 3} * lim{q, 2})
-                            why{end+1} = sprintf(['%s: ' lim{q, 4}], sg.source, lim{q, 5} * v); %#ok<AGROW>
-                        end
-                    end
+                    why = [why pipecompare.eval.Rank.signalReasons(sg, opts)]; %#ok<AGROW>
                 end
                 if ~isfinite(primary(i)), why{end+1} = 'objective undefined'; end %#ok<AGROW>
                 if isempty(why), status{i} = 'feasible'; else, status{i} = 'rejected'; reasons{i} = strjoin(why, '; '); end
@@ -180,6 +168,29 @@ classdef Rank
             end
             R = struct('table', T, 'whyList', {whyList}, 'order', order, 'best', best, 'recommended', recommended, ...
                 'byStratum', byStratum, 'objective', objName, 'options', opts, 'units', {ref.units});
+        end
+
+        function why = signalReasons(sg, opts)
+            % The signal-check limits a result sg (Injection.compare) breaks,
+            % each as a readable reason. A metric that was not computed fails;
+            % one listed in sg.notApplicable is skipped.
+            opts = pipecompare.utils.withDefaults(opts, pipecompare.eval.Rank.defaults());
+            why = {};
+            na = {}; if isfield(sg, 'notApplicable'), na = cellstr(sg.notApplicable); end
+            lim = {'amplitudeError', opts.maxAmplitudeError, 1, 'component amplitude changed by %.0f%%', 100; ...
+                'latencyShiftMs', opts.maxLatencyShiftMs, 1, 'peak latency shifted by %.0f ms', 1; ...
+                'artifactPct', opts.maxArtifactPct, 1, 'artifactual deflection of %.0f%%', 100; ...
+                'waveformCorr', opts.minWaveformCorr, -1, 'recovered waveform r = %.2f', 1; ...
+                'topoCorr', opts.minTopoCorr, -1, 'recovered topography r = %.2f', 1};
+            for q = 1:size(lim, 1)
+                if any(strcmp(lim{q, 1}, na)), continue; end
+                v = sg.(lim{q, 1});
+                if ~isfinite(v)
+                    why{end+1} = sprintf('%s: %s not computed', sg.source, lim{q, 1}); %#ok<AGROW>
+                elseif ~(lim{q, 3} * v <= lim{q, 3} * lim{q, 2})
+                    why{end+1} = sprintf(['%s: ' lim{q, 4}], sg.source, lim{q, 5} * v); %#ok<AGROW>
+                end
+            end
         end
 
         function boot = bootstrap(cands, ref, opts, objNames)

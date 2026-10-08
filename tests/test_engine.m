@@ -8,6 +8,28 @@ function setupOnce(~)
 addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
 end
 
+function testFilterCheckExcludesOnlyWhatTheFullCheckExcludes(tc)
+% The filter check runs nothing for pipelines whose filters alone break a
+% limit; without it, the same pipelines are run and excluded by the full
+% signal check, and every other result is the same.
+[EEG, truth] = nqc_synth();
+nqc_setBase(EEG);
+c = pipecompare.eval.Contract('conditions', {'target', {'11'}; 'standard', {'31'}}, ...
+    'epoch', [-0.2 1.0], 'baseline', [-0.2 0], 'components', {'P3', [0.30 0.50], truth.roi});
+p = pipecompare.plan.Plan();
+p = p.add('highpass', 'cutoff', {0.1, 1, 2});
+p = p.add('lowpass', 'cutoff', {20, 30});
+p = p.add('epoch'); p = p.add('baseline');
+a = pipecompare.PipeCompare.optimize(p, c);
+b = pipecompare.PipeCompare.optimize(p, c, struct('filterCheck', false));
+ex = strcmp({a.cands.status}, 'excluded');
+verifyTrue(tc, any(ex));
+verifyTrue(tc, all(strcmp(b.ranking.table.status(ex), 'rejected')));    % the full check excludes them too
+verifyEqual(tc, a.ranking.table.status, b.ranking.table.status);
+verifyEqual(tc, a.ranking.table.objective(~ex), b.ranking.table.objective(~ex), 'RelTol', 1e-12);
+verifyEqual(tc, a.ranking.recommended, b.ranking.recommended);
+end
+
 function testEndToEndRecoversSensibleChoice(tc)
 [EEG, truth] = nqc_synth();
 nqc_setBase(EEG);
@@ -25,6 +47,9 @@ verifyEqual(tc, r.report.nNodes, 2 + 2 + 2 + 2 + 4);
 % 2 Hz high-pass distorts the P3 -> rejected by the signal check
 hp2 = find(contains(r.labels, 'highpass(cutoff=2)'));
 verifyTrue(tc, all(strcmp(T.status(hp2), 'rejected')));
+% ... before anything runs: its filters alone already do (filter check)
+verifyTrue(tc, all(strcmp({r.cands(hp2).status}, 'excluded')));
+verifyTrue(tc, all(startsWith(T.reason(hp2), 'filters alone: ')));
 % with movement artifacts on ~15% of trials, rejecting at 75 uV beats no rejection
 rec = r.ranking.recommended;
 verifyTrue(tc, contains(r.labels{rec}, 'highpass(cutoff=0.1)'));

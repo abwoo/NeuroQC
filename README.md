@@ -793,6 +793,16 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
    - preservation of the known signal: amplitude error ≤ 10 %, peak shift ≤ 10 ms, artifactual
      deflection ≤ 5 %, waveform correlation ≥ 0.95, topography correlation ≥ 0.90 (for band power
      only the amplitude error and topography correlation apply).
+
+   The filters are checked first. Filters act on a signal the same way whatever the data, so
+   what a pipeline's filters alone (high-pass, low-pass, line-noise filter) do to the known
+   signal is computed before anything runs, on a short stretch of the signal copy around the
+   first events (with more than a filter length on each side). A pipeline whose filters alone
+   break one of these limits (the topography aside, which a filter does not change) is excluded
+   without being run, with a reason that starts with *filters alone*; for example a 1 Hz
+   high-pass for a broad P3. This saves the filtering of the whole recording and everything after
+   it for those pipelines. It is done for ERP measures on continuous data, when no resampling or
+   epoching comes before the last filter; `'filterCheck', false` turns it off.
 2. **Precision.** Feasible pipelines are scored by their SME, divided by the gain each pipeline
    applies to the known signal. This makes the comparison one of signal-to-noise ratio, so a
    pipeline cannot appear more precise just by attenuating everything (Zhang, Garrett & Luck,

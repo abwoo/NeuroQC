@@ -26,6 +26,9 @@ classdef Executor
     %     verbose       'normal' (commands, warnings, results) | 'full'
     %                   (everything EEGLAB prints)
     %     dryRun        enumerate and report, run nothing
+    %     filterCheck   true (default): pipelines whose filters alone break
+    %                   a signal-check limit are excluded before anything
+    %                   runs (Injection.filterCheck)
     %     progress      function stop = f(n), called with the number of
     %                   candidates just evaluated (0 = only asking); when it
     %                   returns true, no further step runs and the
@@ -38,7 +41,7 @@ classdef Executor
     methods (Static)
         function result = run(plan, contract, opts)
             if nargin < 3, opts = struct(); end
-            opts = pipecompare.utils.withDefaults(opts, struct('dryRun', false, 'injectUv', 5, ...
+            opts = pipecompare.utils.withDefaults(opts, struct('dryRun', false, 'injectUv', 5, 'filterCheck', true, ...
                 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
             [EEG, live] = pipecompare.live.Session.current();
             assert(~isempty(EEG), 'PipeCompare:NoDataset', 'No dataset is loaded in EEGLAB.');
@@ -130,10 +133,26 @@ classdef Executor
             ctx0 = struct('contract', contract, 'highpass', rootHighpass(result.state));
             acc0 = struct('interpolated', {{}}, 'icsRemoved', 0, 'rejected', 0, 'coms', {{}}, 'seconds', 0, 'unmatched', {{}}, ...
                 'ica', {{}}, 'overLimit', noOverLimit(), 'steps', {{}});
-            % pipelines with no step at all (every slot chose 'none') are the starting copy itself
+            % pipelines whose filters alone distort the known signal are
+            % excluded before anything runs (filters are linear and
+            % time-invariant: that does not depend on the data)
             pre = repmat(emptyCand(), 0, 1);
+            if pipecompare.utils.fieldOr(opts, 'filterCheck', true) && ~isempty(S)
+                why = pipecompare.eval.Injection.filterCheck(S, contract, env.truth, leaves, opts);
+                out = find(~cellfun(@isempty, why(:)) & ~done(:))';
+                for li = out
+                    c = emptyCand(); c.id = li; c.key = leaves(li).key; c.stratum = leaves(li).stratum;
+                    c.status = 'excluded'; c.message = why{li};
+                    pre(end+1, 1) = c; env.done(li) = true; tick(env, 1); %#ok<AGROW>
+                end
+                if ~isempty(out)
+                    pipecompare.utils.log(['Filter check: %d pipeline(s) excluded before running, because their filters ', ...
+                        'alone distort the known signal (e.g. %s).'], numel(out), why{out(1)});
+                end
+            end
+            % pipelines with no step at all (every slot chose 'none') are the starting copy itself
             for li = tree(1).leaves
-                if done(li), continue; end
+                if env.done(li), continue; end
                 c = evaluateLeaf(env, li, root, S, acc0); pre(end+1, 1) = c; saveLeaf(env, c); %#ok<AGROW>
                 tick(env, 1);
             end
@@ -580,7 +599,8 @@ function c = emptyCand()
 %   id, key, stratum        leaf index, pipeline key and measure-defining
 %                           choices (Plan.enumerate leaves)
 %   status, message         'ok' | 'rejected' (e.g. all epochs removed) |
-%                           'failed', with the reason
+%                           'excluded' (not run: its filters alone distort
+%                           the known signal) | 'failed', with the reason
 %   m                       Measure.candidate: kept, retention, objectives
 %                           (per-measure SME), composite
 %   signal                  Injection.compare: source, amplitudeError,

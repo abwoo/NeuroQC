@@ -140,6 +140,59 @@ classdef Injection
             r.signal = pipecompare.eval.Injection.compare(S, contract, truth, {});
         end
 
+        function [why, sig] = filterCheck(S, contract, truth, leaves, opts)
+            % The signal check of each pipeline's filters alone, before any
+            % data are filtered. Filters are linear and time-invariant: what
+            % they do to the known signal does not depend on the data, so it
+            % is computed on a short stretch of the signal copy (the first
+            % events, with more than a filter length of the copy on each
+            % side), each filter sequence once. why{li} is the reason why
+            % leaf li's filters break a signal-check limit (the topography
+            % is not checked: a filter acts the same on every channel), ''
+            % when they do not or when the leaf is not checked: no filter,
+            % a resampling or an epoching before its last filter, epoched
+            % data or band power. sig{li} is the check's result ([] when
+            % not checked). [Rank.signalReasons; docs/METHODS.md, section 4]
+            if nargin < 5, opts = struct(); end
+            n = numel(leaves); why = repmat({''}, n, 1); sig = cell(n, 1);
+            filt = {'highpass', 'lowpass', 'linenoise'};
+            if isempty(S) || S.trials > 1 || strcmp(contract.analysis, 'bandpower'), return; end
+            seqs = cell(n, 1); hp = [];
+            for li = 1:n
+                path = leaves(li).path;
+                types = cellfun(@(i) i.type, path, 'UniformOutput', false);
+                f = find(ismember(types, filt));
+                if isempty(f) || any(ismember(types(1:f(end)), {'resample', 'epoch'})), continue; end
+                seqs{li} = path(f);
+                for q = f(strcmp(types(f), 'highpass')), hp(end+1) = path{q}.params.cutoff; end %#ok<AGROW>
+            end
+            if all(cellfun(@isempty, seqs)), return; end
+            short = shortCopy(S, contract, hp);
+            memo = containers.Map('KeyType', 'char', 'ValueType', 'any');   % filtered copy per prefix
+            done = containers.Map('KeyType', 'char', 'ValueType', 'any');   % result per sequence
+            for li = 1:n
+                seq = seqs{li};
+                if isempty(seq), continue; end
+                key = strjoin(cellfun(@(i) i.key, seq, 'UniformOutput', false), ' > ');
+                if ~isKey(done, key)
+                    E = short; pre = '';
+                    for q = 1:numel(seq)
+                        pre = [pre ' > ' seq{q}.key]; %#ok<AGROW>
+                        if isKey(memo, pre), E = memo(pre); continue; end
+                        [~, E] = evalc('pipecompare.run.Steps.run(seq{q}, E, struct())');
+                        memo(pre) = E;
+                    end
+                    r = pipecompare.eval.Injection.compare(E, contract, truth, {});
+                    r.source = 'filters alone';
+                    r.notApplicable = union(cellstr(r.notApplicable), {'topoCorr'});
+                    done(key) = struct('r', r, 'why', {pipecompare.eval.Rank.signalReasons(r, opts)});
+                end
+                d = done(key);
+                sig{li} = d.r;
+                if ~isempty(d.why), why{li} = strjoin(d.why, '; '); end
+            end
+        end
+
         function S = noteReference(S, inst)
             % Record the channel set a re-reference step is about to use
             % (called on the injected copy before the step runs).
@@ -248,6 +301,35 @@ classdef Injection
 end
 
 % ---------------------------------------------------------------------
+function C = shortCopy(S, contract, hp)
+% The continuous signal copy from before the first time-locking event to
+% after the fifth, with a margin of more than one filter length on each
+% side (EEGLAB's default high-pass at f Hz is about 3.3 / f s long; other
+% filters are shorter than 3.3 s): filtering it gives, around those
+% events, what filtering the whole copy gives. The whole copy when the
+% stretch would be most of it.
+C = S;
+fs = S.srate;
+pad = 3.3 / min([hp(:); 1]) + 1;   % seconds; as for 1 Hz when no high-pass is lower
+codes = contract.allEvents();
+lat = [];
+for e = 1:numel(S.event)
+    if any(strcmp(strtrim(char(string(S.event(e).type))), codes)), lat(end+1) = S.event(e).latency; end %#ok<AGROW>
+end
+if isempty(lat), return; end
+lat = sort(lat); last = lat(min(5, numel(lat)));
+i1 = max(1, floor(lat(1) + contract.epoch(1) * fs - pad * fs));
+i2 = min(S.pnts, ceil(last + contract.epoch(2) * fs + pad * fs));
+if i2 - i1 + 1 >= 0.8 * S.pnts, return; end
+C.data = S.data(:, i1:i2);
+C.pnts = size(C.data, 2); C.xmin = 0; C.xmax = (C.pnts - 1) / fs;
+C.times = (0:C.pnts - 1) / fs * 1000;
+keep = arrayfun(@(e) e.latency >= i1 && e.latency <= i2, S.event);
+C.event = S.event(keep);
+for e = 1:numel(C.event), C.event(e).latency = C.event(e).latency - (i1 - 1); end
+C.icaact = [];
+end
+
 function L = toLabels(x, labs)
 % channel indices or labels -> labels
 if isnumeric(x), L = labs(x); else, L = cellstr(x); end

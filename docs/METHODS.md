@@ -250,6 +250,23 @@ centroid, w(θ) = exp(−θ²/(2·0.5²)), normalized to mean 1 over the ROI. Ch
 mean field inside it, so their presence does not reduce the whole field to a box over the ROI. A box
 is used only when no ROI channel has a position. [`pipecompare.eval.Injection`]
 
+**Filters alone, before anything runs.** A filter is a linear time-invariant operator fixed by its
+design parameters, so its effect on the injected signal does not depend on the data. Before the
+search runs, the filter sequence of each pipeline (its high-pass, low-pass and line-noise steps,
+in order) is applied to a short stretch of the signal copy: from the first time-locking event to
+the fifth, with a margin of 3.3/*f* + 1 s on each side, *f* being the lowest high-pass edge
+(1 Hz when none is lower); EEGLAB's default high-pass at *f* Hz is about 3.3/*f* s long, and the
+other filters are shorter than 3.3 s. Around those events this gives what filtering the whole copy
+gives (the copy is zero apart from the signal, and a filter reaches no further than its length;
+`test_signal` checks agreement within 0.005 in amplitude error and artifactual deflection). The
+limits of the signal check, except the topography (a filter acts the same on every channel), are
+then applied. Each sequence is checked once; a pipeline whose filters alone break a limit is
+excluded with that reason (status *excluded*, reason *filters alone: …*) and never run. Other
+steps act on the signal copy spatially (re-reference, interpolation, IC removal) or select epochs,
+so they could only mask such a distortion, not remove it; with the check off, the same pipelines
+are run and excluded by the full check (`test_engine`). Not done for band power, epoched data, or
+a pipeline that resamples or epochs before its last filter. [`Injection.filterCheck`]
+
 ## 5. Preconditions checked before anything runs
 
 - **Interpolation needs electrode positions.** Spherical-spline interpolation is defined on
