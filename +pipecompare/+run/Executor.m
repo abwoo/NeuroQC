@@ -144,6 +144,7 @@ classdef Executor
                     c = emptyCand(); c.id = li; c.key = leaves(li).key; c.stratum = leaves(li).stratum;
                     c.status = 'excluded'; c.message = why{li};
                     pre(end+1, 1) = c; env.done(li) = true; tick(env, 1); %#ok<AGROW>
+                    pipecompare.utils.log('candidate %d excluded before running: %s', li, c.message);
                 end
                 if ~isempty(out)
                     pipecompare.utils.log(['Filter check: %d pipeline(s) excluded before running, because their filters ', ...

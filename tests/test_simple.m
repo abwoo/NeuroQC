@@ -776,7 +776,7 @@ nqc_setBase(EEG);
 c = pipecompare.simple.Presets.contract(EEG, 'P3', {'11', '31'});
 plan = pipecompare.simple.Presets.recipe('filters', pipecompare.live.DataState.fromEEG(EEG), c);
 m = containers.Map({'n'}, {0});
-r = pipecompare.PipeCompare.optimize(plan, c, struct('progress', @(n) countTo(m, n, 3)));
+r = pipecompare.PipeCompare.optimize(plan, c, struct('progress', @(n) countTo(m, n, 3), 'filterCheck', false));   % every pipeline runs
 verifyEqual(tc, m('n'), 3);                                     % the 3 low-pass edges under the first high-pass
 verifyEqual(tc, r.notRun, 12 - 3);
 notRun = startsWith({r.cands.message}, 'not run');

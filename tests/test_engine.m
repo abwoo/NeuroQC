@@ -283,7 +283,7 @@ nqc_setBase(EEG);
 p = pipecompare.plan.Plan();
 p = p.add('highpass', 'cutoff', 1); p = p.add('asr', 'cutoff', {10, 20});
 p = p.add('epoch'); p = p.add('baseline');
-r = pipecompare.PipeCompare.optimize(p, nqc_c());
+r = pipecompare.PipeCompare.optimize(p, nqc_c(), struct('filterCheck', false));   % both run (a 1 Hz high-pass alone fails the P3 check)
 for k = 1:2
     verifyEqual(tc, r.cands(k).status, 'ok');
     verifyEmpty(tc, r.cands(k).unmatched);                     % decision-matched
@@ -1134,7 +1134,7 @@ p = p.add('highpass', 'cutoff', {0.5, 1}); p = p.add('epoch'); p = p.add('baseli
 d = tempname; cleanup = onCleanup(@() rmdir(d, 's')); %#ok<NASGU>
 w = pipecompare.gui.Progress(2, false); c2 = onCleanup(@() delete(w)); %#ok<NASGU>
 verifyError(tc, @() pipecompare.PipeCompare.optimize(p, nqc_c(), struct('checkpoint', d, 'stopAfter', 1, ...
-    'progress', @(n) w.step(n))), 'PipeCompare:Interrupted');
+    'progress', @(n) w.step(n), 'filterCheck', false)), 'PipeCompare:Interrupted');   % both run
 M = load(fullfile(d, 'manifest.mat'));
 verifyEmpty(tc, M.result.options.progress);
 res = pipecompare.PipeCompare.resume(d);
