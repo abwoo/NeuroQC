@@ -421,8 +421,20 @@ classdef Steps
             end
             switch type
                 case 'reject_threshold'
-                    if strcmp(pipecompare.utils.fieldOr(p, 'method', 'absolute'), 'peaktopeak')
-                        win = pipecompare.utils.fieldOr(p, 'window', 200);
+                    pp = strcmp(pipecompare.utils.fieldOr(p, 'method', 'absolute'), 'peaktopeak');
+                    win = pipecompare.utils.fieldOr(p, 'window', 200);
+                    if ischar(p.uv)
+                        % 'auto': the limit chosen from these data
+                        % (pipecompare.eval.Threshold), then applied as a fixed one
+                        if pp
+                            m = max(pipecompare.run.Steps.peakToPeak(EEG, chans, win), [], 1);
+                        else
+                            m = reshape(max(max(abs(EEG.data(chans, :, :)), [], 1), [], 2), 1, []);
+                        end
+                        [uv, th] = pipecompare.eval.Threshold.choose(EEG, m, ctx);
+                        p.uv = uv; info.threshold = th; info.uvChosen = uv;
+                    end
+                    if pp
                         EEG = pipecompare.run.Steps.markPeakToPeak(EEG, chans, p.uv, win);
                         c1 = sprintf('EEG = pipecompare.run.Steps.markPeakToPeak(EEG, %s, %g, %g);', mat2str(chans), p.uv, win);
                     else
@@ -510,6 +522,17 @@ classdef Steps
             % channels chans. Marks go where pop_eegthresh puts its own
             % (EEG.reject.rejthresh, per channel rejthreshE), so they are
             % removed and repaired the same way.
+            pp = pipecompare.run.Steps.peakToPeak(EEG, chans, win);
+            E = false(EEG.nbchan, EEG.trials);
+            E(chans, :) = pp > uv;
+            EEG.reject.rejthreshE = double(E);
+            EEG.reject.rejthresh = double(any(E, 1));
+            pipecompare.utils.log('%d/%d epochs over %g uV peak-to-peak (%g ms windows).', sum(any(E, 1)), EEG.trials, uv, win);
+        end
+
+        function pp = peakToPeak(EEG, chans, win)
+            % channels x epochs: the largest peak-to-peak value within win
+            % ms windows moved in 50 ms steps (markPeakToPeak's test value)
             n = max(2, round(win / 1000 * EEG.srate));
             step = max(1, round(0.050 * EEG.srate));
             starts = 1:step:max(1, EEG.pnts - n + 1);
@@ -518,11 +541,6 @@ classdef Steps
                 X = double(EEG.data(chans, s0:min(EEG.pnts, s0 + n - 1), :));
                 pp = max(pp, reshape(max(X, [], 2) - min(X, [], 2), numel(chans), EEG.trials));
             end
-            E = false(EEG.nbchan, EEG.trials);
-            E(chans, :) = pp > uv;
-            EEG.reject.rejthreshE = double(E);
-            EEG.reject.rejthresh = double(any(E, 1));
-            pipecompare.utils.log('%d/%d epochs over %g uV peak-to-peak (%g ms windows).', sum(any(E, 1)), EEG.trials, uv, win);
         end
 
         function EEG = interpolateEpochs(EEG, chans, epochs)

@@ -61,6 +61,7 @@ end
 function testValuesAreParsedWithoutEvaluation(tc)
 V = pipecompare.gui.PanelValues;
 verifyEqual(tc, V.parseValues('0.1 | 0.5 | 1', 'number'), {0.1, 0.5, 1});
+verifyEqual(tc, V.parseValues('auto | 100', 'number'), {'auto', 100});   % a rejection limit chosen from the data
 verifyEqual(tc, V.parseValues('[-200 0] | [-100 0]', 'number'), {[-200 0], [-100 0]});
 verifyEqual(tc, V.parseValues('Pz Cz | "POL EYEL"', 'labels'), {{'Pz', 'Cz'}, {'POL EYEL'}});
 verifyEqual(tc, V.parseValues('kurt | ''prob''', 'text'), {'kurt', 'prob'});

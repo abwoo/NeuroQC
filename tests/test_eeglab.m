@@ -394,7 +394,7 @@ app.PlanTable.Selection = [1 1]; app.showDetails('plan', app.PlanTable);
 verifyTrue(tc, any(contains(app.DetailArea.Value, 'Values: cutoff = {0.1, 0.3, 0.5, 1} (default search)')));
 app.run(false);
 T = app.ResultTable.Data;
-verifyTrue(tc, all(endsWith(T(:, 7), '%')));                                       % retention as percent text
+verifyTrue(tc, all(endsWith(T(:, 7), '%') | strcmp(T(:, 7), '-')) && any(endsWith(T(:, 7), '%')));   % retention as percent text ('-': not run, filters alone fail)
 app.ResultTable.Selection = [1 1]; app.showDetails('result', app.ResultTable);
 k = str2double(strrep(T{1, 1}, '*', ''));
 verifyTrue(tc, any(contains(app.DetailArea.Value, app.Result.labels{k})));         % full pipeline

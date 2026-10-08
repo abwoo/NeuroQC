@@ -27,13 +27,15 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %   'recipe'   'standard' (default) | 'filters': which steps are compared
 %              (standard: all the steps below; filters: the two filters)
 %   'steps'    instead of 'recipe', any of 'badchannels', 'ica',
-%              'highpass', 'lowpass', 'reject' (epoch rejection),
+%              'highpass', 'lowpass', 'reject' (epoch rejection; the
+%              limit is chosen from the data in each pipeline),
 %              'peaktopeak' (with 'reject': the limit is measured
-%              peak-to-peak in moving 200 ms windows, as in ERP CORE,
-%              limits 100, 150 and 200 uV compared),
+%              peak-to-peak in moving 200 ms windows, as in ERP CORE),
 %              'epochinterp' (with 'reject': an epoch with at most 3
 %              channels over the limit keeps them, interpolated within the
-%              epoch, instead of being rejected), e.g.
+%              epoch, instead of being rejected; fixed limits 75, 100 and
+%              150 uV, or 100, 150 and 200 uV peak-to-peak, are then
+%              compared), e.g.
 %              {'highpass', 'lowpass', 'reject'}; they always run in that
 %              order, with epoching and baseline in every pipeline
 %   'reference' 'asis' (default) | 'average': the average reference as a

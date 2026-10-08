@@ -191,6 +191,33 @@ half-sample without replacement, the classical pseudo-replication device (McCart
 rescales the result to the full sample by √(*m*/*N*), since bSME ∝ 1/√*n*. In simulation the SD
 of a difference was 7.0 ms against 7.4 ms across real replications; with replacement it was 11 ms.
 
+**Equivalence.** *Not distinguished* is absence of evidence. A candidate *i* in the kept set is
+called equivalent to the best *b* when the upper bound of its difference is within a margin δ of
+the best objective, θ̂ᵢ − θ̂_b + *c*_K ≤ δ·θ̂_b, with δ = 0.05 by default (`equivalenceMargin`).
+This is a one-sided test of equivalence (Schuirmann, 1987): the best is the lowest, so only the
+upper side is open. *c*_K is the same max-statistic quantile as *c*, but over the pairs of kept
+candidates only (step-down; Romano & Wolf, 2005): a candidate already shown worse would otherwise
+widen every bound, and no difference among the others could ever be shown negligible. The bound
+is in `diffHiKept`, the verdict in `equivalent`.
+
+**Selection bias and cross-fitting.** The minimum of *K* noisy objectives underestimates the
+objective of the candidate it selects (the winner's curse): part of its advantage is chance, and
+the more candidates, the larger that part. The selection is therefore also evaluated on trials
+not used for it. For each of *S* random splits (`nSplits`, default 20), the reference trials of
+every condition are divided into halves *A* and *B*. The objectives on each half are computed as
+the half-samples of the peak bootstrap: on the *m* trials of the half, rescaled by √(*m*/*N*),
+since SME ∝ 1/√*n*. The candidate best on *A* is scored on *B*, and the candidate best on *B* on
+*A*. The mean of these 2*S* held-out scores is an estimate, not flattered by the selection, of
+the objective of the pipeline chosen by minimum objective; reported against the apparent best
+objective on all trials, as `crossfit.overstatement = honest / apparent − 1`. A choice made on
+half the trials is somewhat worse than one made on all of them, so the overstatement is, if
+anything, too large. For segments of one recording (band power), consecutive segments are
+dependent, so the halves are the earlier and the later half (*S* = 1). The data-driven decisions
+of the candidates (bad channels, ICA, rejected epochs) were made on all trials; only the choice
+between candidates is held out. In simulation (`test_statistics`), with 24 candidates of equal
+true noise and 60 trials, the apparent best objective was below the true SME by more than 5 %,
+while the cross-fitted value was within 5 % of it. [`pipecompare.eval.Rank.crossfit`]
+
 ## 4. Signal preservation: matched-decision injection
 
 A copy of the starting data that holds only a known signal is processed with the same operations
@@ -222,6 +249,23 @@ centroid, w(θ) = exp(−θ²/(2·0.5²)), normalized to mean 1 over the ROI. Ch
 (often EOG/ECG) have no defined scalp position: they get no field outside the ROI and the ROI's
 mean field inside it, so their presence does not reduce the whole field to a box over the ROI. A box
 is used only when no ROI channel has a position. [`pipecompare.eval.Injection`]
+
+**Filters alone, before anything runs.** A filter is a linear time-invariant operator fixed by its
+design parameters, so its effect on the injected signal does not depend on the data. Before the
+search runs, the filter sequence of each pipeline (its high-pass, low-pass and line-noise steps,
+in order) is applied to a short stretch of the signal copy: from the first time-locking event to
+the fifth, with a margin of 3.3/*f* + 1 s on each side, *f* being the lowest high-pass edge
+(1 Hz when none is lower); EEGLAB's default high-pass at *f* Hz is about 3.3/*f* s long, and the
+other filters are shorter than 3.3 s. Around those events this gives what filtering the whole copy
+gives (the copy is zero apart from the signal, and a filter reaches no further than its length;
+`test_signal` checks agreement within 0.005 in amplitude error and artifactual deflection). The
+limits of the signal check, except the topography (a filter acts the same on every channel), are
+then applied. Each sequence is checked once; a pipeline whose filters alone break a limit is
+excluded with that reason (status *excluded*, reason *filters alone: …*) and never run. Other
+steps act on the signal copy spatially (re-reference, interpolation, IC removal) or select epochs,
+so they could only mask such a distortion, not remove it; with the check off, the same pipelines
+are run and excluded by the full check (`test_engine`). Not done for band power, epoched data, or
+a pipeline that resamples or epochs before its last filter. [`Injection.filterCheck`]
 
 ## 5. Preconditions checked before anything runs
 
@@ -349,6 +393,48 @@ non-stereotyped artifacts is standard practice, since such stretches otherwise t
 (Delorme & Makeig, 2004; the EEGLAB tutorial's advice to reject bad data before ICA). `fitClean` = 0
 turns it off. [`pipecompare.run.Steps.cleanForIca`]
 
+## 9c. Rejection limit chosen from the data (exact optimum)
+
+`reject_threshold` with `uv` = `auto` (the simple mode's default when no epochs are repaired)
+chooses the limit in each pipeline from its data at the rejection step
+[`pipecompare.eval.Threshold`].
+
+**The problem.** Let *m*ᵢ be epoch *i*'s test value: the largest absolute value over the tested
+channels and the whole epoch (`pop_eegthresh`'s test), or the largest moving-window range (section
+9a). The limit *u* keeps *K*(*u*) = {*i* : *m*ᵢ ≤ *u*}. The objective is the ranking's: *J*(*u*) =
+RMS over conditions *c* and measures *q* of SME꜀q(*K*(*u*)) (or the one measure named by
+`objective`), with SME = SD / √*n* of the per-trial scores (mean amplitude or log band power) of
+the kept trials. The constraints are the ranking's: *n*꜀(*K*(*u*)) ≥ max(`minTrials`,
+⌈`minRetention` · *N*꜀⌉) in every condition.
+
+**Exact solution.** *K*(*u*) is nested in *u* and changes only where *u* crosses a value of *m*, so
+*J* and the constraints are piecewise constant, with breakpoints at the sorted distinct values
+*v*₁ < … < *v*ᵤ (at most one per epoch). The minimum of *J* over all real *u* is therefore the
+minimum over the sets *K*(*v*ⱼ). For each set, *n*, Σ*y* and Σ*y*² are inner products of the
+scores (centred per condition, which leaves the SD unchanged and avoids cancellation) with the
+indicator matrix [*m*ᵢ ≤ *v*ⱼ], so all of them cost one matrix product. This is the global optimum
+over all limits, not the best of a grid; it equals a brute-force search (`test_engine`).
+
+**Choice.** The minimizer is chosen on the same trials it is scored on, and a slightly lower SME at
+a stricter limit may be chance. The limits are therefore compared as the ranking compares
+pipelines (section 3): a paired bootstrap over trials (the same resampled trials for every limit;
+moving blocks for segments of one recording) with the simultaneous max statistic over all pairs
+gives the limits not shown worse than another. At most 60 limits enter the bootstrap: the
+feasible ones spread evenly by rank over the range, the minimizer included. Among those not
+distinguished from the best, the highest is used (the least aggressive, as in step 5 of the
+ranking), so an epoch is rejected only when the data show that rejecting it improves precision.
+The value used is the number with the fewest significant digits in [*v*ⱼ, *v*ⱼ₊₁) (any number
+there keeps the same epochs). It is applied by `pop_eegthresh` (or the peak-to-peak marks) and
+recorded in `EEG.history`, and the signal check removes the same epochs from its copy. When no
+limit is feasible, nothing is rejected and the ranking reports the missing trials.
+
+**Scope.** The scores are those of the data at the rejection step: the result is exact when no
+later step changes them (the baseline is already removed from them). The signal gain *g* is left
+out of *J*: the known signal is the same in every epoch, so *g* does not depend on *u* (with
+several measures of different gains, their weights in the RMS would differ slightly). Peak
+measures have no per-trial score and keep fixed limits; so do repaired epochs (section 9), where
+the limit also decides which channels are interpolated.
+
 ## 10. Montage check (before a run)
 
 Scalp potentials vary smoothly over the head, so after an average reference a channel resembles its
@@ -442,6 +528,9 @@ which scores the whole recording, does not catch. When no pipeline passed, the s
   198*, 181–197.
 - Romano, J. P., & Wolf, M. (2005). Stepwise multiple testing as formalized data snooping.
   *Econometrica, 73*(4), 1237–1282.
+- Schuirmann, D. J. (1987). A comparison of the two one-sided tests procedure and the power
+  approach for assessing the equivalence of average bioavailability. *Journal of
+  Pharmacokinetics and Biopharmaceutics, 15*(6), 657–680.
 - Steegen, S., Tuerlinckx, F., Gelman, A., & Vanpaemel, W. (2016). Increasing transparency through
   a multiverse analysis. *Perspectives on Psychological Science, 11*(5), 702–712.
 - White, H. (2000). A reality check for data snooping. *Econometrica, 68*(5), 1097–1126.

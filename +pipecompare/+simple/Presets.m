@@ -35,9 +35,12 @@ classdef Presets
     %   search beyond the simple mode's limit). For band power, 'standard'
     %   uses one high-pass and one low-pass edge, the catalog values
     %   nearest the band outside it: outside the band a filter does not
-    %   change its power (only what epoch rejection sees), and 9 pipelines
-    %   are compared instead of 108 (so for any steps with ICA or epoch
-    %   rejection); 'filters' compares the filters.
+    %   change its power (only what epoch rejection sees), and 3 pipelines
+    %   are compared instead of 36 (so for any steps with ICA or epoch
+    %   rejection); 'filters' compares the filters. The epoch-rejection
+    %   limit is chosen from the data in each pipeline (uv 'auto',
+    %   pipecompare.eval.Threshold), except when epochs are repaired or the
+    %   measure is a peak: then the catalog's limits are compared.
     %
     %   Reference: kept as recorded, or the average reference as a fixed
     %   step in every pipeline, after the bad channels are interpolated (a
@@ -117,8 +120,9 @@ classdef Presets
             % epoch, up to 3 channels over its limit are interpolated and
             % the epoch kept
             % peaktopeak is another option of it: the limit is measured
-            % peak-to-peak in moving 200 ms windows (ERP CORE), with limits
-            % PeakToPeakUv
+            % peak-to-peak in moving 200 ms windows (ERP CORE); the limit is
+            % chosen from the data, or with epochinterp the limits
+            % PeakToPeakUv are compared
             names = {'badchannels', 'ica', 'highpass', 'lowpass', 'reject', 'peaktopeak', 'epochinterp'};
         end
 
@@ -128,7 +132,7 @@ classdef Presets
                 case 'ica', t = 'ICA: remove artifact components (ICLabel thresholds compared)';
                 case 'highpass', t = 'High-pass filter (cutoffs compared)';
                 case 'lowpass', t = 'Low-pass filter (cutoffs compared)';
-                case 'reject', t = 'Reject epochs over an amplitude limit (limits compared)';
+                case 'reject', t = 'Reject epochs over an amplitude limit (the best limit found from the data)';
                 case 'peaktopeak', t = '  measure the limit peak-to-peak in 200 ms windows (ERP CORE)';
                 case 'epochinterp', t = sprintf('  instead, repair epochs with up to %d channels over the limit', ...
                         pipecompare.simple.Presets.EpochInterpMax);
@@ -172,9 +176,9 @@ classdef Presets
             % to know about it (e.g. a filter the data already have).
             why = struct('badchannels', '', 'ica', '', 'highpass', '', 'lowpass', '', 'reject', '', 'peaktopeak', '', 'epochinterp', '');
             info = why;
-            info.peaktopeak = sprintf('limits %s uV; not fooled by slow drifts', ...
+            info.peaktopeak = sprintf('not fooled by slow drifts (with repair: limits %s uV compared)', ...
                 strjoin(cellfun(@num2str, pipecompare.simple.Presets.PeakToPeakUv, 'UniformOutput', false), ', '));
-            info.epochinterp = 'interpolated from the other channels, in that epoch only';
+            info.epochinterp = 'interpolated from the other channels, in that epoch only; fixed limits are then compared';
             steps = {state.process.step};
             if state.nLocated == 0
                 why.badchannels = 'needs channel locations (Edit > Channel locations)';
@@ -493,13 +497,18 @@ classdef Presets
                         end
                     case 'baseline', t = sprintf('Baseline %g to %g ms removed', 1000 * con.baseline);
                     case 'reject_threshold'
+                        uv = p.uv; how = '';
+                        if ischar(uv)
+                            uv = pipecompare.utils.fieldOr(f, 'uvChosen', NaN);
+                            how = ' (limit chosen from these data: the highest one that measures as precisely as the best)';
+                        end
                         if strcmp(pipecompare.utils.fieldOr(p, 'method', 'absolute'), 'peaktopeak')
                             t = sprintf('Epochs over %g uV peak-to-peak (within %g ms) on any channel rejected: %s', ...
-                                p.uv, pipecompare.utils.fieldOr(p, 'window', 200), ofText(f));
+                                uv, pipecompare.utils.fieldOr(p, 'window', 200), ofText(f));
                         else
-                            t = sprintf('Epochs beyond +/-%g uV on any channel rejected: %s', p.uv, ofText(f));
+                            t = sprintf('Epochs beyond +/-%g uV on any channel rejected: %s', uv, ofText(f));
                         end
-                        t = [t repairText(p, f) notTested(p)];
+                        t = [t how repairText(p, f) notTested(p)];
                     case {'reject_jointprob', 'reject_kurtosis'}
                         t = sprintf('Epochs rejected by %s (%g SD): %s', pipecompare.utils.ternary(strcmp(f.type, ...
                             'reject_kurtosis'), 'kurtosis', 'joint probability'), p.sd, ofText(f));
@@ -519,6 +528,36 @@ classdef Presets
                     1:numel(c.m.kept), 'UniformOutput', false);
                 lines{end+1} = sprintf('Trials kept per condition: %s', strjoin(kept, '; '));
             end
+        end
+
+        function t = precisionText(result)
+            % Two checks of the recommendation, in words (one stratum only):
+            % whether the recommended pipeline is practically as good as the
+            % best or the data are too few to tell (equivalence margin), and
+            % how much better the best looks than it is on trials not used
+            % to choose it (Rank.crossfit). '' when there is nothing to say.
+            t = '';
+            R = result.ranking;
+            if numel(R.byStratum) ~= 1 || pipecompare.eval.Rank.sameScores(R), return; end
+            b = R.byStratum; T = R.table; k = b.recommended;
+            margin = 100 * R.options.equivalenceMargin;
+            if k ~= b.best && isfinite(T.diffHiKept(k)) && T.objective(b.best) > 0
+                if T.equivalent(k)
+                    t = sprintf('Its noise is within %.0f%% of the best one''s, a negligible difference.', margin);
+                else
+                    t = sprintf(['With this many trials it could still be up to %.0f%% noisier than the best one; ', ...
+                        'more trials would tell them apart.'], 100 * T.diffHiKept(k) / T.objective(b.best));
+                end
+            end
+            cf = b.crossfit;
+            if isempty(cf) || ~isfinite(cf.overstatement), return; end
+            if cf.overstatement < 0.02
+                u = 'Checked on trials not used to choose it, the best pipeline''s noise is as low as it looks here: its advantage is not luck.';
+            else
+                u = sprintf(['Checked on trials not used to choose it, the best pipeline''s noise is about %.0f%% higher than ', ...
+                    'it looks here: part of its advantage over the others is luck.'], 100 * cf.overstatement);
+            end
+            t = strtrim(sprintf('%s %s', t, u));
         end
 
         function t = detectableText(result)
@@ -806,9 +845,15 @@ classdef Presets
                 % in that epoch's average)
                 % peaktopeak: the limit is measured peak-to-peak in moving
                 % windows (ERP CORE), with its own limits
-                how = {};
-                if has('peaktopeak'), how = {'method', 'peaktopeak', 'uv', pipecompare.simple.Presets.PeakToPeakUv}; end
+                % the limit is chosen from the data (uv 'auto',
+                % pipecompare.eval.Threshold) unless epochs are repaired
+                % (the limit then decides which channels are interpolated)
+                % or the measure has no score per trial (peaks)
+                how = {}; uv = {};
+                if has('peaktopeak'), how = {'method', 'peaktopeak'}; uv = pipecompare.simple.Presets.PeakToPeakUv; end
                 repair = has('epochinterp') && state.nLocated > 0;
+                if ~repair && pipecompare.eval.Threshold.applies(contract), uv = 'auto'; end
+                if ~isempty(uv), how = [how {'uv', uv}]; end
                 if repair
                     plan = plan.add('reject_threshold', exclusion{:}, how{:}, 'interpolate', pipecompare.simple.Presets.EpochInterpMax);
                     plan = addReference(plan, reference, exclude);

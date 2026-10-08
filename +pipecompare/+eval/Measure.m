@@ -177,8 +177,9 @@ classdef Measure
         end
 
         function T = trials(EEG, contract, idsOnly)
-            % One row per epoch: urevent id, condition index, per-objective data
-            % (idsOnly: identities and conditions only).
+            % One row per epoch: urevent id, condition index, the epoch's
+            % index in EEG, per-objective data (idsOnly: identities and
+            % conditions only).
             if nargin < 3, idsOnly = false; end
             conds = contract.conditions;
             codes = contract.allEvents();
@@ -211,7 +212,7 @@ classdef Measure
                 cond(k) = find(arrayfun(@(cd) any(strcmp(cd.events, t)), conds), 1);
             end
             keep = cond > 0;
-            T = struct('id', id(keep), 'cond', cond(keep), 'data', {{}}, 'times', {{}}, ...
+            T = struct('id', id(keep), 'cond', cond(keep), 'epoch', find(keep), 'data', {{}}, 'times', {{}}, ...
                 'labels', {labels});
             if idsOnly, return; end
             data = double(EEG.data(:, :, keep));

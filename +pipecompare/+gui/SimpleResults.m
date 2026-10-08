@@ -77,6 +77,9 @@ classdef SimpleResults < handle
                 end
                 t = sprintf('%s %d of %d pipelines passed the checks.', t, nFeas, height(T));
             end
+            % equivalence to the best, and the best checked on held-out trials
+            pr = pipecompare.simple.Presets.precisionText(obj.Result);
+            if ~isempty(pr), t = sprintf('%s %s', t, pr); end
             % how large a difference these data can show (a weak result
             % from too few trials, not from the preprocessing)
             d = pipecompare.simple.Presets.detectableText(obj.Result);
@@ -265,7 +268,8 @@ switch [type '.' param]
     case 'highpass.cutoff', t = sprintf('high-pass %s Hz', x);
     case 'lowpass.cutoff', t = sprintf('low-pass %s Hz', x);
     case 'icremove.threshold', t = sprintf('ICLabel %s', x);
-    case 'reject_threshold.uv', t = sprintf('reject above %s uV', x);
+    case 'reject_threshold.uv'
+        if strcmp(x, 'auto'), t = 'rejection limit chosen from the data'; else, t = sprintf('reject above %s uV', x); end
     case {'reject_threshold.interpolate', 'reject_jointprob.interpolate', 'reject_kurtosis.interpolate'}
         t = sprintf('repair epochs with up to %s channels', x);
     case 'asr.cutoff', t = sprintf('ASR %s SD', x);

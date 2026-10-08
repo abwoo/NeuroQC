@@ -154,6 +154,7 @@ classdef PanelValues
                     case 'labels'
                         vals{i} = pipecompare.gui.PanelText.tokens(p);
                     case 'number'
+                        if strcmpi(p, 'auto'), vals{i} = 'auto'; continue; end   % chosen from the data (rejection limit)
                         assert(~isempty(regexp(p, '^[\s\d\.eE+\-:\[\];,]+$', 'once')), 'PipeCompare:Plan', 'Not a number: %s', p);
                         vals{i} = str2num(p); %#ok<ST2NM> digits, signs and brackets only
                         assert(~isempty(vals{i}), 'PipeCompare:Plan', 'Not a number: %s', p);

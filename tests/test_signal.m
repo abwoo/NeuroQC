@@ -233,6 +233,34 @@ r = pipecompare.eval.Injection.compare(S, c, truth, {in});
 verifyLessThan(tc, r.amplitudeError, 0.05);                    % both bands untouched
 end
 
+function testFiltersAloneAreCheckedOnAShortCopy(tc)
+% The check of the filters alone runs on a short stretch of the signal
+% copy and must give what the whole copy gives; it names the filter
+% sequences that break a limit (a 2 Hz high-pass for the P3) and leaves
+% the others, and pipelines without a filter, unchecked or passing.
+EEG = nqc_synth(struct('seconds', 400, 'nPerCond', 60, 'artifactTrials', 0));
+c = tc.TestData.c; ref = pipecompare.eval.Measure.reference(EEG, c);
+[S, truth] = pipecompare.eval.Injection.prepare(EEG, c, ref);
+hp = [0.1 1 2];
+path = @(h) {keyed(inst('highpass', 'cutoff', h), h), keyed(inst('lowpass', 'cutoff', 30), 30)};
+leaves = struct('path', [arrayfun(path, hp, 'UniformOutput', false) {{inst('epoch')}}]);
+[why, sig] = pipecompare.eval.Injection.filterCheck(S, c, truth, leaves, struct());
+verifyEmpty(tc, why{1}); verifyEmpty(tc, sig{4}); verifyEmpty(tc, why{4});
+verifyTrue(tc, contains(why{3}, 'filters alone: component amplitude changed'), why{3});
+for k = 1:numel(hp)
+    F = S;
+    for q = 1:2, F = pipecompare.run.Steps.replayDecision(leaves(k).path{q}, F, struct(), ctx(tc)); end
+    full = pipecompare.eval.Injection.compare(F, c, truth, {});
+    fprintf('HP %g: amplitude error %.4f (short copy) vs %.4f (whole copy)\n', hp(k), sig{k}.amplitudeError, full.amplitudeError);
+    verifyEqual(tc, sig{k}.amplitudeError, full.amplitudeError, 'AbsTol', 0.005);
+    verifyEqual(tc, sig{k}.artifactPct, full.artifactPct, 'AbsTol', 0.005);
+end
+end
+
+function s = keyed(s, v)
+s.key = sprintf('%s(%g)', s.type, v);
+end
+
 function s = inst(type, varargin)
 p = struct();
 for k = 1:2:numel(varargin), p.(varargin{k}) = varargin{k+1}; end

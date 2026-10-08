@@ -51,8 +51,9 @@ PipeCompare makes this choice from the data, in these steps:
    or the power in a frequency band. Presets cover the ERP CORE components and the classic
    frequency bands.
 3. **It builds every pipeline** from the steps and settings left open. The *Standard* recipe, for
-   example, compares up to 108 combinations of high-pass and low-pass filters, ICLabel thresholds and
-   epoch-rejection thresholds; you can also decide the steps and values yourself.
+   example, compares up to 36 combinations of high-pass and low-pass filters and ICLabel
+   thresholds, and in each of them finds the best epoch-rejection limit from the data; you can also
+   decide the steps and values yourself.
 4. **It runs each pipeline** with EEGLAB's own functions, on your data.
 5. **It removes pipelines that harm the data.** A pipeline is excluded when it keeps too few
    trials, interpolates too many channels, or changes the brain signal. To check the last point,
@@ -113,22 +114,28 @@ pipeline, so that the comparison is about the settings that matter.
    ICLabel gives it a probability of at least 0.7, 0.8 or 0.9 of being eye, muscle, heart, line
    noise or channel noise.
 8. **Epochs are cut** around the events you chose, and the **baseline** is subtracted.
-9. **Noisy epochs are rejected**, *compared*: an epoch is dropped when any EEG channel exceeds
-   ±75, ±100 or ±150 µV (non-EEG channels are ignored).
+9. **Noisy epochs are rejected**, *limit chosen from the data*: an epoch is dropped when any EEG
+   channel exceeds ±*x* µV (non-EEG channels are ignored), and *x* is found in each pipeline from its
+   own data: every limit is tried, not a few, and the highest limit that measures as precisely as
+   the best one is used (see [Rejection limit chosen from the data](#rejection-limit-chosen-from-the-data)).
+   For peak measures (peak amplitude or latency, advanced panel) the limits 75, 100 and 150 µV
+   are compared instead.
 
 Two more options of the rejection can be ticked; they are not part of *Standard*.
 **Peak-to-peak limits** (ERP CORE's method): instead of testing whether any value is beyond ±*x*
-µV, the rejection takes the highest minus the lowest value within a moving 200 ms window, and
-compares 100, 150 and 200 µV (see [Peak-to-peak rejection](#peak-to-peak-rejection)).
+µV, the rejection takes the highest minus the lowest value within a moving 200 ms window; the
+limit is again chosen from the data (see [Peak-to-peak rejection](#peak-to-peak-rejection)).
 **Repairing epochs instead of rejecting them**: an epoch in which only 1 to 3 channels exceed the rejection limit is kept, and those
 channels are interpolated from the other channels within that epoch only; an epoch with more
-channels over the limit is still rejected. It does not add pipelines (it uses the limit being
-compared). See [Repairing epochs with a few bad channels](#repairing-epochs-with-a-few-bad-channels).
+channels over the limit is still rejected. With repair, the limit is not chosen from the data
+(that choice assumes the epochs over the limit are removed): the fixed limits 75, 100 and 150 µV
+(100, 150 and 200 µV peak-to-peak) are compared, which makes three times as many pipelines. See
+[Repairing epochs with a few bad channels](#repairing-epochs-with-a-few-bad-channels).
 
-That makes 4 × 3 × 3 × 3 = 108 pipelines for an ERP. The *Filters only* recipe compares only
+That makes 4 × 3 × 3 = 36 pipelines for an ERP, each with its own best rejection limit. The *Filters only* recipe compares only
 steps 5 and 6. For band power, the data are cut into 2 s segments instead of epochs, and only the
 filter edges nearest the band, outside it, are used (a filter outside a band does not change its
-power), which leaves 9 pipelines. In the advanced panel or a script you can change every list
+power), which leaves 3 pipelines. In the advanced panel or a script you can change every list
 above, change the order, allow a step to be skipped, and add other steps: line-noise removal (the
 50 or 60 Hz mains frequency is detected from the recording), ASR (artifact subspace
 reconstruction), resampling, rejection by joint probability or kurtosis, a reference to chosen
@@ -190,6 +197,8 @@ Along the way PipeCompare also takes care of the following, so you do not have t
   data-driven decisions as the real data (bad channels, ICA, rejected epochs, removed components,
   ASR reconstructions); steps whose decisions cannot be replayed are re-run on it and flagged (see
   [Limitations](#limitations)). Pipelines that distort it are excluded.
+- **Exact best rejection limit.** Within each pipeline, the epoch-rejection limit is chosen from
+  the data among all limits that give different results, not from a short list.
 - **Statistically controlled ranking.** A paired bootstrap with simultaneous intervals identifies
   the pipelines that cannot be distinguished from the best, controlling the error rate across all
   candidates.
@@ -330,16 +339,17 @@ pipecompare_setup                         % run from the PipeCompare folder
    | 4 | High-pass filter | the cutoff (0.1, 0.3, 0.5, 1 Hz) |
    | 5 | Low-pass filter | the cutoff (20, 30, 40 Hz) |
    | 6 | Epochs and baseline (segments for band power) | always done |
-   | 7 | Reject epochs over an amplitude limit | the limit (75, 100, 150 µV) |
-   | 7a | Measure the limit peak-to-peak in 200 ms windows (optional) | the limit (100, 150, 200 µV peak-to-peak) instead of 75, 100, 150 µV |
-   | 7b | Instead, repair epochs with up to 3 channels over the limit (optional) | nothing (it uses the limit of step 7) |
+   | 7 | Reject epochs over an amplitude limit | the limit, chosen from the data in each pipeline (every limit is tried) |
+   | 7a | Measure the limit peak-to-peak in 200 ms windows (optional) | the same, on peak-to-peak values |
+   | 7b | Instead, repair epochs with up to 3 channels over the limit (optional) | the limit: 75, 100, 150 µV (100, 150, 200 µV peak-to-peak) |
 
    Two buttons tick a usual set at once: **Standard**, preselected, ticks steps 1 to 7 (every
    step except the options 7a and 7b); **Filters only** ticks the two filters. Lines 7a and 7b
    are options of the rejection and can only be ticked together with step 7 (see
    [Peak-to-peak rejection](#peak-to-peak-rejection) and
    [Repairing epochs with a few bad channels](#repairing-epochs-with-a-few-bad-channels)).
-   Ticking them does not change the number of pipelines. An unticked step is not done at all: for example,
+   Ticking 7a does not change the number of pipelines; ticking 7b triples it (three fixed limits
+   instead of one chosen from the data). An unticked step is not done at all: for example,
    without the high-pass the data keep whatever high-pass they already had. Steps that these data
    cannot take are greyed out, with the reason next to them: on epoched data the filters (they
    must run before epoching), without channel locations bad-channel interpolation and ICA (ICLabel
@@ -348,7 +358,7 @@ pipecompare_setup                         % run from the PipeCompare folder
    already average-referenced), bad-channel detection is always ticked, because a bad channel in
    the average would spread into every channel. For band power, when ICA or epoch rejection is
    compared, each filter uses one cutoff, the one nearest the band outside it (outside the band a
-   filter does not change its power), so the standard set gives 9 pipelines instead of 108; tick
+   filter does not change its power), so the standard set gives 3 pipelines instead of 36; tick
    only the filters to compare their cutoffs.
 
    Bad channels are detected once and ICA is fitted once, before the filters, so every filter
@@ -406,7 +416,11 @@ The recommended pipeline is marked with `*`, followed by the best of the others.
 
 The line under the table names the steps that every pipeline shares. When several pipelines cannot
 be told apart from the best, PipeCompare recommends the one that keeps the most trials, so that
-data are not cleaned more than they need to be. When the settings compared make no difference on
+data are not cleaned more than they need to be. The result then says whether the recommended
+pipeline's noise is within 5 % of the best one's (a negligible difference) or whether the data are
+too few to tell, with how much noisier it could be. It also says how the best pipeline does on
+trials that were not used to choose it: either *its advantage is not luck*, or its noise there is
+about X % higher than it looks (see [How a pipeline is chosen](#how-a-pipeline-is-chosen)). When the settings compared make no difference on
 these data, the result says so. When no pipeline passes because most lost too many epochs to
 rejection, it names the channels most often over the rejection limit (likely bad channels to
 remove or interpolate before running again) and, for data that keep their recorded reference,
@@ -584,15 +598,52 @@ ERPLAB's *moving window peak-to-peak threshold*:
 
 A blink or a fast jump is a large change within 200 ms and is caught; a slow drift changes little
 within 200 ms and is not. Because the limit is a range rather than a distance from zero, its
-values are larger: simple mode compares 100, 150 and 200 µV peak-to-peak (tick **measure the
+values are larger: simple mode chooses the peak-to-peak limit from the data, as for the usual
+test, and compares 100, 150 and 200 µV peak-to-peak when epochs are repaired (tick **measure the
 limit peak-to-peak in 200 ms windows** under the rejection; `'peaktopeak'` in `pop_pipecompare`).
 It can be combined with repairing epochs: the channels over the limit are the ones repaired.
 
 In the advanced panel, the amplitude rejection step (`reject_threshold`) has the parameters
 `method` (`absolute`, the default, or `peaktopeak`; both can be compared, as `absolute |
-peaktopeak`), `window` (the window length in ms, default 200) and `uv` (any limits). Each
+peaktopeak`), `window` (the window length in ms, default 200) and `uv` (any limits, or `auto`). Each
 pipeline's `EEG.history` records the test as `pipecompare.run.Steps.markPeakToPeak(...)`, which
 marks the epochs where EEGLAB's own threshold test puts its marks (`EEG.reject.rejthresh`).
+
+### Rejection limit chosen from the data
+
+Which rejection limit is best depends on the recording: a limit that is too strict throws away
+good trials, one that is too loose keeps artifacts, and both make the measure less precise.
+Instead of trying three limits, PipeCompare finds the best one in each pipeline, from that
+pipeline's data at the rejection step:
+
+1. For every epoch it takes the value the limit is compared with: the largest absolute value over
+   the tested channels and the whole epoch (peak-to-peak: the largest peak-to-peak value in the
+   moving windows). An epoch is rejected when this value is above the limit.
+2. A limit between two neighbouring values of this list keeps exactly the same epochs, so there
+   are only as many different results as epochs, and all of them are tried: the limit is the exact
+   best, not the best of a few tries. For each one the SME the ranking uses (RMS over the
+   conditions, and over the measures for several components) is computed at once from sums over
+   the kept trials.
+3. Only limits that keep at least 10 trials and 50 % of the trials of every condition (the
+   ranking's own limits, `minTrials` and `minRetention`) count.
+4. Limits whose SME the data cannot tell apart from the best limit's (the same paired bootstrap
+   and simultaneous intervals as the ranking, over up to 60 limits spread over the range, the best
+   included) are equally good, and the **highest** of them is used: no epoch is rejected without
+   evidence that rejecting it makes the measure more precise. The number used is the roundest
+   one among the limits that keep the same epochs (for example 120 µV rather than 117.43 µV).
+5. The limit is then applied with EEGLAB's own test (`pop_eegthresh`, or the peak-to-peak marks),
+   so `EEG.history` records the number, and the signal check removes the same epochs from its
+   copy.
+
+The Command Window shows the limit used and the best one, and the steps of each pipeline in the
+results say *limit chosen from these data* with the value. It needs a score per trial, so it works
+for mean amplitude and band power; with peak measures, or when epochs are repaired (the limit
+then also decides which channels are interpolated), fixed limits are compared. The scores are
+those of the data at the rejection step; it is exact when nothing after the rejection changes them
+(the baseline is already removed from them). In the advanced panel and in scripts, set the
+`reject_threshold` parameter `uv` to `auto` (it can be compared with fixed limits, as
+`auto | 100`). A saved script keeps `auto`, so on another recording the limit is found from that
+recording's data.
 
 ### ICA on clean data
 
@@ -789,6 +840,16 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
    - preservation of the known signal: amplitude error ≤ 10 %, peak shift ≤ 10 ms, artifactual
      deflection ≤ 5 %, waveform correlation ≥ 0.95, topography correlation ≥ 0.90 (for band power
      only the amplitude error and topography correlation apply).
+
+   The filters are checked first. Filters act on a signal the same way whatever the data, so
+   what a pipeline's filters alone (high-pass, low-pass, line-noise filter) do to the known
+   signal is computed before anything runs, on a short stretch of the signal copy around the
+   first events (with more than a filter length on each side). A pipeline whose filters alone
+   break one of these limits (the topography aside, which a filter does not change) is excluded
+   without being run, with a reason that starts with *filters alone*; for example a 1 Hz
+   high-pass for a broad P3. This saves the filtering of the whole recording and everything after
+   it for those pipelines. It is done for ERP measures on continuous data, when no resampling or
+   epoching comes before the last filter; `'filterCheck', false` turns it off.
 2. **Precision.** Feasible pipelines are scored by their SME, divided by the gain each pipeline
    applies to the known signal. This makes the comparison one of signal-to-noise ratio, so a
    pipeline cannot appear more precise just by attenuating everything (Zhang, Garrett & Luck,
@@ -796,8 +857,26 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
 3. **Uncertainty.** A paired bootstrap over trials, with simultaneous intervals across all pairs
    of candidates (White, 2000; Romano & Wolf, 2005), finds the set of pipelines that the data
    cannot distinguish from the best.
-4. **Recommendation.** Within that set, PipeCompare recommends the least aggressive pipeline: the
-   one with the highest trial retention, then the least signal distortion.
+4. **Equivalence.** *Not distinguished* can mean that the pipelines are equally good or that there
+   are too few trials to tell. A pipeline is called *equivalent* to the best only when the upper
+   bound of its difference from the best is within 5 % of the best's objective
+   (`equivalenceMargin`, default 0.05); the bound is simultaneous over the pipelines not shown
+   worse. The results say which of the two applies to the recommended pipeline.
+5. **Selection check.** The best of many pipelines looks better than it is, because part of its
+   advantage is chance. PipeCompare therefore also scores the choice on trials that were not used
+   to make it: the trials of each condition are split into two halves at random, the pipeline
+   that is best on one half is scored on the other half (rescaled to all trials), and the other
+   way round, over 20 random splits (`nSplits`; consecutive halves for segments of one recording;
+   0 turns the check off; at least 4 trials per condition are needed). The result reports how
+   much better the best looks than it is on those trials. The pipelines' own decisions (bad
+   channels, ICA, rejected epochs) were made on all trials; only the choice between pipelines is
+   held out.
+6. **Recommendation.** Within the set of step 3, PipeCompare recommends the least aggressive
+   pipeline: the one with the highest trial retention, then the least signal distortion.
+
+The epoch-rejection limit of the *Standard* recipe is chosen inside each pipeline, before this
+ranking, with the same SME, constraints and bootstrap (see
+[Rejection limit chosen from the data](#rejection-limit-chosen-from-the-data)).
 
 Pipelines that differ in something that changes the measured quantity, such as the reference, are
 ranked separately and never compared with each other. With several such groups there is no overall
