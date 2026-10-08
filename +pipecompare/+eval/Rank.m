@@ -216,25 +216,43 @@ classdef Rank
                     W{c} = zeros(N, B);
                     for b = 1:B, W{c}(randperm(s, N, m), b) = 1; end
                     scale(c) = sqrt(m / N);
-                elseif isfield(ref, 'segmented') && ref.segmented && N >= 8
-                    % Consecutive segments of one recording are dependent (slow
-                    % changes of state and noise), so they are resampled in
-                    % blocks of l = round(N^(1/3)) consecutive segments, the
-                    % moving-block bootstrap (Kunsch, 1989) with the block-length
-                    % order of Hall, Horowitz & Jing (1995). ids are in time order.
-                    l = max(2, round(N ^ (1 / 3))); nb = ceil(N / l);
-                    starts = randi(s, N - l + 1, nb, B);
-                    idx = zeros(nb * l, B);
-                    for j = 1:l, idx(j:l:end, :) = starts + (j - 1); end
-                    idx = idx(1:N, :);
-                    W{c} = full(sparse(idx, repmat(1:B, N, 1), 1, N, B));
                 else
-                    idx = randi(s, N, N, B);
-                    W{c} = full(sparse(idx, repmat(1:B, N, 1), 1, N, B));
+                    W{c} = pipecompare.eval.Rank.resampleWeights(s, N, B, isfield(ref, 'segmented') && ref.segmented);
                 end
             end
             per = perObjective(cands, ref, opts, W, scale);
             boot = cellfun(@(q) combine(per, q, ref), objNames, 'UniformOutput', false);
+        end
+
+        function W = resampleWeights(s, N, B, segmented)
+            % N x B counts of each trial in B bootstrap resamples (random
+            % stream s). Consecutive segments of one recording are dependent
+            % (slow changes of state and noise), so they are resampled in
+            % blocks of l = round(N^(1/3)) consecutive segments, the
+            % moving-block bootstrap (Kunsch, 1989) with the block-length
+            % order of Hall, Horowitz & Jing (1995); trials are in time order.
+            if segmented && N >= 8
+                l = max(2, round(N ^ (1 / 3))); nb = ceil(N / l);
+                starts = randi(s, N - l + 1, nb, B);
+                idx = zeros(nb * l, B);
+                for j = 1:l, idx(j:l:end, :) = starts + (j - 1); end
+                idx = idx(1:N, :);
+            else
+                idx = randi(s, N, N, B);
+            end
+            W = full(sparse(idx, repmat(1:B, N, 1), 1, N, B));
+        end
+
+        function keep = confidenceSet(pts, Bq, ib, alpha)
+            % Which of K options (point objectives pts, paired bootstrap
+            % replicates Bq, K x B; ib the point-best) the data do not show
+            % to be worse than another one: the test of step 4.
+            keep = bestSet(pts(:), Bq, ib, alpha);
+        end
+
+        function name = objectiveName(obj, ref)
+            % 'composite' or the one measure the objective option names
+            name = resolveObjective(obj, ref);
         end
 
         function cf = crossfit(cands, ref, opts, objName, apparent)

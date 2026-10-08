@@ -393,6 +393,48 @@ non-stereotyped artifacts is standard practice, since such stretches otherwise t
 (Delorme & Makeig, 2004; the EEGLAB tutorial's advice to reject bad data before ICA). `fitClean` = 0
 turns it off. [`pipecompare.run.Steps.cleanForIca`]
 
+## 9c. Rejection limit chosen from the data (exact optimum)
+
+`reject_threshold` with `uv` = `auto` (the simple mode's default when no epochs are repaired)
+chooses the limit in each pipeline from its data at the rejection step
+[`pipecompare.eval.Threshold`].
+
+**The problem.** Let *m*ᵢ be epoch *i*'s test value: the largest absolute value over the tested
+channels and the whole epoch (`pop_eegthresh`'s test), or the largest moving-window range (section
+9a). The limit *u* keeps *K*(*u*) = {*i* : *m*ᵢ ≤ *u*}. The objective is the ranking's: *J*(*u*) =
+RMS over conditions *c* and measures *q* of SME꜀q(*K*(*u*)) (or the one measure named by
+`objective`), with SME = SD / √*n* of the per-trial scores (mean amplitude or log band power) of
+the kept trials. The constraints are the ranking's: *n*꜀(*K*(*u*)) ≥ max(`minTrials`,
+⌈`minRetention` · *N*꜀⌉) in every condition.
+
+**Exact solution.** *K*(*u*) is nested in *u* and changes only where *u* crosses a value of *m*, so
+*J* and the constraints are piecewise constant, with breakpoints at the sorted distinct values
+*v*₁ < … < *v*ᵤ (at most one per epoch). The minimum of *J* over all real *u* is therefore the
+minimum over the sets *K*(*v*ⱼ). For each set, *n*, Σ*y* and Σ*y*² are inner products of the
+scores (centred per condition, which leaves the SD unchanged and avoids cancellation) with the
+indicator matrix [*m*ᵢ ≤ *v*ⱼ], so all of them cost one matrix product. This is the global optimum
+over all limits, not the best of a grid; it equals a brute-force search (`test_engine`).
+
+**Choice.** The minimizer is chosen on the same trials it is scored on, and a slightly lower SME at
+a stricter limit may be chance. The limits are therefore compared as the ranking compares
+pipelines (section 3): a paired bootstrap over trials (the same resampled trials for every limit;
+moving blocks for segments of one recording) with the simultaneous max statistic over all pairs
+gives the limits not shown worse than another. At most 60 limits enter the bootstrap: the
+feasible ones spread evenly by rank over the range, the minimizer included. Among those not
+distinguished from the best, the highest is used (the least aggressive, as in step 5 of the
+ranking), so an epoch is rejected only when the data show that rejecting it improves precision.
+The value used is the number with the fewest significant digits in [*v*ⱼ, *v*ⱼ₊₁) (any number
+there keeps the same epochs). It is applied by `pop_eegthresh` (or the peak-to-peak marks) and
+recorded in `EEG.history`, and the signal check removes the same epochs from its copy. When no
+limit is feasible, nothing is rejected and the ranking reports the missing trials.
+
+**Scope.** The scores are those of the data at the rejection step: the result is exact when no
+later step changes them (the baseline is already removed from them). The signal gain *g* is left
+out of *J*: the known signal is the same in every epoch, so *g* does not depend on *u* (with
+several measures of different gains, their weights in the RMS would differ slightly). Peak
+measures have no per-trial score and keep fixed limits; so do repaired epochs (section 9), where
+the limit also decides which channels are interpolated.
+
 ## 10. Montage check (before a run)
 
 Scalp potentials vary smoothly over the head, so after an average reference a channel resembles its

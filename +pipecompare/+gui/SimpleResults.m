@@ -268,7 +268,8 @@ switch [type '.' param]
     case 'highpass.cutoff', t = sprintf('high-pass %s Hz', x);
     case 'lowpass.cutoff', t = sprintf('low-pass %s Hz', x);
     case 'icremove.threshold', t = sprintf('ICLabel %s', x);
-    case 'reject_threshold.uv', t = sprintf('reject above %s uV', x);
+    case 'reject_threshold.uv'
+        if strcmp(x, 'auto'), t = 'rejection limit chosen from the data'; else, t = sprintf('reject above %s uV', x); end
     case {'reject_threshold.interpolate', 'reject_jointprob.interpolate', 'reject_kurtosis.interpolate'}
         t = sprintf('repair epochs with up to %s channels', x);
     case 'asr.cutoff', t = sprintf('ASR %s SD', x);

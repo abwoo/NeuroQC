@@ -857,6 +857,82 @@ in.params.interpolate = 1;                                      % epoch 7 has tw
 verifyEqual(tc, sort(info1.rejIdx), [7 20 25]);
 end
 
+function testRejectionLimitFromTheDataIsTheExactOptimum(tc)
+% uv 'auto': every limit that keeps a different set of epochs is scored;
+% the best one equals a brute-force search, the one chosen is the highest
+% the data do not distinguish from it, and pop_eegthresh rejects exactly
+% the epochs over it.
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30));
+[~, E] = evalc('nqc_epoched(EEG)');
+c = nqc_c();
+ref = pipecompare.eval.Measure.reference(E, c);
+in = struct('type', 'reject_threshold', 'params', struct('uv', 'auto', 'exclude', {{}}), 'key', 'rej', 'slot', 'rej', 'label', 'rej');
+x = struct('contract', c, 'highpass', 0, 'ref', ref, 'rank', struct());
+[E2, coms, info] = pipecompare.run.Steps.run(in, E, x);
+u = info.uvChosen; th = info.threshold;
+m = reshape(max(max(abs(double(E.data)), [], 1), [], 2), 1, []);
+verifyEqual(tc, sort(info.rejIdx(:)'), find(m > u));              % exactly the epochs over the limit
+verifyTrue(tc, contains(coms{1}, 'pop_eegthresh'));
+verifyGreaterThanOrEqual(tc, u, th.uvBest);
+verifyGreaterThan(tc, info.rejected, 0);                          % the movement artifacts go
+% brute force over every limit (one per value of m)
+T = pipecompare.eval.Measure.trials(E, c); mt = m(T.epoch);
+need = max(10, ceil(0.5 * ref.n));
+best = Inf; uBest = NaN;
+for v = unique(mt(:)')
+    s2 = zeros(1, 2);
+    for k = 1:2
+        y = T.data{1}(T.cond == k & mt(:) <= v);
+        if numel(y) < need(k), s2(k) = Inf; else, s2(k) = var(y) / numel(y); end
+    end
+    o = sqrt(mean(s2));
+    if o <= best, best = o; uBest = v; end
+end
+verifyEqual(tc, th.objectiveBest, best, 'RelTol', 1e-9);
+verifyEqual(tc, find(m > th.uvBest), find(m > uBest));            % the same epochs kept
+% the objective at the chosen limit is the ranking's own (SME of the data it leaves)
+mc = pipecompare.eval.Measure.candidate(E2, c, ref);
+verifyEqual(tc, mc.composite, th.objectiveChosen, 'RelTol', 1e-9);
+% peak-to-peak: the same, on the moving-window peak-to-peak values
+in.params.method = 'peaktopeak'; in.params.window = 200;
+[~, ~, info] = pipecompare.run.Steps.run(in, E, x);
+pp = max(pipecompare.run.Steps.peakToPeak(E, 1:E.nbchan, 200), [], 1);
+verifyEqual(tc, sort(info.rejIdx(:)'), find(pp > info.uvChosen));
+% peak measures have no score per trial: a clear error
+x.contract = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
+    'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz'}, {'peakAmplitude', 'positive'}});
+verifyError(tc, @() pipecompare.run.Steps.run(in, E, x), 'PipeCompare:Threshold');
+end
+
+function testRejectionLimitFromTheDataEndToEnd(tc)
+% In a search: with movement artifacts, the limit chosen from the data
+% beats rejecting almost nothing; adopt rebuilds the same pipeline (same
+% limit, same SME) and the saved script keeps 'auto'.
+[EEG, truth] = nqc_synth();
+nqc_setBase(EEG);
+c = pipecompare.eval.Contract('conditions', {'target', {'11'}; 'standard', {'31'}}, ...
+    'epoch', [-0.2 1.0], 'baseline', [-0.2 0], 'components', {'P3', [0.30 0.50], truth.roi});
+p = pipecompare.plan.Plan();
+p = p.add('highpass', 'cutoff', 0.1); p = p.add('lowpass', 'cutoff', 30);
+p = p.add('epoch'); p = p.add('baseline');
+p = p.add('reject_threshold', 'uv', {'auto', 1000});
+r = pipecompare.PipeCompare.optimize(p, c);
+rec = r.ranking.recommended;
+verifyTrue(tc, contains(r.labels{rec}, 'auto'), r.labels{rec});
+st = r.cands(rec).steps{end};
+verifyTrue(tc, isfinite(st.uvChosen) && st.uvChosen < 1000);
+L = pipecompare.simple.Presets.stepsText(r, rec);
+verifyTrue(tc, any(contains(L, sprintf('+/-%g uV', st.uvChosen)) & contains(L, 'limit chosen from these data')), strjoin(L, newline));
+pipecompare.PipeCompare.adopt(r);
+adopted = evalin('base', 'EEG');
+verifyTrue(tc, contains(adopted.history, 'pop_eegthresh'));
+m = pipecompare.eval.Measure.candidate(adopted, c, r.ref);
+verifyEqual(tc, m.composite, r.cands(rec).m.composite, 'RelTol', 1e-9);
+f = fullfile(tempdir, 'pc_auto_limit_script.m'); cl = onCleanup(@() delete(f)); %#ok<NASGU>
+pipecompare.PipeCompare.writeScript(r, rec, f);
+verifyTrue(tc, contains(fileread(f), 'auto'), fileread(f));
+end
+
 function testPeakToPeakRejection(tc)
 % Peak-to-peak in moving 200 ms windows: a slow drift that crosses an
 % absolute limit is kept, a fast deflection is rejected; the marks are

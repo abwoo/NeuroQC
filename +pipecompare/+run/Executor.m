@@ -130,7 +130,7 @@ classdef Executor
             elseif isfield(result, 'identity')
                 env.identity = result.identity;
             end
-            ctx0 = struct('contract', contract, 'highpass', rootHighpass(result.state));
+            ctx0 = struct('contract', contract, 'highpass', rootHighpass(result.state), 'ref', ref, 'rank', opts);
             acc0 = struct('interpolated', {{}}, 'icsRemoved', 0, 'rejected', 0, 'coms', {{}}, 'seconds', 0, 'unmatched', {{}}, ...
                 'ica', {{}}, 'overLimit', noOverLimit(), 'steps', {{}});
             % pipelines whose filters alone distort the known signal are
@@ -381,7 +381,8 @@ classdef Executor
             if nargin < 3, recordGlobal = false; end
             EEG = pipecompare.run.Executor.rootOf(result);
             path = result.leaves(idx).path;
-            ctx = struct('contract', result.contract, 'highpass', rootHighpass(result.state));
+            ctx = struct('contract', result.contract, 'highpass', rootHighpass(result.state), 'ref', pipecompare.utils.fieldOr(result, 'ref', []), ...
+                'rank', result.options);
             if recordGlobal
                 for q = 1:numel(result.rootComs), eegh(result.rootComs{q}); end
             end
@@ -432,6 +433,10 @@ classdef Executor
             state = pipecompare.live.DataState.fromEEG(EEG);
             EEG = pipecompare.run.Executor.prepareRoot(EEG, contract, struct('dataUnit', state.unitGuess));
             ctx = struct('contract', contract, 'highpass', rootHighpass(state));
+            if any(cellfun(@(p) isfield(p, 'uv') && ischar(p.uv), steps(:, 2)))
+                % a limit chosen from the data is judged against these data's own trials
+                ctx.ref = pipecompare.eval.Measure.reference(EEG, contract);
+            end
             for k = 1:size(steps, 1)
                 in = struct('type', steps{k, 1}, 'params', steps{k, 2});
                 [EEG, coms] = pipecompare.run.Steps.run(in, EEG, ctx);
@@ -685,14 +690,15 @@ function f = stepFacts(in, info)
 % decisions it made on these data (channels, components, epochs, epochs
 % kept by interpolating channels in them), and for ICLabel how many
 % components it took for brain activity and for 'Other' and how many data
-% points ICA had (the ICA check).
+% points ICA had (the ICA check); for a rejection limit chosen from the
+% data, the limit (uvChosen).
 f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed', {{}}, ...
     'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN, 'epochsInterpolated', NaN, ...
-    'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN);
+    'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN);
 for n = {'interpolated', 'removed'}
     if isfield(info, n{1}), f.(n{1}) = cellstr(info.(n{1})); end
 end
-for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore', 'epochsInterpolated', 'icsBrain', 'icsOther', 'otherMedian', 'icaPoints'}
+for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore', 'epochsInterpolated', 'icsBrain', 'icsOther', 'otherMedian', 'icaPoints', 'uvChosen'}
     if isfield(info, n{1}), f.(n{1}) = info.(n{1}); end
 end
 end

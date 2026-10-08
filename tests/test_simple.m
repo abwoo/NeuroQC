@@ -94,7 +94,8 @@ end
 function testBandPowerStandardFixesTheFilters(tc)
 % Outside the band a filter does not change its power: Standard uses the
 % high-pass and low-pass edges nearest the band and compares ICLabel and
-% epoch rejection only (9 pipelines instead of 108).
+% epoch rejection only (3 pipelines instead of 36; the rejection limit is
+% chosen from the data).
 EEG = tc.TestData.EEG;
 st = pipecompare.live.DataState.fromEEG(EEG);
 [p, notes] = pipecompare.simple.Presets.recipe('standard', st, pipecompare.simple.Presets.contract(EEG, 'alpha', {}));
@@ -103,7 +104,7 @@ verifyEqual(tc, cut('highpass'), {1});
 verifyEqual(tc, cut('lowpass'), {20});
 verifyTrue(tc, any(contains(notes, 'low-pass 30, 40 Hz (band power')));
 if exist('pop_iclabel', 'file') == 2
-    verifyEqual(tc, numel(p.enumerate(st, pipecompare.simple.Presets.contract(EEG, 'alpha', {}), struct('maxLeaves', Inf))), 9);
+    verifyEqual(tc, numel(p.enumerate(st, pipecompare.simple.Presets.contract(EEG, 'alpha', {}), struct('maxLeaves', Inf))), 3);
 end
 p = pipecompare.simple.Presets.recipe('standard', st, pipecompare.simple.Presets.contract(EEG, 'beta', {}));
 verifyEqual(tc, p.Slots(strcmp({p.Slots.id}, 'lowpass')).alternatives{1}.params.cutoff, {30});   % the nearest edge outside 13-30 Hz
@@ -418,9 +419,9 @@ d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>
 d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
 names = pipecompare.simple.Presets.stepNames();
 box = @(s) d.StepBoxes(strcmp(names, s));
-verifyEqual(tc, d.update(), 4 * 3 * 3 * 3);                     % Standard
+verifyEqual(tc, d.update(), 4 * 3 * 3);                         % Standard (rejection limit chosen from the data)
 d.tick(find(strcmp(names, 'ica')), false);
-verifyEqual(tc, d.update(), 4 * 3 * 3);                         % without ICA
+verifyEqual(tc, d.update(), 4 * 3);                             % without ICA
 verifyFalse(tc, box('ica').Value);
 o = d.options();
 verifyEqual(tc, o.steps, {'badchannels', 'highpass', 'lowpass', 'reject'});
@@ -525,12 +526,12 @@ verifyEqual(tc, char(d.RunButton.Enable), 'off');
 verifyEqual(tc, d.Grid.RowHeight{3}, 0);                        % nothing chosen yet
 d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
 [n, msg] = d.update();
-verifyEqual(tc, n, 4 * 3 * 3 * 3);                              % filters x ICLabel threshold x rejection threshold
+verifyEqual(tc, n, 4 * 3 * 3);                                  % filters x ICLabel threshold (rejection limit chosen from the data)
 verifyTrue(tc, contains(msg, '(1 ICA decomposition)'));
 verifyEqual(tc, char(d.RunButton.Enable), 'on');
 verifyEqual(tc, d.RefDrop.Value, 'asis');                       % the reference as recorded unless chosen
 d.RefDrop.Value = 'average';
-verifyEqual(tc, d.update(), 4 * 3 * 3 * 3);                     % fixed: no more pipelines
+verifyEqual(tc, d.update(), 4 * 3 * 3);                         % fixed: no more pipelines
 o = d.options();
 verifyEqual(tc, o.reference, 'average');
 d.RefDrop.Value = 'asis';
@@ -543,7 +544,7 @@ verifyEqual(tc, char(d.EventList.Enable), 'off');               % band power nee
 o = d.options();
 verifyEmpty(tc, o.events);
 d.usePreset('standard');
-verifyEqual(tc, d.update(), 3 * 3);                             % band power: one high-pass, one low-pass
+verifyEqual(tc, d.update(), 3);                                 % band power: one high-pass, one low-pass, the limit from the data
 d.MeasureDrop.Value = 'N2pc'; d.measureChanged();
 verifyEqual(tc, d.EventGrid.ColumnWidth{2}, '1x');              % one list per side
 verifyEqual(tc, char(d.PoolBox.Enable), 'off');
@@ -885,7 +886,7 @@ names = P.stepNames(); k = find(strcmp(names, 'epochinterp'));
 verifyFalse(tc, d.StepBoxes(k).Value);
 n = d.update();
 d.tick(k, true);
-verifyEqual(tc, d.update(), n);                                  % fixed: no more pipelines
+verifyEqual(tc, d.update(), 3 * n);                              % repair: 3 fixed limits instead of one chosen from the data
 verifyTrue(tc, ismember('epochinterp', d.options().steps));
 d.tick(find(strcmp(names, 'reject')), false); d.update();
 verifyEqual(tc, char(d.StepBoxes(k).Enable), 'off');             % only with the rejection
@@ -902,11 +903,11 @@ st = pipecompare.live.DataState.fromEEG(EEG);
 p = P.recipe({'reject', 'peaktopeak'}, st, c);
 a = p.Slots(end).alternatives{1}.params;
 verifyEqual(tc, a.method, 'peaktopeak');
-verifyEqual(tc, a.uv, P.PeakToPeakUv);
-verifyNumElements(tc, p.enumerate(st, c), 3);
+verifyEqual(tc, a.uv, 'auto');                                  % the limit chosen from the data
+verifyNumElements(tc, p.enumerate(st, c), 1);
 p = P.recipe({'reject', 'peaktopeak', 'epochinterp'}, st, c);
 a = p.Slots(end).alternatives{1}.params;
-verifyEqual(tc, {a.method, a.interpolate}, {'peaktopeak', P.EpochInterpMax});
+verifyEqual(tc, {a.method, a.interpolate, a.uv}, {'peaktopeak', P.EpochInterpMax, P.PeakToPeakUv});   % repair: limits compared
 p = P.recipe({'reject'}, st, c);
 verifyFalse(tc, isfield(p.Slots(end).alternatives{1}.params, 'method'));   % absolute unless chosen
 [~, notes] = P.recipe({'highpass', 'peaktopeak'}, st, c);
@@ -917,13 +918,17 @@ r.contract = c; r.ref = struct('names', {{'11'}}, 'n', 30);
 r.cands = struct('steps', {{f}}, 'm', struct('kept', 26));
 L = P.stepsText(r, 1);
 verifyTrue(tc, startsWith(L{1}, '1. Epochs over 150 uV peak-to-peak (within 200 ms) on any channel rejected: 4 of 60'), L{1});
+f.params.uv = 'auto'; f.params.method = 'absolute'; f.uvChosen = 87.5;
+r.cands = struct('steps', {{f}}, 'm', struct('kept', 26));
+L = P.stepsText(r, 1);
+verifyTrue(tc, startsWith(L{1}, '1. Epochs beyond +/-87.5 uV on any channel rejected: 4 of 60 (limit chosen from these data'), L{1});
 d = pipecompare.gui.SimpleDialog(EEG); cleanD = onCleanup(@() delete(d)); %#ok<NASGU>
 d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
 names = P.stepNames(); k = find(strcmp(names, 'peaktopeak'));
 verifyFalse(tc, d.StepBoxes(k).Value);
 n = d.update();
 d.tick(k, true);
-verifyEqual(tc, d.update(), n);                                  % 3 limits instead of 3
+verifyEqual(tc, d.update(), n);                                  % still one limit, chosen from the data
 verifyTrue(tc, ismember('peaktopeak', d.options().steps));
 d.tick(find(strcmp(names, 'reject')), false); d.update();
 verifyEqual(tc, char(d.StepBoxes(k).Enable), 'off');

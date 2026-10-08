@@ -11,6 +11,11 @@ release has a git tag `vX.Y.Z`.
 - Selection check: the best pipeline is also scored on trials that were not used to choose it
   (cross-fitting over 20 random half splits, `nSplits` option), and the results say how much
   better it looks than it is (`ranking.byStratum.crossfit`).
+- Rejection limit chosen from the data (`reject_threshold` `uv` = `auto`): every limit that keeps
+  a different set of epochs is scored and the exact best is found; the highest limit the data do
+  not distinguish from it is used. The simple mode uses it by default (36 pipelines for
+  *Standard* instead of 108, 3 for band power instead of 9); with repaired epochs or peak
+  measures, fixed limits are still compared.
 - Filter check: what each pipeline's filters alone do to the known signal is computed before
   anything runs, on a short stretch of the signal copy; pipelines whose filters alone break a
   signal-check limit are excluded without being run (reason *filters alone: …*; option
