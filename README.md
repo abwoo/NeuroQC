@@ -406,7 +406,11 @@ The recommended pipeline is marked with `*`, followed by the best of the others.
 
 The line under the table names the steps that every pipeline shares. When several pipelines cannot
 be told apart from the best, PipeCompare recommends the one that keeps the most trials, so that
-data are not cleaned more than they need to be. When the settings compared make no difference on
+data are not cleaned more than they need to be. The result then says whether the recommended
+pipeline's noise is within 5 % of the best one's (a negligible difference) or whether the data are
+too few to tell, with how much noisier it could be. It also says how the best pipeline does on
+trials that were not used to choose it: either *its advantage is not luck*, or its noise there is
+about X % higher than it looks (see [How a pipeline is chosen](#how-a-pipeline-is-chosen)). When the settings compared make no difference on
 these data, the result says so. When no pipeline passes because most lost too many epochs to
 rejection, it names the channels most often over the rejection limit (likely bad channels to
 remove or interpolate before running again) and, for data that keep their recorded reference,
@@ -796,8 +800,22 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
 3. **Uncertainty.** A paired bootstrap over trials, with simultaneous intervals across all pairs
    of candidates (White, 2000; Romano & Wolf, 2005), finds the set of pipelines that the data
    cannot distinguish from the best.
-4. **Recommendation.** Within that set, PipeCompare recommends the least aggressive pipeline: the
-   one with the highest trial retention, then the least signal distortion.
+4. **Equivalence.** *Not distinguished* can mean that the pipelines are equally good or that there
+   are too few trials to tell. A pipeline is called *equivalent* to the best only when the upper
+   bound of its difference from the best is within 5 % of the best's objective
+   (`equivalenceMargin`, default 0.05); the bound is simultaneous over the pipelines not shown
+   worse. The results say which of the two applies to the recommended pipeline.
+5. **Selection check.** The best of many pipelines looks better than it is, because part of its
+   advantage is chance. PipeCompare therefore also scores the choice on trials that were not used
+   to make it: the trials of each condition are split into two halves at random, the pipeline
+   that is best on one half is scored on the other half (rescaled to all trials), and the other
+   way round, over 20 random splits (`nSplits`; consecutive halves for segments of one recording;
+   0 turns the check off; at least 4 trials per condition are needed). The result reports how
+   much better the best looks than it is on those trials. The pipelines' own decisions (bad
+   channels, ICA, rejected epochs) were made on all trials; only the choice between pipelines is
+   held out.
+6. **Recommendation.** Within the set of step 3, PipeCompare recommends the least aggressive
+   pipeline: the one with the highest trial retention, then the least signal distortion.
 
 Pipelines that differ in something that changes the measured quantity, such as the reference, are
 ranked separately and never compared with each other. With several such groups there is no overall

@@ -45,6 +45,20 @@ classdef Rank
     %      (Davison & Hinkley, 1997): B = 1999 (40 values beyond it), and
     %      999 for peak measures whose nested bootstrap costs more (20).
     %      Not distinguished = absence of evidence, not equivalence.
+    %      Equivalent: the upper bound of the difference from the best lies
+    %      within opts.equivalenceMargin (default 5%) of the best objective,
+    %      so the data show the difference is negligible (a one-sided test
+    %      of equivalence, Schuirmann, 1987; the best is the lowest, so only
+    %      the upper side is open). The bound is simultaneous over the
+    %      candidates not shown worse (step-down, Romano & Wolf, 2005).
+    %      Not distinguished but not equivalent means too few trials to tell.
+    %   4b. Selection bias: the best of many objectives looks better than
+    %      it is (part of its advantage is chance). crossfit estimates the
+    %      objective of the pipeline chosen this way on trials not used to
+    %      choose it: the trials of each condition are split in halves,
+    %      the pipeline best on one half is scored on the other (rescaled
+    %      to the full number of trials), and back; opts.nSplits random
+    %      splits (consecutive halves for segments of one recording).
     %   5. Among candidates the data do not distinguish from the best, the
     %      recommendation is the least aggressive: highest minimum trial
     %      retention, then smallest signal distortion, then best objective.
@@ -62,7 +76,7 @@ classdef Rank
                 'maxAmplitudeError', 0.10, 'maxLatencyShiftMs', 10, 'maxArtifactPct', 0.05, ...
                 'minWaveformCorr', 0.95, 'minTopoCorr', 0.90, ...
                 'objective', 'composite', 'nBoot', 1999, 'nBootPeakOuter', 999, 'nBootPeakInner', 100, ...
-                'nBootPeak', 1000, 'alpha', 0.02, 'seed', 1);
+                'nBootPeak', 1000, 'alpha', 0.02, 'seed', 1, 'equivalenceMargin', 0.05, 'nSplits', 20);
         end
 
         function R = run(cands, ref, opts)
@@ -128,31 +142,36 @@ classdef Rank
                 whyList{i} = why;
             end
 
-            lo = nan(n, 1); hi = nan(n, 1); notDist = false(n, 1);
+            lo = nan(n, 1); hi = nan(n, 1); hiKept = nan(n, 1); notDist = false(n, 1); equiv = false(n, 1);
             recommended = []; best = [];
-            byStratum = struct('stratum', {}, 'best', {}, 'recommended', {}, 'set', {});
+            byStratum = struct('stratum', {}, 'best', {}, 'recommended', {}, 'set', {}, 'crossfit', {});
             strata = unique(stratum(strcmp(status, 'feasible')), 'stable');
             for s = 1:numel(strata)
                 feas = find(strcmp(status, 'feasible') & strcmp(stratum, strata{s}));
                 boot = pipecompare.eval.Rank.bootstrap(cands(feas), ref, opts, {objName});
                 pts = primary(feas);
                 [~, ib] = min(pts);
-                [keep, l, h] = bestSet(pts(:), boot{1}, ib, opts.alpha);
+                [keep, l, h, hEq] = bestSet(pts(:), boot{1}, ib, opts.alpha);
                 lo(feas) = l; hi(feas) = h; notDist(feas(keep)) = true;
+                % equivalent: the whole interval within the margin of the best
+                hEq(~keep) = NaN; hiKept(feas) = hEq;
+                equiv(feas) = keep & hEq <= opts.equivalenceMargin * pts(ib);
                 t = feas(keep);
                 % least aggressive among those not distinguished from the best
                 key = [-minRet(t), ampErr(t), primary(t)];
                 [~, o] = sortrows(round(key, 10));
-                byStratum(end+1) = struct('stratum', strata{s}, 'best', feas(ib), 'recommended', t(o(1)), 'set', t); %#ok<AGROW>
+                cf = pipecompare.eval.Rank.crossfit(cands(feas), ref, opts, objName, pts(ib));
+                byStratum(end+1) = struct('stratum', strata{s}, 'best', feas(ib), 'recommended', t(o(1)), 'set', t, ...
+                    'crossfit', cf); %#ok<AGROW>
             end
             if isscalar(byStratum)
                 recommended = byStratum.recommended; best = byStratum.best;
             end
             feasAll = find(strcmp(status, 'feasible'));
             order = [sortBy(feasAll, primary); find(strcmp(status, 'rejected')); find(strcmp(status, 'failed'))];
-            T = table((1:n)', stratum, status, primary, lo, hi, notDist, minRet, minKept, interp, ...
+            T = table((1:n)', stratum, status, primary, lo, hi, notDist, equiv, hiKept, minRet, minKept, interp, ...
                 ampErr, latSh, artPct, wCorr, tCorr, reasons, notes, ...
-                'VariableNames', {'id','stratum','status','objective','diffLo','diffHi','notDistinguished', ...
+                'VariableNames', {'id','stratum','status','objective','diffLo','diffHi','notDistinguished','equivalent','diffHiKept', ...
                 'minRetention','minTrials','interpolated','ampError', ...
                 'latencyShiftMs','artifactPct','waveformCorr','topoCorr','reason','note'});
             for k = 1:nO
@@ -203,23 +222,54 @@ classdef Rank
                     W{c} = full(sparse(idx, repmat(1:B, N, 1), 1, N, B));
                 end
             end
-            nO = numel(ref.objectives);
-            per = zeros(numel(cands), B, nO);
-            for k = 1:numel(cands)
-                objs = cands(k).m.objectives;
-                g = gainOf(cands(k), nO);
-                for o = 1:nO
-                    per(k, :, o) = pipecompare.eval.Measure.smeBoot(objs(o), W, opts, 7919 * o, scale) / g(o);
+            per = perObjective(cands, ref, opts, W, scale);
+            boot = cellfun(@(q) combine(per, q, ref), objNames, 'UniformOutput', false);
+        end
+
+        function cf = crossfit(cands, ref, opts, objName, apparent)
+            % The objective of the pipeline that is best on one half of the
+            % trials, scored on the other half (rescaled to all trials by
+            % sqrt(m/N), as the half-samples of bootstrap; SME ~ 1/sqrt(n)),
+            % averaged over both directions and opts.nSplits random splits.
+            % Selection and evaluation use different trials, so the value is
+            % not flattered by the selection; apparent (the best objective on
+            % all trials) is. overstatement = honest / apparent - 1. A choice
+            % made on half the trials is somewhat worse than one made on all,
+            % so the overstatement is, if anything, too large. [] when a
+            % condition has fewer than 4 trials or nSplits is 0.
+            % The data-driven decisions of each pipeline (bad channels, ICA,
+            % rejected epochs) were made on all trials; only the selection
+            % among pipelines is held out.
+            cf = [];
+            if nargin < 5, apparent = NaN; end
+            opts = pipecompare.utils.withDefaults(opts, pipecompare.eval.Rank.defaults());
+            if opts.nSplits < 1 || any(ref.n < 4), return; end
+            s = RandStream('mt19937ar', 'Seed', opts.seed + 101);
+            nC = numel(ref.ids);
+            segmented = isfield(ref, 'segmented') && ref.segmented;
+            nS = opts.nSplits; if segmented, nS = 1; end
+            honest = []; inSample = [];
+            for sp = 1:nS
+                WA = cell(1, nC); WB = cell(1, nC); scA = ones(1, nC); scB = ones(1, nC);
+                for c = 1:nC
+                    N = ref.n(c); m = floor(N / 2);
+                    % consecutive segments are dependent: earlier vs later half
+                    if segmented, p = 1:N; else, p = randperm(s, N); end
+                    WA{c} = zeros(N, 1); WA{c}(p(1:m)) = 1; scA(c) = sqrt(m / N);
+                    WB{c} = zeros(N, 1); WB{c}(p(m+1:end)) = 1; scB(c) = sqrt((N - m) / N);
                 end
+                vA = combine(perObjective(cands, ref, opts, WA, scA), objName, ref);
+                vB = combine(perObjective(cands, ref, opts, WB, scB), objName, ref);
+                vA(~isfinite(vA)) = NaN; vB(~isfinite(vB)) = NaN;
+                if all(isnan(vA)) || all(isnan(vB)), continue; end
+                [~, ia] = min(vA); [~, ib] = min(vB);
+                honest = [honest vB(ia) vA(ib)]; inSample = [inSample vA(ia) vB(ib)]; %#ok<AGROW>
             end
-            boot = cell(1, numel(objNames));
-            for q = 1:numel(objNames)
-                if strcmp(objNames{q}, 'composite')
-                    boot{q} = sqrt(mean(per .^ 2, 3));
-                else
-                    boot{q} = per(:, :, strcmp(ref.objectives, objNames{q}));
-                end
-            end
+            ok = isfinite(honest);
+            if ~any(ok), return; end
+            h = mean(honest(ok));
+            cf = struct('apparent', apparent, 'honest', h, 'overstatement', h / apparent - 1, ...
+                'halfInSample', mean(inSample(ok)), 'nSplits', nS);
         end
 
         function T = marginal(R, leaves, searched)
@@ -313,12 +363,13 @@ classdef Rank
             T = R.table; o = R.options;
             pipecompare.utils.log(['Ranking by %s gain-corrected SME (SME / signal gain; lower = more precise). diff = difference from the best, ', ...
                 '%.0f%% interval simultaneous over all candidates; "nd" = not distinguished from the best by these data ', ...
-                '(not equivalence).'], R.objective, 100 * (1 - o.alpha));
+                '(not equivalence); "eq" = equivalent: the whole interval within %.0f%% of the best.'], R.objective, ...
+                100 * (1 - o.alpha), 100 * o.equivalenceMargin);
             fprintf('   %-4s %-9s %9s %19s %3s %6s %6s %6s %5s  %s\n', 'id', 'status', 'objective', 'diff vs best [CI]', 'nd', 'minRet', 'interp', 'ampErr', 'art', 'pipeline');
             for k = R.order(:)'
                 mark = ' '; if any([R.byStratum.recommended] == k), mark = '*'; end
                 ci = ''; if isfinite(T.diffLo(k)), ci = sprintf('[%+.3f %+.3f]', T.diffLo(k), T.diffHi(k)); end
-                nd = ''; if T.notDistinguished(k), nd = 'nd'; end
+                nd = ''; if T.equivalent(k), nd = 'eq'; elseif T.notDistinguished(k), nd = 'nd'; end
                 fprintf('  %s%-4d %-9s %9.4g %19s %3s %5.0f%% %5.0f%% %5.0f%% %4.1f%%  %s\n', mark, k, T.status{k}, ...
                     T.objective(k), ci, nd, 100*T.minRetention(k), 100*T.interpolated(k), ...
                     100*T.ampError(k), 100*T.artifactPct(k), labels{k});
@@ -337,6 +388,12 @@ classdef Rank
                 lab = ''; if ~isempty(b.stratum), lab = sprintf(' [stratum %s]', b.stratum); end
                 pipecompare.utils.log(['Recommended (*)%s: candidate %d (fewest trials lost, then least distortion, among the %d ', ...
                     'not distinguished from the best); best objective: candidate %d.'], lab, b.recommended, numel(b.set), b.best);
+                if ~isempty(b.crossfit)
+                    pipecompare.utils.log(['Selection check: the pipeline best on half of the trials has objective %.4g on the ', ...
+                        'other half (rescaled to all trials), against %.4g for the best on all trials: the best looks %.0f%% ', ...
+                        'better than it is (%d split(s), both directions).'], b.crossfit.honest, b.crossfit.apparent, ...
+                        100 * b.crossfit.overstatement, b.crossfit.nSplits);
+                end
             end
             if numel(R.byStratum) > 1
                 pipecompare.utils.log(['Strata differ in what is measured (e.g. the reference); their results are not ', ...
@@ -386,7 +443,7 @@ end
 g(~(g > 0)) = NaN;
 end
 
-function [keep, lo, hi] = bestSet(pts, Bq, ib, alpha)
+function [keep, lo, hi, hiEq] = bestSet(pts, Bq, ib, alpha)
 % Which candidates the data do not show to be worse than another one.
 % pts: point objectives (K x 1); Bq: paired bootstrap replicates (K x B);
 % ib: index of the point-best. lo/hi: interval of each difference from
@@ -416,6 +473,18 @@ worse = Dhat > c;
 keep = keep | ~any(worse, 2);
 lo = Dhat(:, ib) - c; hi = Dhat(:, ib) + c;
 lo(ib) = 0; hi(ib) = 0;
+% For equivalence, the upper bounds are simultaneous over the candidates
+% kept only (step-down, Romano & Wolf, 2005): a candidate already shown
+% worse would otherwise widen every interval, and no difference among the
+% others could ever be shown negligible.
+k = find(keep); maxK = -inf(1, B);
+for i = k(:)'
+    D = Bq(i, :) - Bq(k, :); D(~isfinite(D)) = NaN;
+    maxK = max(maxK, max(D - Dhat(i, k)', [], 1, 'omitnan'));
+end
+z = maxK(isfinite(maxK));
+if isempty(z), cK = 0; else, cK = max(upperQuantile(z, alpha), 0); end
+hiEq = Dhat(:, ib) + cK; hiEq(ib) = 0; hiEq(~keep) = Inf;
 end
 
 function v = upperQuantile(z, alpha)
@@ -451,5 +520,28 @@ if ischar(v) || isstring(v), t = char(v);
 elseif isnumeric(v) || islogical(v), t = mat2str(v);
 elseif iscell(v), t = strjoin(cellfun(@valText, v, 'UniformOutput', false), ',');
 else, t = class(v);
+end
+end
+
+function per = perObjective(cands, ref, opts, W, scale)
+% Gain-corrected SME of every candidate and objective under the trial
+% weights W{c} (N x B per condition): candidates x B x objectives.
+nO = numel(ref.objectives); B = size(W{1}, 2);
+per = zeros(numel(cands), B, nO);
+for k = 1:numel(cands)
+    objs = cands(k).m.objectives;
+    g = gainOf(cands(k), nO);
+    for o = 1:nO
+        per(k, :, o) = pipecompare.eval.Measure.smeBoot(objs(o), W, opts, 7919 * o, scale) / g(o);
+    end
+end
+end
+
+function v = combine(per, name, ref)
+% The objective by its name: 'composite' = RMS over objectives.
+if strcmp(name, 'composite')
+    v = sqrt(mean(per .^ 2, 3));
+else
+    v = per(:, :, strcmp(ref.objectives, name));
 end
 end

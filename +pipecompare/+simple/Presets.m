@@ -521,6 +521,36 @@ classdef Presets
             end
         end
 
+        function t = precisionText(result)
+            % Two checks of the recommendation, in words (one stratum only):
+            % whether the recommended pipeline is practically as good as the
+            % best or the data are too few to tell (equivalence margin), and
+            % how much better the best looks than it is on trials not used
+            % to choose it (Rank.crossfit). '' when there is nothing to say.
+            t = '';
+            R = result.ranking;
+            if numel(R.byStratum) ~= 1 || pipecompare.eval.Rank.sameScores(R), return; end
+            b = R.byStratum; T = R.table; k = b.recommended;
+            margin = 100 * R.options.equivalenceMargin;
+            if k ~= b.best && isfinite(T.diffHiKept(k)) && T.objective(b.best) > 0
+                if T.equivalent(k)
+                    t = sprintf('Its noise is within %.0f%% of the best one''s, a negligible difference.', margin);
+                else
+                    t = sprintf(['With this many trials it could still be up to %.0f%% noisier than the best one; ', ...
+                        'more trials would tell them apart.'], 100 * T.diffHiKept(k) / T.objective(b.best));
+                end
+            end
+            cf = b.crossfit;
+            if isempty(cf) || ~isfinite(cf.overstatement), return; end
+            if cf.overstatement < 0.02
+                u = 'Checked on trials not used to choose it, the best pipeline''s noise is as low as it looks here: its advantage is not luck.';
+            else
+                u = sprintf(['Checked on trials not used to choose it, the best pipeline''s noise is about %.0f%% higher than ', ...
+                    'it looks here: part of its advantage over the others is luck.'], 100 * cf.overstatement);
+            end
+            t = strtrim(sprintf('%s %s', t, u));
+        end
+
         function t = detectableText(result)
             % How large a difference this recording can show, in words,
             % from the recommended pipeline's own measurement error (SME,

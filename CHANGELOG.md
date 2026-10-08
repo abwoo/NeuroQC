@@ -3,6 +3,15 @@
 All notable changes. Versions follow `PipeCompare.Version` (`NeuroQC.Version` up to 0.7.1); each
 release has a git tag `vX.Y.Z`.
 
+## Unreleased
+
+- The results say whether the recommended pipeline is practically as good as the best one (its
+  noise within 5 %) or whether there are too few trials to tell, and how much noisier it could
+  be (`equivalent`, `diffHiKept` in the ranking table; `equivalenceMargin` option).
+- Selection check: the best pipeline is also scored on trials that were not used to choose it
+  (cross-fitting over 20 random half splits, `nSplits` option), and the results say how much
+  better it looks than it is (`ranking.byStratum.crossfit`).
+
 ## 0.9.3 (2026-10-07)
 
 PipeCompare now works with EEGLAB 2022.0 and later (it needed 2024.2.1).

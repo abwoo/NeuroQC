@@ -733,6 +733,7 @@ w = pipecompare.gui.SimpleResults(r); c = onCleanup(@() delete(w.Fig)); %#ok<NAS
 verifyTrue(tc, startsWith(w.Headline.Text, sprintf('Use pipeline %d: high-pass ', r.ranking.recommended)));
 verifyFalse(tc, contains(w.Headline.Text, 'cutoff='));          % the settings in words, not the internal key
 verifyTrue(tc, contains(w.Headline.Text, 'to be told apart'), w.Headline.Text);   % how large a difference shows
+verifyTrue(tc, contains(w.Headline.Text, 'Checked on trials not used to choose it'), w.Headline.Text);   % selection check
 s = strjoin(w.Steps.Value(:)', ' ');                              % the recommended pipeline, step by step
 verifyTrue(tc, startsWith(s, sprintf('Pipeline %d, step by step: 1. High-pass filter', r.ranking.recommended)), s);
 verifyTrue(tc, contains(s, 'Epochs -200 to 800 ms around event type(s) 11, 31') && contains(s, 'Trials kept per condition: 11: '), s);

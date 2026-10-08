@@ -191,6 +191,33 @@ half-sample without replacement, the classical pseudo-replication device (McCart
 rescales the result to the full sample by √(*m*/*N*), since bSME ∝ 1/√*n*. In simulation the SD
 of a difference was 7.0 ms against 7.4 ms across real replications; with replacement it was 11 ms.
 
+**Equivalence.** *Not distinguished* is absence of evidence. A candidate *i* in the kept set is
+called equivalent to the best *b* when the upper bound of its difference is within a margin δ of
+the best objective, θ̂ᵢ − θ̂_b + *c*_K ≤ δ·θ̂_b, with δ = 0.05 by default (`equivalenceMargin`).
+This is a one-sided test of equivalence (Schuirmann, 1987): the best is the lowest, so only the
+upper side is open. *c*_K is the same max-statistic quantile as *c*, but over the pairs of kept
+candidates only (step-down; Romano & Wolf, 2005): a candidate already shown worse would otherwise
+widen every bound, and no difference among the others could ever be shown negligible. The bound
+is in `diffHiKept`, the verdict in `equivalent`.
+
+**Selection bias and cross-fitting.** The minimum of *K* noisy objectives underestimates the
+objective of the candidate it selects (the winner's curse): part of its advantage is chance, and
+the more candidates, the larger that part. The selection is therefore also evaluated on trials
+not used for it. For each of *S* random splits (`nSplits`, default 20), the reference trials of
+every condition are divided into halves *A* and *B*. The objectives on each half are computed as
+the half-samples of the peak bootstrap: on the *m* trials of the half, rescaled by √(*m*/*N*),
+since SME ∝ 1/√*n*. The candidate best on *A* is scored on *B*, and the candidate best on *B* on
+*A*. The mean of these 2*S* held-out scores is an estimate, not flattered by the selection, of
+the objective of the pipeline chosen by minimum objective; reported against the apparent best
+objective on all trials, as `crossfit.overstatement = honest / apparent − 1`. A choice made on
+half the trials is somewhat worse than one made on all of them, so the overstatement is, if
+anything, too large. For segments of one recording (band power), consecutive segments are
+dependent, so the halves are the earlier and the later half (*S* = 1). The data-driven decisions
+of the candidates (bad channels, ICA, rejected epochs) were made on all trials; only the choice
+between candidates is held out. In simulation (`test_statistics`), with 24 candidates of equal
+true noise and 60 trials, the apparent best objective was below the true SME by more than 5 %,
+while the cross-fitted value was within 5 % of it. [`pipecompare.eval.Rank.crossfit`]
+
 ## 4. Signal preservation: matched-decision injection
 
 A copy of the starting data that holds only a known signal is processed with the same operations
@@ -442,6 +469,9 @@ which scores the whole recording, does not catch. When no pipeline passed, the s
   198*, 181–197.
 - Romano, J. P., & Wolf, M. (2005). Stepwise multiple testing as formalized data snooping.
   *Econometrica, 73*(4), 1237–1282.
+- Schuirmann, D. J. (1987). A comparison of the two one-sided tests procedure and the power
+  approach for assessing the equivalence of average bioavailability. *Journal of
+  Pharmacokinetics and Biopharmaceutics, 15*(6), 657–680.
 - Steegen, S., Tuerlinckx, F., Gelman, A., & Vanpaemel, W. (2016). Increasing transparency through
   a multiverse analysis. *Perspectives on Psychological Science, 11*(5), 702–712.
 - White, H. (2000). A reality check for data snooping. *Econometrica, 68*(5), 1097–1126.

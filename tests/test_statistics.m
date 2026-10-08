@@ -153,6 +153,57 @@ R = pipecompare.eval.Rank.run([nqc_cand(x) nqc_cand(x) nqc_cand(2 * x)], ref, o)
 verifyEqual(tc, R.table.notDistinguished, [true; true; false]);
 end
 
+function testEquivalenceNeedsTheWholeIntervalWithinTheMargin(tc)
+% Equivalent = the simultaneous interval of the difference from the best
+% lies within 5% of the best; not distinguished alone is absence of
+% evidence. Identical or 2% noisier data are equivalent; much noisier data
+% are neither; two independent equally noisy pipelines on few trials are
+% not distinguished but not shown equivalent either.
+rng(9); N = 50; ref = nqc_ref(N); x = randn(N, 1);
+o = pipecompare.eval.Rank.defaults(); o.nBoot = 300;
+R = pipecompare.eval.Rank.run([nqc_cand(x) nqc_cand(x) nqc_cand(1.02 * x) nqc_cand(2 * x)], ref, o);
+verifyEqual(tc, R.table.equivalent, [true; true; true; false]);
+verifyEqual(tc, R.table.notDistinguished, [true; true; true; false]);
+rs = RandStream('mt19937ar', 'Seed', 21); N = 20; ref = nqc_ref(N);
+R = pipecompare.eval.Rank.run([nqc_cand(randn(rs, N, 1)) nqc_cand(randn(rs, N, 1))], ref, o);
+verifyTrue(tc, all(R.table.notDistinguished));
+verifyEqual(tc, sum(R.table.equivalent), 1);                   % only the best itself
+end
+
+function testCrossfitRemovesTheOptimismOfTheBest(tc)
+% 24 pipelines with the same true noise: the best-looking one's SME
+% underestimates the true SME (selection), the cross-fitted value of the
+% pipeline chosen on other trials does not. With one pipeline there is
+% nothing to select and no overstatement.
+rs = RandStream('mt19937ar', 'Seed', 31);
+K = 24; N = 60; sims = 30; truth = 1 / sqrt(N);
+o = pipecompare.eval.Rank.defaults(); o.nBoot = 200; o.nSplits = 10;
+ref = nqc_ref(N);
+ap = zeros(1, sims); ho = zeros(1, sims); one = zeros(1, sims);
+for k = 1:sims
+    cs = arrayfun(@(j) nqc_cand(randn(rs, N, 1)), 1:K);
+    R = pipecompare.eval.Rank.run(cs, ref, o);
+    ap(k) = R.byStratum.crossfit.apparent; ho(k) = R.byStratum.crossfit.honest;
+    R1 = pipecompare.eval.Rank.run(cs(1), ref, o);
+    one(k) = R1.byStratum.crossfit.overstatement;
+end
+fprintf('true SME %.4f: best apparent %.4f, cross-fitted %.4f; one pipeline: overstatement %.3f\n', ...
+    truth, mean(ap), mean(ho), mean(one));
+verifyLessThan(tc, mean(ap), 0.95 * truth);                     % the selection flatters the best
+verifyEqual(tc, mean(ho), truth, 'RelTol', 0.05);               % trials not used to choose it do not
+verifyGreaterThan(tc, mean(ho ./ ap - 1), 0.05);
+verifyLessThan(tc, abs(mean(one)), 0.04);
+end
+
+function testCrossfitNeedsEnoughTrialsAndCanBeOff(tc)
+x = randn(3, 1); ref = nqc_ref(3); o = pipecompare.eval.Rank.defaults(); o.nBoot = 100; o.minTrials = 2;
+R = pipecompare.eval.Rank.run([nqc_cand(x) nqc_cand(2 * x)], ref, o);
+verifyEmpty(tc, R.byStratum.crossfit);                          % fewer than 4 trials: not checked
+o.nSplits = 0; x = randn(40, 1); ref = nqc_ref(40);
+R = pipecompare.eval.Rank.run([nqc_cand(x) nqc_cand(2 * x)], ref, o);
+verifyEmpty(tc, R.byStratum.crossfit);
+end
+
 function testRankingIndependentOfOtherCandidates(tc)
 % Adding a candidate must not change how two others compare (0.6 failed
 % this, v06_reproductions R4).

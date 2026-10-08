@@ -77,6 +77,9 @@ classdef SimpleResults < handle
                 end
                 t = sprintf('%s %d of %d pipelines passed the checks.', t, nFeas, height(T));
             end
+            % equivalence to the best, and the best checked on held-out trials
+            pr = pipecompare.simple.Presets.precisionText(obj.Result);
+            if ~isempty(pr), t = sprintf('%s %s', t, pr); end
             % how large a difference these data can show (a weak result
             % from too few trials, not from the preprocessing)
             d = pipecompare.simple.Presets.detectableText(obj.Result);
