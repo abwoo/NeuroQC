@@ -35,6 +35,25 @@ p = pipecompare.plan.Plan(); p = p.add('icremove');
 verifyError(tc, @() p.enumerate(nqc_fakeState(false, 500), c), 'PipeCompare:NoLegalPipeline'); % no ICA
 end
 
+function testIclabelThresholdFromTheDataOnlyBeforeTheRejection(tc)
+% threshold 'auto' is chosen for the epoch rejection that follows it, so
+% only epoching and baseline removal may come between them, and that
+% rejection must remove epochs (not repair them)
+assumeTrue(tc, exist('pop_iclabel', 'file') == 2, 'ICLabel not installed');
+c = nqc_contract(); st = nqc_fakeState(false, 500);
+base = pipecompare.plan.Plan(); base = base.add('ica'); base = base.add('icremove', 'threshold', 'auto');
+p = base.add('epoch'); p = p.add('baseline'); p = p.add('reject_threshold', 'uv', 'auto');
+verifyNumElements(tc, p.enumerate(st, c), 1);
+p = base.add('epoch'); p = p.add('baseline');                  % no rejection: fine
+verifyNumElements(tc, p.enumerate(st, c), 1);
+p = base.add('lowpass', 'cutoff', 30); p = p.add('epoch');
+verifyError(tc, @() p.enumerate(st, c), 'PipeCompare:NoLegalPipeline');
+p = base.add('epoch'); p = p.add('reject_threshold', 'uv', 100, 'interpolate', 3);
+verifyError(tc, @() p.enumerate(st, c), 'PipeCompare:NoLegalPipeline');
+p = pipecompare.plan.Plan(); p = p.add('ica'); p = p.add('icremove', 'threshold', 'most');
+verifyError(tc, @() p.enumerate(st, c), 'PipeCompare:NoLegalPipeline');
+end
+
 function testMissingPluginFailsAtPlanTime(tc)
 d = fileparts(which('pop_clean_rawdata'));
 assumeNotEmpty(tc, d, 'clean_rawdata plugin not installed');

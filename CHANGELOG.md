@@ -16,6 +16,14 @@ release has a git tag `vX.Y.Z`.
   not distinguish from it is used. The simple mode uses it by default (36 pipelines for
   *Standard* instead of 108, 3 for band power instead of 9); with repaired epochs or peak
   measures, fixed limits are still compared.
+- ICLabel threshold chosen from the data (`icremove` `threshold` = `auto`): every threshold that
+  removes a different set of components (all components over 0.5) is scored together with the
+  best rejection limit for it, the gain and signal check coming from the known signal with the
+  same components removed; the exact joint best is found, and the threshold removing the fewest
+  components that the data do not distinguish from it is used. The simple mode uses it by
+  default (12 pipelines for *Standard* instead of 36, 1 for band power instead of 3); with
+  repaired epochs or peak measures, the thresholds 0.7, 0.8 and 0.9 are still compared. When it
+  removes nothing although ICLabel took some components for artifacts, the results say so.
 - Filter check: what each pipeline's filters alone do to the known signal is computed before
   anything runs, on a short stretch of the signal copy; pipelines whose filters alone break a
   signal-check limit are excluded without being run (reason *filters alone: …*; option

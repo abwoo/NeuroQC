@@ -217,6 +217,7 @@ classdef Executor
                     pipecompare.utils.log('step %s', in.label);
                     cx = ctx;
                     if strcmp(in.type, 'icremove'), cx.iclabel = labels; end
+                    cx = choiceContext(env, child, cx, S);
                     [E2, coms, info] = runStep(in, E, cx, env.opts.verbose);
                     if isfield(info, 'iclabel'), labels = info.iclabel; end
                     for q = 1:numel(coms)
@@ -254,7 +255,7 @@ classdef Executor
                 pipecompare.utils.log('step %s (shared trunk)', in.label);
                 t0 = tic;
                 try
-                    [E, coms, info] = runStep(in, E, ctx, env.opts.verbose);
+                    [E, coms, info] = runStep(in, E, choiceContext(env, child, ctx, S), env.opts.verbose);
                     for q = 1:numel(coms), fprintf('    %s\n', coms{q}); E = eeg_hist(E, coms{q}); end
                 catch ME   % same handling as runSubtree: the candidates below fail, the search goes on
                     out = [out; failUnder(env, leavesUnder(tree, child), in, ME)];
@@ -405,6 +406,12 @@ classdef Executor
                     coms = d.coms;
                 else
                     pipecompare.utils.log('step %s', in.label);
+                    if strcmp(in.type, 'icremove') && ischar(in.params.threshold) && isfield(result, 'cands') && ...
+                            numel(result.cands) >= idx && numel(result.cands(idx).steps) >= k && ...
+                            isfinite(pipecompare.utils.fieldOr(result.cands(idx).steps{k}, 'thresholdChosen', NaN))
+                        % the threshold the search chose on these same data
+                        in.params.threshold = result.cands(idx).steps{k}.thresholdChosen;
+                    end
                     [EEG, coms] = runStep(in, EEG, ctx, result.options.verbose);
                 end
                 for q = 1:numel(coms)
@@ -434,14 +441,26 @@ classdef Executor
             state = pipecompare.live.DataState.fromEEG(EEG);
             EEG = pipecompare.run.Executor.prepareRoot(EEG, contract, struct('dataUnit', state.unitGuess));
             ctx = struct('contract', contract, 'highpass', rootHighpass(state));
-            if any(cellfun(@(p) isfield(p, 'uv') && ischar(p.uv), steps(:, 2)))
-                % a limit chosen from the data is judged against these data's own trials
+            chosen = @(f) cellfun(@(p) isfield(p, f) && ischar(p.(f)), steps(:, 2));
+            if any(chosen('uv') | chosen('threshold'))
+                % a limit or threshold chosen from the data is judged against these data's own trials
                 ctx.ref = pipecompare.eval.Measure.reference(EEG, contract);
             end
-            for k = 1:size(steps, 1)
-                in = struct('type', steps{k, 1}, 'params', steps{k, 2});
-                [EEG, coms] = pipecompare.run.Steps.run(in, EEG, ctx);
+            S = []; truth = [];
+            if any(chosen('threshold'))
+                % an ICLabel threshold chosen from the data uses the signal check
+                [S, truth] = pipecompare.eval.Injection.prepare(EEG, contract, ctx.ref);
+            end
+            insts = arrayfun(@(k) struct('type', steps{k, 1}, 'params', steps{k, 2}), 1:size(steps, 1), 'UniformOutput', false);
+            for k = 1:numel(insts)
+                in = insts{k};
+                cx = ctx;
+                if strcmp(in.type, 'icremove') && ischar(in.params.threshold)
+                    cx.after = insts(k+1:end); cx.signal = struct('S', S, 'truth', truth);
+                end
+                [EEG, coms, info] = pipecompare.run.Steps.run(in, EEG, cx);
                 for q = 1:numel(coms), EEG = eeg_hist(EEG, coms{q}); end
+                if ~isempty(S), S = replayCopy(in, S, info, ctx); end
                 ctx = advance(in, ctx, [], struct(), coms, {}, 0);
             end
             [EEG, com] = pipecompare.run.Executor.selectEligible(EEG, contract);
@@ -692,14 +711,16 @@ function f = stepFacts(in, info)
 % kept by interpolating channels in them), and for ICLabel how many
 % components it took for brain activity and for 'Other' and how many data
 % points ICA had (the ICA check); for a rejection limit chosen from the
-% data, the limit (uvChosen).
+% data, the limit (uvChosen); for an ICLabel threshold chosen from the
+% data, the threshold (thresholdChosen) and how many components it
+% considered (icsConsidered).
 f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed', {{}}, ...
     'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN, 'epochsInterpolated', NaN, ...
-    'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN);
+    'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN, 'thresholdChosen', NaN, 'icsConsidered', NaN);
 for n = {'interpolated', 'removed'}
     if isfield(info, n{1}), f.(n{1}) = cellstr(info.(n{1})); end
 end
-for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore', 'epochsInterpolated', 'icsBrain', 'icsOther', 'otherMedian', 'icaPoints', 'uvChosen'}
+for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore', 'epochsInterpolated', 'icsBrain', 'icsOther', 'otherMedian', 'icaPoints', 'uvChosen', 'thresholdChosen', 'icsConsidered'}
     if isfield(info, n{1}), f.(n{1}) = info.(n{1}); end
 end
 end
@@ -718,6 +739,25 @@ catch ME
         in.label, ME.message);
     S = [];
 end
+end
+
+function cx = choiceContext(env, node, ctx, S)
+% An ICLabel threshold chosen from the data (pipecompare.eval.IcThreshold)
+% also needs the steps that follow it and the signal-check copy; the
+% steps that follow must be the same in every pipeline below it.
+cx = ctx;
+in = env.tree(node).inst;
+if ~(strcmp(in.type, 'icremove') && ischar(in.params.threshold)), return; end
+d = env.tree(node).depth;
+under = leavesUnder(env.tree, node);
+after = env.leaves(under(1)).path(d+1:end);
+plain = @(path) cellfun(@(x) {x.type, x.params}, path, 'UniformOutput', false);
+same = all(arrayfun(@(li) isequal(plain(env.leaves(li).path(d+1:end)), plain(after)), under));
+assert(same, 'PipeCompare:IcThreshold', ['An ICLabel threshold chosen from the data (''auto'') needs the same steps ', ...
+    'after it in every pipeline that shares it (it is chosen for the rejection that follows); compare the steps ', ...
+    'after it in separate runs, or set the thresholds (e.g. 0.7 | 0.8 | 0.9).']);
+cx.after = after;
+cx.signal = struct('S', S, 'truth', env.truth);
 end
 
 function [E2, coms, info] = runStep(in, E, ctx, verbose)

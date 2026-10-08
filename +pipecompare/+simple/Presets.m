@@ -35,12 +35,13 @@ classdef Presets
     %   search beyond the simple mode's limit). For band power, 'standard'
     %   uses one high-pass and one low-pass edge, the catalog values
     %   nearest the band outside it: outside the band a filter does not
-    %   change its power (only what epoch rejection sees), and 3 pipelines
-    %   are compared instead of 36 (so for any steps with ICA or epoch
+    %   change its power (only what epoch rejection sees), and 1 pipeline
+    %   is run instead of 12 (so for any steps with ICA or epoch
     %   rejection); 'filters' compares the filters. The epoch-rejection
-    %   limit is chosen from the data in each pipeline (uv 'auto',
-    %   pipecompare.eval.Threshold), except when epochs are repaired or the
-    %   measure is a peak: then the catalog's limits are compared.
+    %   limit and the ICLabel threshold are chosen from the data in each
+    %   pipeline (uv and threshold 'auto', pipecompare.eval.Threshold and
+    %   pipecompare.eval.IcThreshold), except when epochs are repaired or
+    %   the measure is a peak: then the catalog's values are compared.
     %
     %   Reference: kept as recorded, or the average reference as a fixed
     %   step in every pipeline, after the bad channels are interpolated (a
@@ -129,7 +130,7 @@ classdef Presets
         function t = stepLabel(name)
             switch name
                 case 'badchannels', t = 'Bad channels: detect and interpolate';
-                case 'ica', t = 'ICA: remove artifact components (ICLabel thresholds compared)';
+                case 'ica', t = 'ICA: remove artifact components (the best ICLabel threshold found from the data)';
                 case 'highpass', t = 'High-pass filter (cutoffs compared)';
                 case 'lowpass', t = 'Low-pass filter (cutoffs compared)';
                 case 'reject', t = 'Reject epochs over an amplitude limit (the best limit found from the data)';
@@ -483,8 +484,13 @@ classdef Presets
                             t = [t ' (the fit leaves out stretches far noisier than the rest)'];
                         end
                     case 'icremove'
-                        t = sprintf('ICLabel: %s of %s components removed (%s with probability %g or more)', ...
-                            numText(f.icsRemoved), numText(f.icsTotal), strjoin(cellstr(p.classes), ', '), p.threshold);
+                        th = p.threshold; how = '';
+                        if ischar(th)
+                            th = pipecompare.utils.fieldOr(f, 'thresholdChosen', NaN);
+                            how = ', threshold chosen from these data: the highest one that measures as precisely as the best';
+                        end
+                        t = sprintf('ICLabel: %s of %s components removed (%s with probability %g or more%s)', ...
+                            numText(f.icsRemoved), numText(f.icsTotal), strjoin(cellstr(p.classes), ', '), th, how);
                         b = pipecompare.utils.fieldOr(f, 'icsBrain', NaN); o = pipecompare.utils.fieldOr(f, 'icsOther', NaN);
                         if isfinite(b) && isfinite(o)
                             t = sprintf('%s; %d look like brain activity, %d were labelled Other', t, b, o);
@@ -621,14 +627,15 @@ classdef Presets
             t = '';
             P = pipecompare.simple.Presets;
             if ~isfield(result, 'cands') || isempty(result.cands) || ~isfield(result.cands, 'steps'), return; end
-            rows = zeros(0, 6);   % pipeline, removed, total, brain, other, data points (median Other probability below)
+            rows = zeros(0, 7);   % pipeline, removed, total, brain, other, data points, artifact components a threshold chosen from the data considered (median Other probability below)
             med = [];
             for c = result.cands(:)'
                 for q = 1:numel(c.steps)
                     f = c.steps{q};
                     if ~strcmp(f.type, 'icremove') || ~isfinite(f.icsTotal), continue; end
                     rows(end+1, :) = [c.id f.icsRemoved f.icsTotal pipecompare.utils.fieldOr(f, 'icsBrain', NaN) ...
-                        pipecompare.utils.fieldOr(f, 'icsOther', NaN) pipecompare.utils.fieldOr(f, 'icaPoints', NaN)]; %#ok<AGROW>
+                        pipecompare.utils.fieldOr(f, 'icsOther', NaN) pipecompare.utils.fieldOr(f, 'icaPoints', NaN) ...
+                        pipecompare.utils.fieldOr(f, 'icsConsidered', NaN)]; %#ok<AGROW>
                     med(end+1) = pipecompare.utils.fieldOr(f, 'otherMedian', NaN); %#ok<AGROW>
                 end
             end
@@ -656,6 +663,13 @@ classdef Presets
                     'match the electrode positions (see the montage check of the data; ask whoever recorded it): ', ...
                     'ICLabel reads the components'' scalp maps, so a wrong montage hides eye and muscle components ', ...
                     'from it. Too little clean recording for ICA can do the same.'];
+            elseif rows(r, 7) > 0
+                % a threshold chosen from the data: there were artifact
+                % components, and removing them did not measure better
+                t = sprintf(['ICA removed nothing%s: ICLabel took %d component(s) for artifacts (probability over %g), ', ...
+                    'but removing them did not make the measure measurably more precise, so they were kept'], ...
+                    pipecompare.utils.ternary(numel(unique(rows(:, 1))) > 1, ' in any pipeline', ''), rows(r, 7), ...
+                    pipecompare.eval.IcThreshold.MinProbability);
             else
                 t = sprintf('ICA removed nothing%s: ICLabel found no artifact component above the threshold', ...
                     pipecompare.utils.ternary(numel(unique(rows(:, 1))) > 1, ' in any pipeline', ''));
@@ -834,7 +848,17 @@ classdef Presets
             elseif has('highpass') || has('lowpass')
                 notes{end+1} = 'the data are already epoched, so filters are not compared (they must run before epoching)';
             end
-            if ica, plan = plan.add('icremove'); end
+            if ica
+                % the ICLabel threshold is chosen from the data (threshold
+                % 'auto', pipecompare.eval.IcThreshold) when it can be: per
+                % trial scores, and the epoch rejection that follows (if any)
+                % removes epochs; otherwise the catalog's thresholds are compared
+                if pipecompare.eval.Threshold.applies(contract) && ~(has('reject') && has('epochinterp') && state.nLocated > 0)
+                    plan = plan.add('icremove', 'threshold', 'auto');
+                else
+                    plan = plan.add('icremove');
+                end
+            end
             if continuous, plan = plan.add('epoch'); end
             if ~isempty(contract.baseline), plan = plan.add('baseline'); end
             if has('reject')

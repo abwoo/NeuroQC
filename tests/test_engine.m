@@ -933,6 +933,107 @@ pipecompare.PipeCompare.writeScript(r, rec, f);
 verifyTrue(tc, contains(fileread(f), 'auto'), fileread(f));
 end
 
+function testIclabelThresholdFromTheDataIsTheExactOptimum(tc)
+% threshold 'auto': every threshold that removes a different set of
+% components is scored with the rejection that follows at its best limit;
+% each set's objective equals what EEGLAB's own processing gives
+% (pop_subcomp, epoching, baseline, a brute-force search over the limits,
+% the gain from the signal copy), the one chosen removes no more
+% components than the best, and pop_icflag removes exactly that set.
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30));
+c = nqc_c();
+n = EEG.nbchan; rng(4);
+EEG.icaweights = eye(n) + 0.3 * randn(n); EEG.icasphere = eye(n); EEG.icachansind = 1:n;
+EEG.icawinv = []; EEG.icaact = []; EEG = eeg_checkset(EEG);
+q = 0.2 * ones(1, n);
+q(1:6) = [0.97 0.9 0.8 0.65 0.55 0.45];      % 5 components over 0.5: 6 sets with removing nothing
+q(strcmpi({EEG.chanlocs.labels}, 'Pz')) = 0.6;
+q = single(q);
+ref = pipecompare.eval.Measure.reference(EEG, c);
+[S, truth] = pipecompare.eval.Injection.prepare(EEG, c, ref);
+ins = @(type, params) struct('type', type, 'params', params, 'key', type, 'slot', type, 'label', type);
+after = {ins('epoch', struct()), ins('baseline', struct()), ins('reject_threshold', struct('uv', 'auto', 'exclude', {{}}))};
+x = struct('contract', c, 'highpass', 0, 'ref', ref, 'rank', struct(), 'after', {after}, ...
+    'signal', struct('S', S, 'truth', truth));
+[t, info] = pipecompare.eval.IcThreshold.choose(EEG, q, x);
+vals = sort(unique(double(q(q > 0.5))), 'descend');
+sets = [{[]} arrayfun(@(v) find(q >= v), vals, 'UniformOutput', false)];
+verifyEqual(tc, info.sets, numel(sets));
+need = max(10, ceil(0.5 * ref.n));
+for k = 1:numel(sets)
+    E = EEG; Sk = S;
+    if ~isempty(sets{k}), E = pop_subcomp(E, sets{k}, 0); Sk = pop_subcomp(Sk, sets{k}, 0); end
+    [~, E] = evalc('nqc_epoched(E)'); [~, Sk] = evalc('nqc_epoched(Sk)');
+    r = pipecompare.eval.Injection.compare(Sk, c, truth, {});
+    m = reshape(max(max(abs(double(E.data)), [], 1), [], 2), 1, []);
+    T = pipecompare.eval.Measure.trials(E, c); mt = m(T.epoch);
+    best = Inf;
+    for v = unique(mt(:)')
+        s2 = zeros(1, 2);
+        for cc = 1:2
+            y = T.data{1}(T.cond == cc & mt(:) <= v) / r.gain;
+            if numel(y) < need(cc), s2(cc) = Inf; else, s2(cc) = var(y) / numel(y); end
+        end
+        best = min(best, sqrt(mean(s2)));
+    end
+    if isempty(pipecompare.eval.Rank.signalReasons(r, struct())) && isfinite(best)
+        verifyEqual(tc, info.objectives(k), best, 'RelTol', 1e-4, sprintf('set %d', k));
+    else
+        verifyTrue(tc, isnan(info.objectives(k)), sprintf('set %d: %s', k, info.why{k}));
+    end
+end
+verifyEqual(tc, info.objectiveBest, min(info.objectives));
+verifyLessThanOrEqual(tc, info.removedChosen, info.removedBest);
+verifyEqual(tc, sum(q > t), info.removedChosen);                 % pop_icflag flags q > t
+verifyTrue(tc, any(isnan(info.objectives)), mat2str(info.objectives));   % removing Pz loses the signal
+% in the step: the same threshold, and pop_icflag removes exactly that set
+if exist('pop_iclabel', 'file') == 2
+    cls = zeros(n, 7, 'single'); cls(:, 3) = q; cls(:, 1) = 1 - q;
+    x.iclabel = struct('classification', struct('ICLabel', struct('classes', {{'Brain','Muscle','Eye','Heart', ...
+        'Line Noise','Channel Noise','Other'}}, 'classifications', cls, 'version', 'default')), ...
+        'com', 'EEG = pop_iclabel(EEG, ''default'');');
+    [~, ~, si] = pipecompare.run.Steps.icRemove(EEG, struct('classes', {{'Eye'}}, 'threshold', 'auto'), x);
+    verifyEqual(tc, si.thresholdChosen, t);
+    verifyEqual(tc, si.comps, find(q > t));
+end
+% peak measures have no score per trial: a clear error
+x.contract = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
+    'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz'}, {'peakAmplitude', 'positive'}});
+verifyError(tc, @() pipecompare.eval.IcThreshold.choose(EEG, q, x), 'PipeCompare:IcThreshold');
+end
+
+function testIclabelThresholdFromTheDataEndToEnd(tc)
+% In a search with ICA: the threshold is chosen and listed in the steps;
+% adopt rebuilds the same pipeline (same SME), and the saved script's
+% steps, run again on the starting dataset, choose the same threshold.
+assumeTrue(tc, exist('pop_iclabel', 'file') == 2, 'ICLabel not installed');
+[EEG, truth] = nqc_synth(struct('seconds', 150, 'nPerCond', 30));
+nqc_setBase(EEG);
+c = pipecompare.eval.Contract('conditions', {'target', {'11'}; 'standard', {'31'}}, ...
+    'epoch', [-0.2 1.0], 'baseline', [-0.2 0], 'components', {'P3', [0.30 0.50], truth.roi});
+p = pipecompare.plan.Plan();
+p = p.add('highpass', 'cutoff', 0.1); p = p.add('ica', 'fitHighpass', 1);
+p = p.add('icremove', 'threshold', 'auto'); p = p.add('epoch'); p = p.add('baseline');
+p = p.add('reject_threshold', 'uv', 'auto');
+r = pipecompare.PipeCompare.optimize(p, c);
+verifyEqual(tc, r.cands(1).status, 'ok', r.cands(1).message);
+st = r.cands(1).steps{3};
+verifyEqual(tc, st.type, 'icremove');
+verifyTrue(tc, isfinite(st.thresholdChosen) && st.thresholdChosen > 0 && st.thresholdChosen <= 1);
+L = pipecompare.simple.Presets.stepsText(r, 1);
+verifyTrue(tc, any(contains(L, 'threshold chosen from these data')), strjoin(L, newline));
+pipecompare.PipeCompare.adopt(r, 1, true);
+adopted = evalin('base', 'EEG');
+m = pipecompare.eval.Measure.candidate(adopted, c, r.ref);
+verifyEqual(tc, m.composite, r.cands(1).m.composite, 'RelTol', 1e-9);
+path = r.leaves(1).path;
+steps = [cellfun(@(x) x.type, path, 'UniformOutput', false)' cellfun(@(x) x.params, path, 'UniformOutput', false)'];
+[~, E3] = evalc('pipecompare.PipeCompare.apply(EEG, steps, c)');
+verifyTrue(tc, contains(E3.history, 'pop_icflag'));
+m3 = pipecompare.eval.Measure.candidate(E3, c, r.ref);
+verifyEqual(tc, m3.composite, r.cands(1).m.composite, 'RelTol', 1e-6);
+end
+
 function testPeakToPeakRejection(tc)
 % Peak-to-peak in moving 200 ms windows: a slow drift that crosses an
 % absolute limit is kept, a fast deflection is rejected; the marks are

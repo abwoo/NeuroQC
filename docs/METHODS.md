@@ -435,6 +435,54 @@ several measures of different gains, their weights in the RMS would differ sligh
 measures have no per-trial score and keep fixed limits; so do repaired epochs (section 9), where
 the limit also decides which channels are interpolated.
 
+## 9d. ICLabel threshold chosen from the data (exact joint optimum)
+
+`icremove` with `threshold` = `auto` (the simple mode's default when no epochs are repaired)
+chooses the ICLabel threshold in each pipeline jointly with the rejection limit that follows
+[`pipecompare.eval.IcThreshold`].
+
+**The problem.** Let *q*ₖ be component *k*'s largest ICLabel probability among the artifact classes
+of the step (a probability equal to 1 is left out: `pop_icflag` flags *t* < *p* < 1). The threshold
+*t* removes R(*t*) = {*k* : *q*ₖ > *t*}. Removing R gives the data X − A_R W_R X restricted to the
+kept components, X_R = A₋R W₋R X (`pop_subcomp`'s back-projection; X itself when R is empty), with
+W the unmixing and A its inverse. For a set R and a rejection limit *u*, let *J*(R, *u*) be the
+objective of section 9c computed on X_R, with every measure's scores divided by its signal gain
+*g*_q(R) (section 2), since removing components can scale the measured signal. Constraints: those of
+section 9c, and the signal check (section 4) of X_R's known-signal copy.
+
+**Exact solution.** R(*t*) is nested in *t* and changes only where *t* crosses a value of *q*, so
+there are at most *K* + 1 sets: removing nothing, and R_j = {*k* : *q*ₖ ≥ *c*_j} for the distinct
+values *c*₁ > *c*₂ > … of *q* above 0.5 (`MinProbability`: a component more likely that artifact
+than anything else). Epoching and baseline removal, the only steps allowed between the removal and
+the rejection (the plan checks it), select samples and subtract per-channel means, so they commute
+with the spatial map A₋R W₋R: each set is applied to the epoched, baseline-corrected data once,
+the same for the known-signal copy (which gives *g*(R) and the signal check). For each set the
+inner problem min over *u* of *J*(R, *u*) is solved exactly by section 9c (or *u* is the step's fixed
+limit, or no rejection follows). The minimum over all (*t*, *u*) is therefore the minimum over at
+most *K* + 1 exact inner solutions: the global optimum of the joint problem, not the best of a grid.
+Each set's value equals EEGLAB's own processing (`pop_subcomp`, `pop_epoch`, `pop_rmbase`,
+brute-force limits; `test_engine`).
+
+**Choice.** The sets are compared as the ranking compares pipelines (section 3): the same paired
+bootstrap (the same resampled trials for every set, each at its own best limit) with the
+simultaneous max statistic gives the sets not shown worse than another. Among them, the one
+removing the fewest components (the highest threshold) is used, so a component is removed only
+when the data show that removing it improves precision. The value used is the number with the
+fewest decimals in [*c*_{j+1}, *c*_j) that removes exactly that set under `pop_icflag`'s comparison
+(in the class ICLabel stores, single precision). It is applied by `pop_icflag` and `pop_subcomp`
+and recorded in `EEG.history`; the rejection step that follows then chooses its own limit on the
+data left by section 9c (the sets are compared at their best limits; the step uses, as always,
+the highest limit not distinguished from the best). When no set is
+feasible, the set removing nothing is used and the ranking reports why.
+
+**Scope.** Exact when only epoching, baseline removal and an amplitude rejection that removes
+epochs follow the removal; all pipelines below the step must share those steps (otherwise the
+step fails with that reason). The signal check of each set uses all epochs: the rejected epochs
+change the average of the known signal only where epochs overlap; the full pipeline's own check is
+the one the ranking uses. Peak measures have no per-trial score, and repaired epochs are not a
+removal; both keep fixed thresholds. When adopting a pipeline, the threshold the search chose is
+reused; `apply` (saved scripts) chooses again on the data it is given, with its own signal copy.
+
 ## 10. Montage check (before a run)
 
 Scalp potentials vary smoothly over the head, so after an average reference a channel resembles its
