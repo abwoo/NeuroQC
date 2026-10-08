@@ -76,7 +76,10 @@ classdef Catalog
                         P('extended', 1, {}, false, 'runica extended mode')];
                 case 'icremove'
                     d.label = 'Remove artifact ICs (ICLabel)'; d.dialog = 'pop_icflag';
-                    d.params = [P('threshold', 0.9, {0.7, 0.8, 0.9}, false, 'minimum ICLabel probability of an artifact class'), ...
+                    d.params = [P('threshold', 0.9, {0.7, 0.8, 0.9}, false, ['minimum ICLabel probability of an artifact class; ''auto'' = ', ...
+                        'the highest threshold whose SME the data do not distinguish from the best threshold''s, found among ', ...
+                        'all thresholds from 0.5 (mean amplitude or band power; only epoching, baseline removal and the ', ...
+                        'amplitude rejection may follow before the rejection)']), ...
                         P('classes', {'Muscle','Eye','Heart','Line Noise','Channel Noise'}, {}, false, 'ICLabel classes treated as artifact')];
                 case 'epoch'
                     d.label = 'Extract epochs (from the analysis contract)'; d.dialog = 'pop_epoch';
@@ -115,6 +118,17 @@ classdef Catalog
             reason = '';
             reason = invalidValue(type, p);   % explicit values are checked, never replaced by defaults
             if ~isempty(reason), return; end
+            if pipecompare.utils.fieldOr(st, 'icAuto', false)
+                % an ICLabel threshold chosen from the data is chosen for the
+                % epoch rejection that follows, modelled with the steps between
+                if strcmp(type, 'reject_threshold') && pipecompare.utils.fieldOr(p, 'interpolate', 0) == 0
+                    st.icAuto = false;
+                elseif ~any(strcmp(type, {'epoch', 'baseline'}))
+                    reason = sprintf(['an ICLabel threshold chosen from the data (''auto'') can be followed only by ', ...
+                        'epoching, baseline removal and an amplitude rejection that removes epochs (found %s)'], type);
+                    return;
+                end
+            end
             switch type
                 case 'resample'
                     if ~(p.fs < st.srate), reason = sprintf('resample to %g Hz is not a downsampling of %g Hz', p.fs, st.srate); return; end
@@ -187,6 +201,7 @@ classdef Catalog
                     end
                     if st.icRemoved, reason = 'ICs of this decomposition were already removed'; return; end
                     st.icRemoved = true;
+                    st.icAuto = ischar(pipecompare.utils.fieldOr(p, 'threshold', 0));
                 case 'epoch'
                     if st.epoched, reason = 'data are already epoched'; return; end
                     st.epoched = true;
@@ -313,7 +328,10 @@ switch type
         elseif pos('window'), reason = 'reject_threshold window must be a positive number (ms)'; end
     case {'reject_jointprob','reject_kurtosis'}, if pos('sd'), reason = sprintf('%s sd must be a positive number', type); end
     case 'icremove'
-        if pos('threshold') || p.threshold > 1, reason = 'icremove threshold must be a probability in (0, 1]'; end
+        msg = 'icremove threshold must be a probability in (0, 1], or ''auto'' (chosen from the data)';
+        if isfield(p, 'threshold') && ischar(p.threshold)
+            if ~strcmp(p.threshold, 'auto'), reason = msg; end
+        elseif pos('threshold') || p.threshold > 1, reason = msg; end
     case 'ica', if isfield(p, 'fitHighpass') && ~(isnumeric(p.fitHighpass) && isscalar(p.fitHighpass) && p.fitHighpass >= 0)
             reason = 'ica fitHighpass must be >= 0 (0 = fit on the data as is)'; end
 end

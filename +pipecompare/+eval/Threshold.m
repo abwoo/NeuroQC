@@ -48,38 +48,8 @@ classdef Threshold
             assert(pipecompare.eval.Threshold.applies(contract), 'PipeCompare:Threshold', ...
                 ['A rejection limit chosen from the data (uv = ''auto'') needs mean amplitude or band power ', ...
                  '(peak measures have no score per trial); set the limits instead (e.g. 75 | 100 | 150).']);
-            name = pipecompare.eval.Rank.objectiveName(opts.objective, ref);
-            use = 1:numel(ref.objectives);
-            if ~strcmp(name, 'composite'), use = find(strcmp(ref.objectives, name)); end
-            T = pipecompare.eval.Measure.trials(EEG, contract);
-            m = double(m(:)');
-            nC = numel(ref.ids); X = cell(1, nC); M = cell(1, nC);
-            for c = 1:nC
-                % the reference trials of condition c, in time order
-                rows = find(T.cond == c);
-                [tf, loc] = ismember(T.id(rows), ref.ids{c});
-                rows = rows(tf); loc = loc(tf);
-                [~, first] = unique(loc); rows = rows(first);     % sorted by loc: time order
-                Xc = [T.data{use}];
-                X{c} = Xc(rows, :) - mean(Xc(rows, :), 1);       % centred: the SD does not change
-                M{c} = m(T.epoch(rows));
-            end
-            v = unique([M{:}]);   % one limit per kept set (keep m <= v(j))
+            [v, ok, obj, X, M] = pipecompare.eval.Threshold.curve(EEG, m, contract, ref, opts, [], []);
             U = numel(v);
-            assert(U > 0, 'PipeCompare:Threshold', 'No trial of the conditions is left at this step.');
-            need = max(opts.minTrials, ceil(opts.minRetention * ref.n - 1e-9));
-            ok = true(1, U); acc = zeros(1, U);
-            for c = 1:nC
-                K = double(M{c}(:) <= v);                     % trials x limits
-                n = sum(K, 1);
-                ok = ok & n >= max(need(c), 2);
-                for o = 1:size(X{c}, 2)
-                    s1 = X{c}(:, o)' * K; s2 = (X{c}(:, o) .^ 2)' * K;
-                    acc = acc + max((s2 - s1 .^ 2 ./ n) ./ (n - 1), 0) ./ n;
-                end
-            end
-            obj = sqrt(acc / (nC * size(X{1}, 2)));
-            obj(~ok | ~isfinite(obj)) = NaN;
             info = struct('uvBest', NaN, 'uvChosen', NaN, 'limits', U, 'feasible', sum(ok), 'compared', 0, ...
                 'equallyGood', 0, 'objectiveBest', NaN, 'objectiveChosen', NaN, 'rejectedBest', 0, 'rejectedChosen', 0, ...
                 'note', '');
@@ -107,6 +77,48 @@ classdef Threshold
             info.rejectedBest = sum([M{:}] > v(best)); info.rejectedChosen = sum([M{:}] > v(chosen));
             pipecompare.utils.log(['Rejection limit chosen from the data: %g uV (best %g uV; %d different limits, ', ...
                 '%d equally good; %d/%d trials rejected).'], u, info.uvBest, U, info.equallyGood, info.rejectedChosen, nAll);
+        end
+
+        function [v, ok, obj, X, M] = curve(EEG, m, contract, ref, opts, g, v)
+            % The objective at each limit v (empty: every value of m, one
+            % limit per kept set), and whether the limit keeps enough
+            % trials. X{c}: the centred scores of condition c's reference
+            % trials (time order) divided by the gain g of each measure
+            % (empty: 1), so that their SD is the gain-corrected one; M{c}:
+            % their values of m.
+            name = pipecompare.eval.Rank.objectiveName(opts.objective, ref);
+            use = 1:numel(ref.objectives);
+            if ~strcmp(name, 'composite'), use = find(strcmp(ref.objectives, name)); end
+            if isempty(g), g = ones(1, numel(ref.objectives)); end
+            T = pipecompare.eval.Measure.trials(EEG, contract);
+            m = double(m(:)');
+            nC = numel(ref.ids); X = cell(1, nC); M = cell(1, nC);
+            for c = 1:nC
+                % the reference trials of condition c, in time order
+                rows = find(T.cond == c);
+                [tf, loc] = ismember(T.id(rows), ref.ids{c});
+                rows = rows(tf); loc = loc(tf);
+                [~, first] = unique(loc); rows = rows(first);     % sorted by loc: time order
+                Xc = [T.data{use}] ./ double(g(use));
+                X{c} = Xc(rows, :) - mean(Xc(rows, :), 1);       % centred: the SD does not change
+                M{c} = m(T.epoch(rows));
+            end
+            if isempty(v), v = unique([M{:}]); end   % one limit per kept set (keep m <= v(j))
+            v = v(:)';
+            assert(~isempty(v), 'PipeCompare:Threshold', 'No trial of the conditions is left at this step.');
+            need = max(opts.minTrials, ceil(opts.minRetention * ref.n - 1e-9));
+            ok = true(1, numel(v)); acc = zeros(1, numel(v));
+            for c = 1:nC
+                K = double(M{c}(:) <= v);                     % trials x limits
+                n = sum(K, 1);
+                ok = ok & n >= max(need(c), 2);
+                for o = 1:size(X{c}, 2)
+                    s1 = X{c}(:, o)' * K; s2 = (X{c}(:, o) .^ 2)' * K;
+                    acc = acc + max((s2 - s1 .^ 2 ./ n) ./ (n - 1), 0) ./ n;
+                end
+            end
+            obj = sqrt(acc / (nC * size(X{1}, 2)));
+            obj(~ok | ~isfinite(obj)) = NaN;
         end
 
         function tf = applies(contract)

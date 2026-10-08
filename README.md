@@ -51,9 +51,9 @@ PipeCompare makes this choice from the data, in these steps:
    or the power in a frequency band. Presets cover the ERP CORE components and the classic
    frequency bands.
 3. **It builds every pipeline** from the steps and settings left open. The *Standard* recipe, for
-   example, compares up to 36 combinations of high-pass and low-pass filters and ICLabel
-   thresholds, and in each of them finds the best epoch-rejection limit from the data; you can also
-   decide the steps and values yourself.
+   example, compares up to 12 combinations of high-pass and low-pass filters, and in each of them
+   finds the best ICLabel threshold and epoch-rejection limit from the data; you can also decide
+   the steps and values yourself.
 4. **It runs each pipeline** with EEGLAB's own functions, on your data.
 5. **It removes pipelines that harm the data.** A pipeline is excluded when it keeps too few
    trials, interpolates too many channels, or changes the brain signal. To check the last point,
@@ -110,9 +110,13 @@ pipeline, so that the comparison is about the settings that matter.
    decomposition, which saves the largest part of the computing time.
 5. **High-pass filter**, *compared*: 0.1, 0.3, 0.5 and 1 Hz.
 6. **Low-pass filter**, *compared*: 20, 30 and 40 Hz.
-7. **Artifact components are removed with ICLabel**, *compared*: a component is removed when
-   ICLabel gives it a probability of at least 0.7, 0.8 or 0.9 of being eye, muscle, heart, line
-   noise or channel noise.
+7. **Artifact components are removed with ICLabel**, *threshold chosen from the data*: a
+   component is removed when ICLabel gives it a probability above a threshold of being eye,
+   muscle, heart, line noise or channel noise, and the threshold is found in each pipeline from its
+   own data together with the rejection limit of step 9: every threshold from 0.5 up is tried, and
+   the highest one that measures as precisely as the best one is used (see
+   [ICLabel threshold chosen from the data](#iclabel-threshold-chosen-from-the-data)). For peak
+   measures, or when epochs are repaired, the thresholds 0.7, 0.8 and 0.9 are compared instead.
 8. **Epochs are cut** around the events you chose, and the **baseline** is subtracted.
 9. **Noisy epochs are rejected**, *limit chosen from the data*: an epoch is dropped when any EEG
    channel exceeds ±*x* µV (non-EEG channels are ignored), and *x* is found in each pipeline from its
@@ -129,13 +133,15 @@ limit is again chosen from the data (see [Peak-to-peak rejection](#peak-to-peak-
 channels are interpolated from the other channels within that epoch only; an epoch with more
 channels over the limit is still rejected. With repair, the limit is not chosen from the data
 (that choice assumes the epochs over the limit are removed): the fixed limits 75, 100 and 150 µV
-(100, 150 and 200 µV peak-to-peak) are compared, which makes three times as many pipelines. See
+(100, 150 and 200 µV peak-to-peak) and the ICLabel thresholds 0.7, 0.8 and 0.9 are compared, which
+makes nine times as many pipelines. See
 [Repairing epochs with a few bad channels](#repairing-epochs-with-a-few-bad-channels).
 
-That makes 4 × 3 × 3 = 36 pipelines for an ERP, each with its own best rejection limit. The *Filters only* recipe compares only
+That makes 4 × 3 = 12 pipelines for an ERP, each with its own best ICLabel threshold and rejection limit. The *Filters only* recipe compares only
 steps 5 and 6. For band power, the data are cut into 2 s segments instead of epochs, and only the
 filter edges nearest the band, outside it, are used (a filter outside a band does not change its
-power), which leaves 3 pipelines. In the advanced panel or a script you can change every list
+power), which leaves 1 pipeline (its ICLabel threshold and rejection limit still chosen from the
+data). In the advanced panel or a script you can change every list
 above, change the order, allow a step to be skipped, and add other steps: line-noise removal (the
 50 or 60 Hz mains frequency is detected from the recording), ASR (artifact subspace
 reconstruction), resampling, rejection by joint probability or kurtosis, a reference to chosen
@@ -197,8 +203,9 @@ Along the way PipeCompare also takes care of the following, so you do not have t
   data-driven decisions as the real data (bad channels, ICA, rejected epochs, removed components,
   ASR reconstructions); steps whose decisions cannot be replayed are re-run on it and flagged (see
   [Limitations](#limitations)). Pipelines that distort it are excluded.
-- **Exact best rejection limit.** Within each pipeline, the epoch-rejection limit is chosen from
-  the data among all limits that give different results, not from a short list.
+- **Exact best rejection limit and ICLabel threshold.** Within each pipeline, the epoch-rejection
+  limit and the ICLabel threshold are chosen from the data together, among all values that give
+  different results, not from a short list.
 - **Statistically controlled ranking.** A paired bootstrap with simultaneous intervals identifies
   the pipelines that cannot be distinguished from the best, controlling the error rate across all
   candidates.
@@ -335,7 +342,7 @@ pipecompare_setup                         % run from the PipeCompare folder
    |---|---|---|
    | 1 | Bad channels: detect and interpolate | nothing (one fixed setting, see below) |
    | 2 | Reference: as recorded or average | nothing (your choice, the same in every pipeline) |
-   | 3 | ICA: remove artifact components | the ICLabel probability above which a component is removed (0.7, 0.8, 0.9) |
+   | 3 | ICA: remove artifact components | the ICLabel probability above which a component is removed, chosen from the data in each pipeline (every threshold from 0.5 is tried; 0.7, 0.8, 0.9 compared with 7b) |
    | 4 | High-pass filter | the cutoff (0.1, 0.3, 0.5, 1 Hz) |
    | 5 | Low-pass filter | the cutoff (20, 30, 40 Hz) |
    | 6 | Epochs and baseline (segments for band power) | always done |
@@ -348,8 +355,8 @@ pipecompare_setup                         % run from the PipeCompare folder
    are options of the rejection and can only be ticked together with step 7 (see
    [Peak-to-peak rejection](#peak-to-peak-rejection) and
    [Repairing epochs with a few bad channels](#repairing-epochs-with-a-few-bad-channels)).
-   Ticking 7a does not change the number of pipelines; ticking 7b triples it (three fixed limits
-   instead of one chosen from the data). An unticked step is not done at all: for example,
+   Ticking 7a does not change the number of pipelines; ticking 7b multiplies it by nine (three
+   fixed limits and, with ICA, three ICLabel thresholds instead of both chosen from the data). An unticked step is not done at all: for example,
    without the high-pass the data keep whatever high-pass they already had. Steps that these data
    cannot take are greyed out, with the reason next to them: on epoched data the filters (they
    must run before epoching), without channel locations bad-channel interpolation and ICA (ICLabel
@@ -358,7 +365,7 @@ pipecompare_setup                         % run from the PipeCompare folder
    already average-referenced), bad-channel detection is always ticked, because a bad channel in
    the average would spread into every channel. For band power, when ICA or epoch rejection is
    compared, each filter uses one cutoff, the one nearest the band outside it (outside the band a
-   filter does not change its power), so the standard set gives 3 pipelines instead of 36; tick
+   filter does not change its power), so the standard set gives 1 pipeline instead of 12; tick
    only the filters to compare their cutoffs.
 
    Bad channels are detected once and ICA is fitted once, before the filters, so every filter
@@ -570,7 +577,10 @@ it has no ICA, the first pipeline with ICA), and says so when:
   positions (see [Montage check](#montage-check)); too little clean recording for ICA can do the
   same. In that case the ICA step changed nothing useful.
 - No pipeline removed any component. If ICLabel did recognise brain components, the message says
-  that no component passed the artifact threshold, which is expected on clean data.
+  that no component passed the artifact threshold, which is expected on clean data. When the
+  threshold was chosen from the data and ICLabel did take some components for artifacts
+  (probability over 0.5), it says instead that removing them did not make the measure measurably
+  more precise, so they were kept.
 - ICA had too little data. A usual rule is that ICA needs at least 20 × (number of components)²
   data points for a reliable decomposition, more being better: with 60 components, 72 000 points,
   that is 4.8 minutes at 250 Hz or 72 seconds at 1000 Hz. With fewer, the components can mix brain
@@ -644,6 +654,50 @@ those of the data at the rejection step; it is exact when nothing after the reje
 `reject_threshold` parameter `uv` to `auto` (it can be compared with fixed limits, as
 `auto | 100`). A saved script keeps `auto`, so on another recording the limit is found from that
 recording's data.
+
+### ICLabel threshold chosen from the data
+
+Which ICLabel threshold is best also depends on the recording: a low threshold removes components
+that hold brain signal, a high one leaves eye and muscle activity in, and the epochs it leaves in
+change which rejection limit is best. Instead of trying three thresholds, PipeCompare finds the
+best one in each pipeline, together with the rejection limit that follows:
+
+1. For every component it takes the largest ICLabel probability among the artifact classes (eye,
+   muscle, heart, line noise, channel noise). EEGLAB's `pop_icflag` removes a component when this
+   value is above the threshold (and below 1), so a threshold between two neighbouring values
+   removes exactly the same components. There are only as many different results as components
+   with a value over 0.5 (more likely that artifact than anything else), plus removing nothing,
+   and all of them are tried: the threshold is the exact best, not the best of a few tries.
+2. Removing components is a linear operation (the data minus the removed components' part, as
+   `pop_subcomp` computes it), and so are epoching and baseline removal, which come between it
+   and the rejection. So each set of components is taken out of the epoched data directly,
+   without running the steps again.
+3. For each set, the rejection limit is then found as in
+   [Rejection limit chosen from the data](#rejection-limit-chosen-from-the-data) (every limit;
+   a fixed limit when the step has one), and the SME at the best limit is that set's score. The
+   SME is divided by the signal gain, which removing components can change: the known signal of
+   the signal check goes through the same removal, and a set that fails the signal check (for
+   example because it removes a component that carries the measured signal) does not count, nor
+   does one that keeps too few trials.
+4. Sets whose SME the data cannot tell apart from the best set's (the same paired bootstrap and
+   simultaneous intervals as the ranking) are equally good, and the one removing the **fewest**
+   components is used: no component is removed without evidence that removing it makes the
+   measure more precise. The number used is the roundest threshold that removes exactly that set
+   (for example 0.8 rather than 0.8137).
+5. The threshold is then applied with EEGLAB's own functions (`pop_icflag`, `pop_subcomp`), so
+   `EEG.history` records the number, and the rejection step that follows finds its limit on the
+   data that are left, as it would after any threshold.
+
+The Command Window shows the threshold used and the best one, and the steps of each pipeline in
+the results say *threshold chosen from these data* with the value. It needs a score per trial, so
+it works for mean amplitude and band power; with peak measures, or when epochs are repaired, fixed
+thresholds are compared. It is exact when only epoching, baseline removal and an amplitude
+rejection that removes epochs come after it, which the plan checks; the signal check of each set
+uses all epochs (the rejected ones change it only where epochs overlap), and the full pipeline's
+own signal check is the one the ranking uses. In the advanced panel and in scripts, set the
+`icremove` parameter `threshold` to `auto`; every pipeline below it must then have the same steps
+after it. When the search adopts a pipeline, the threshold it chose is reused; a saved script keeps
+`auto`, so on another recording the threshold is found from that recording's data.
 
 ### ICA on clean data
 
@@ -874,8 +928,9 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
 6. **Recommendation.** Within the set of step 3, PipeCompare recommends the least aggressive
    pipeline: the one with the highest trial retention, then the least signal distortion.
 
-The epoch-rejection limit of the *Standard* recipe is chosen inside each pipeline, before this
-ranking, with the same SME, constraints and bootstrap (see
+The ICLabel threshold and the epoch-rejection limit of the *Standard* recipe are chosen inside
+each pipeline, before this ranking, with the same SME, constraints and bootstrap (see
+[ICLabel threshold chosen from the data](#iclabel-threshold-chosen-from-the-data) and
 [Rejection limit chosen from the data](#rejection-limit-chosen-from-the-data)).
 
 Pipelines that differ in something that changes the measured quantity, such as the reference, are

@@ -93,9 +93,8 @@ end
 
 function testBandPowerStandardFixesTheFilters(tc)
 % Outside the band a filter does not change its power: Standard uses the
-% high-pass and low-pass edges nearest the band and compares ICLabel and
-% epoch rejection only (3 pipelines instead of 36; the rejection limit is
-% chosen from the data).
+% high-pass and low-pass edges nearest the band (1 pipeline instead of 12;
+% the ICLabel threshold and the rejection limit are chosen from the data).
 EEG = tc.TestData.EEG;
 st = pipecompare.live.DataState.fromEEG(EEG);
 [p, notes] = pipecompare.simple.Presets.recipe('standard', st, pipecompare.simple.Presets.contract(EEG, 'alpha', {}));
@@ -104,7 +103,7 @@ verifyEqual(tc, cut('highpass'), {1});
 verifyEqual(tc, cut('lowpass'), {20});
 verifyTrue(tc, any(contains(notes, 'low-pass 30, 40 Hz (band power')));
 if exist('pop_iclabel', 'file') == 2
-    verifyEqual(tc, numel(p.enumerate(st, pipecompare.simple.Presets.contract(EEG, 'alpha', {}), struct('maxLeaves', Inf))), 3);
+    verifyEqual(tc, numel(p.enumerate(st, pipecompare.simple.Presets.contract(EEG, 'alpha', {}), struct('maxLeaves', Inf))), 1);
 end
 p = pipecompare.simple.Presets.recipe('standard', st, pipecompare.simple.Presets.contract(EEG, 'beta', {}));
 verifyEqual(tc, p.Slots(strcmp({p.Slots.id}, 'lowpass')).alternatives{1}.params.cutoff, {30});   % the nearest edge outside 13-30 Hz
@@ -277,6 +276,12 @@ verifyEqual(tc, L{4}, '4. ICLabel: 3 of 30 components removed (Eye, Muscle with 
 verifyEqual(tc, L{5}, '5. Epochs -200 to 800 ms around event type(s) 11, 31');
 verifyEqual(tc, L{6}, '6. Epochs beyond +/-150 uV on any channel rejected: 5 of 60');
 verifyEqual(tc, L{7}, 'Trials kept per condition: 11: 28 of 30; 31: 27 of 30');
+% an ICLabel threshold chosen from the data: the threshold it chose
+s4a = s4; s4a.params.threshold = 'auto'; s4a.thresholdChosen = 0.75;
+r.cands.steps = {s4a};
+L = P.stepsText(r, 1);
+verifyTrue(tc, startsWith(L{1}, ['1. ICLabel: 3 of 30 components removed (Eye, Muscle with probability 0.75 or more, ', ...
+    'threshold chosen from these data']), L{1});
 % ICLabel's recognition, and epochs repaired by interpolation
 s4.icsBrain = 12; s4.icsOther = 4;
 s6.params.interpolate = 3; s6.epochsInterpolated = 7;
@@ -329,6 +334,10 @@ verifyEqual(tc, ids(p), {'highpass', 'lowpass', 'epoch', 'baseline'});
 [p, notes] = pipecompare.simple.Presets.recipe('standard', st, c);
 verifyEqual(tc, ids(p), {'badchannels', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
 verifyEmpty(tc, notes);                                          % ICA first: one decomposition for every filter choice
+th = @(p) p.Slots(strcmp(ids(p), 'icremove')).alternatives{1}.params;
+verifyEqual(tc, th(p).threshold, 'auto');                        % the ICLabel threshold chosen from the data
+a = th(pipecompare.simple.Presets.recipe({'ica', 'reject', 'epochinterp'}, st, c));
+verifyFalse(tc, isfield(a, 'threshold') && ischar(a.threshold)); % repaired epochs: the thresholds are compared
 % the average reference: fixed, after the bad channels (a bad channel
 % would spread into every channel) and before ICA
 p = pipecompare.simple.Presets.recipe('standard', st, c, 'average', {'VEOG'});
@@ -419,7 +428,7 @@ d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>
 d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
 names = pipecompare.simple.Presets.stepNames();
 box = @(s) d.StepBoxes(strcmp(names, s));
-verifyEqual(tc, d.update(), 4 * 3 * 3);                         % Standard (rejection limit chosen from the data)
+verifyEqual(tc, d.update(), 4 * 3);                             % Standard (ICLabel threshold and rejection limit chosen from the data)
 d.tick(find(strcmp(names, 'ica')), false);
 verifyEqual(tc, d.update(), 4 * 3);                             % without ICA
 verifyFalse(tc, box('ica').Value);
@@ -526,12 +535,12 @@ verifyEqual(tc, char(d.RunButton.Enable), 'off');
 verifyEqual(tc, d.Grid.RowHeight{3}, 0);                        % nothing chosen yet
 d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
 [n, msg] = d.update();
-verifyEqual(tc, n, 4 * 3 * 3);                                  % filters x ICLabel threshold (rejection limit chosen from the data)
+verifyEqual(tc, n, 4 * 3);                                      % filters (ICLabel threshold and rejection limit chosen from the data)
 verifyTrue(tc, contains(msg, '(1 ICA decomposition)'));
 verifyEqual(tc, char(d.RunButton.Enable), 'on');
 verifyEqual(tc, d.RefDrop.Value, 'asis');                       % the reference as recorded unless chosen
 d.RefDrop.Value = 'average';
-verifyEqual(tc, d.update(), 4 * 3 * 3);                         % fixed: no more pipelines
+verifyEqual(tc, d.update(), 4 * 3);                             % fixed: no more pipelines
 o = d.options();
 verifyEqual(tc, o.reference, 'average');
 d.RefDrop.Value = 'asis';
@@ -544,7 +553,7 @@ verifyEqual(tc, char(d.EventList.Enable), 'off');               % band power nee
 o = d.options();
 verifyEmpty(tc, o.events);
 d.usePreset('standard');
-verifyEqual(tc, d.update(), 3);                                 % band power: one high-pass, one low-pass, the limit from the data
+verifyEqual(tc, d.update(), 1);                                 % band power: one high-pass, one low-pass, the ICLabel threshold and the limit from the data
 d.MeasureDrop.Value = 'N2pc'; d.measureChanged();
 verifyEqual(tc, d.EventGrid.ColumnWidth{2}, '1x');              % one list per side
 verifyEqual(tc, char(d.PoolBox.Enable), 'off');
@@ -886,7 +895,7 @@ names = P.stepNames(); k = find(strcmp(names, 'epochinterp'));
 verifyFalse(tc, d.StepBoxes(k).Value);
 n = d.update();
 d.tick(k, true);
-verifyEqual(tc, d.update(), 3 * n);                              % repair: 3 fixed limits instead of one chosen from the data
+verifyEqual(tc, d.update(), 9 * n);                              % repair: 3 fixed limits and 3 ICLabel thresholds instead of both chosen from the data
 verifyTrue(tc, ismember('epochinterp', d.options().steps));
 d.tick(find(strcmp(names, 'reject')), false); d.update();
 verifyEqual(tc, char(d.StepBoxes(k).Enable), 'off');             % only with the rejection
@@ -953,6 +962,11 @@ r.cands(1).steps = {ic(0, 30, 15, 3, 0.1)}; r.cands(2).steps = {ic(0, 30, 15, 3,
 t = P.icaText(r);                                                % recognised, nothing to remove
 verifyTrue(tc, contains(t, 'removed nothing in any pipeline') && contains(t, 'expected') && ...
     ~contains(t, 'labels'), t);
+g = ic(0, 30, 15, 3, 0.1); g.icsConsidered = 2;                  % threshold chosen from the data: kept on purpose
+r.cands(1).steps = {g}; r.cands(2).steps = {g};
+t = P.icaText(r);
+verifyTrue(tc, contains(t, 'took 2 component(s) for artifacts') && contains(t, 'did not make the measure') && ...
+    ~contains(t, 'found no artifact component'), t);
 r.cands(2).steps = {ic(2, 30, 1, 25, 0.85)};                     % few brain components
 verifyTrue(tc, contains(P.icaText(r), 'almost none') && ~contains(P.icaText(r), 'removed nothing'));
 r.cands = struct('id', {1}, 'steps', {{struct('type', 'highpass', 'params', struct())}});

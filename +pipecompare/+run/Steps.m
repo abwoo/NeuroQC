@@ -385,6 +385,17 @@ classdef Steps
             classes = cellstr(p.classes);
             assert(all(ismember(classes, cats)) && ~ismember('Brain', classes), 'PipeCompare:ICLabel', ...
                 'classes must be ICLabel artifact classes: %s', strjoin(cats(2:end), ', '));
+            if ischar(p.threshold)
+                % 'auto': the threshold chosen from these data
+                % (pipecompare.eval.IcThreshold), then applied as a fixed one
+                L = EEG.etc.ic_classification.ICLabel;
+                P = L.classifications(:, ismember(cellstr(L.classes), classes));
+                P(P >= 1) = 0;   % pop_icflag flags t < p < 1
+                q = max(P, [], 2);
+                [p.threshold, info.icThreshold] = pipecompare.eval.IcThreshold.choose(EEG, q, ctx);
+                info.thresholdChosen = p.threshold;
+                info.icsConsidered = info.icThreshold.sets - 1;   % components over IcThreshold.MinProbability
+            end
             T = nan(7, 2);
             T(ismember(cats, classes), :) = repmat([p.threshold 1], sum(ismember(cats, classes)), 1);
             [EEG, c2] = pop_icflag(EEG, T);
@@ -415,10 +426,7 @@ classdef Steps
         function [EEG, coms, info] = rejectEpochs(EEG, type, p, ctx)
             n0 = EEG.trials;
             cInterp = '';
-            chans = 1:EEG.nbchan;
-            if isfield(p, 'exclude') && ~isempty(p.exclude)
-                chans = find(~ismember(lower({EEG.chanlocs.labels}), lower(cellstr(p.exclude))));
-            end
+            chans = pipecompare.run.Steps.testedChannels(EEG, p);
             switch type
                 case 'reject_threshold'
                     pp = strcmp(pipecompare.utils.fieldOr(p, 'method', 'absolute'), 'peaktopeak');
@@ -426,11 +434,7 @@ classdef Steps
                     if ischar(p.uv)
                         % 'auto': the limit chosen from these data
                         % (pipecompare.eval.Threshold), then applied as a fixed one
-                        if pp
-                            m = max(pipecompare.run.Steps.peakToPeak(EEG, chans, win), [], 1);
-                        else
-                            m = reshape(max(max(abs(EEG.data(chans, :, :)), [], 1), [], 2), 1, []);
-                        end
+                        m = pipecompare.run.Steps.limitStat(EEG, chans, p);
                         [uv, th] = pipecompare.eval.Threshold.choose(EEG, m, ctx);
                         p.uv = uv; info.threshold = th; info.uvChosen = uv;
                     end
@@ -512,6 +516,26 @@ classdef Steps
                 coms{end+1} = c2;
             end
             info.rejected = numel(idx); info.rejIdx = idx; info.epochsBefore = n0;
+        end
+
+        function chans = testedChannels(EEG, p)
+            % the channels an epoch rejection tests (all but p.exclude)
+            chans = 1:EEG.nbchan;
+            if isfield(p, 'exclude') && ~isempty(p.exclude)
+                chans = find(~ismember(lower({EEG.chanlocs.labels}), lower(cellstr(p.exclude))));
+            end
+        end
+
+        function m = limitStat(EEG, chans, p)
+            % Per epoch, the value reject_threshold compares with its limit
+            % (rejected when m > uv): the largest absolute value over chans
+            % and the whole epoch, or with method peaktopeak the largest
+            % moving-window peak-to-peak value.
+            if strcmp(pipecompare.utils.fieldOr(p, 'method', 'absolute'), 'peaktopeak')
+                m = max(pipecompare.run.Steps.peakToPeak(EEG, chans, pipecompare.utils.fieldOr(p, 'window', 200)), [], 1);
+            else
+                m = reshape(max(max(abs(EEG.data(chans, :, :)), [], 1), [], 2), 1, []);
+            end
         end
 
         function EEG = markPeakToPeak(EEG, chans, uv, win)
