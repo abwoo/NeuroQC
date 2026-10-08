@@ -6,13 +6,21 @@ name: installed from EEGLAB
 # copy's own tests and a comparison from the command line.
 
 # Run it by hand (Actions > installed from EEGLAB > Run workflow) after each
-# upload to EEGLAB's extension list.
+# upload to EEGLAB's extension list. With a zip link (e.g. a GitHub release
+# asset), EEGLAB's own installer installs that zip instead, before upload.
 on:
   workflow_dispatch:
+    inputs:
+      zip:
+        description: "Link to a plugin zip to install instead of the extension list (optional)"
+        required: false
+      version:
+        description: "Version of that zip, e.g. 0.9.3"
+        required: false
 
 jobs:
   installed:
-    name: MATLAB ${{ matrix.matlab }} + EEGLAB ${{ matrix.eeglab }} (published plugin)
+    name: MATLAB ${{ matrix.matlab }} + EEGLAB ${{ matrix.eeglab }} on ${{ matrix.os || 'ubuntu-latest' }} (published plugin)
     runs-on: ${{ matrix.os || 'ubuntu-latest' }}
     timeout-minutes: 60
     strategy:
@@ -25,17 +33,21 @@ jobs:
           - { matlab: latest, eeglab: 2024.2.1 }
           - { matlab: latest, eeglab: 2025.1.0 }
           - { matlab: latest, eeglab: 2026.0.0 }
-    env:
-      DISPLAY: ":99"
+          - { matlab: latest, eeglab: 2026.0.0, os: windows-latest }
+          - { matlab: R2022a, eeglab: '2022.0', os: windows-latest }
+          - { matlab: latest, eeglab: 2026.0.0, os: macos-latest }
+          - { matlab: latest, eeglab: '2022.0', os: macos-latest }
     steps:
       - name: Checkout EEGLAB ${{ matrix.eeglab }}
         run: git clone --depth 1 --branch ${{ matrix.eeglab }} --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
 
       - name: Start a virtual display
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q xvfb
           Xvfb :99 -screen 0 1920x1080x24 &
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
 
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v2
@@ -48,7 +60,9 @@ jobs:
         with:
           command: |
             disp(version); cd eeglab; addpath(pwd); eeglab nogui;
-            plugin_askinstall('PipeCompare', 'eegplugin_pipecompare', true);
+            zip = '${{ inputs.zip }}';
+            if isempty(zip), plugin_askinstall('PipeCompare', 'eegplugin_pipecompare', true);
+            else, plugin_install(zip, 'PipeCompare', '${{ inputs.version }}', 1000, true); end
             d = dir(fullfile(pwd, 'plugins', 'PipeCompare*'));
             assert(isscalar(d), 'PipeCompare:CI', 'installed folders: %d', numel(d));
             home = fullfile(d.folder, d.name); disp(home);
@@ -68,6 +82,10 @@ jobs:
             r = evalin('base', 'pipecompare_result');
             fprintf('Command-line comparison: %d pipelines, recommended %s\n', numel(r.labels), mat2str(r.ranking.recommended));
             cd(home);
+            % EEGLAB before 2023.0 with its window open: the menu strings PipeCompare took from EEGLAB
+            % open the interactive "new dataset" dialog after a menu step, as EEGLAB's own menus do;
+            % the tests use the same strings spelled out, which skip it under DEBUG_EEGLAB_MENUS
+            if ~exist('eeglab_new', 'file') && isappdata(0, 'pipecompare_eeglab_strings'), rmappdata(0, 'pipecompare_eeglab_strings'); end
             r = run_all({'test_history', 'test_plan', 'test_panel_text', 'test_statistics', 'test_invariants', ...
                          'test_simple', 'test_eeglab', 'test_signal', 'test_engine'});
             assert(~any([r.Failed]), 'PipeCompare:CI', '%d test(s) failed', sum([r.Failed]));
