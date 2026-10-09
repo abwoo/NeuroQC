@@ -15,7 +15,7 @@ on:
         description: "Link to a plugin zip to install instead of the extension list (optional)"
         required: false
       version:
-        description: "Version of that zip, e.g. 0.9.3"
+        description: "Version of that zip, e.g. 0.9.4"
         required: false
 
 jobs:

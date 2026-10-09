@@ -3,7 +3,7 @@
 All notable changes. Versions follow `PipeCompare.Version` (`NeuroQC.Version` up to 0.7.1); each
 release has a git tag `vX.Y.Z`.
 
-## Unreleased
+## 0.9.4 (2026-10-09)
 
 - The results say whether the recommended pipeline is practically as good as the best one (its
   noise within 5 %) or whether there are too few trials to tell, and how much noisier it could
