@@ -254,9 +254,9 @@ every EEGLAB release from 2022.0 to 2025.1.0 with both MATLAB R2022a and the lat
 runs it on Windows (the latest MATLAB with EEGLAB 2026.0.0, and R2022a with EEGLAB 2022.0) and on
 macOS (the latest MATLAB with EEGLAB 2026.0.0 and 2022.0; on GitHub's Mac test machines the windows
 of older MATLAB releases close by themselves, so those are not tested there). On
-R2022b and R2023a, MATLAB's own message box (`uialert`) and progress box (`uiprogressdlg`) never
-return on the test machines' virtual display, even in an empty window, so there the tests use
-stand-ins that print the messages instead of drawing the boxes.
+R2022b and R2023a, MATLAB's own message box (`uialert`) never returns on the test machines'
+virtual display, even in an empty window, so there the tests use a stand-in that prints the
+message instead of drawing the box.
 
 Two known problems of older EEGLAB releases, which PipeCompare works around or reports:
 

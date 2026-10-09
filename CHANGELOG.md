@@ -31,6 +31,10 @@ release has a git tag `vX.Y.Z`.
 - Simple mode: the data description at the top has a fixed height and scrolls. A long montage
   check used to squeeze the event-type list to a sliver, so no event type could be chosen and
   *Run* stayed grey.
+- The progress window is one plain window with its text, bar and *Stop*, instead of MATLAB's
+  progress box drawn inside a smaller window (which cut off its bottom edge).
+- The result window of the simple mode: the recommendation at the top has a fixed height and
+  scrolls, so its notes can no longer squeeze the table of pipelines; the window is a little taller.
 
 ## 0.9.3 (2026-10-07)
 
