@@ -3,7 +3,8 @@ classdef SimpleDialog < handle
     %
     %   opts = pipecompare.gui.SimpleDialog.ask(EEG)   % [] if cancelled
     %
-    %   1. The data, described in one line (epoched, events, or neither).
+    %   1. The data, described in one line (epoched, events, or neither),
+    %      in a box of fixed height that scrolls when the text is long.
     %   2. What is measured: the measures these data support, in one list:
     %      ERP components (ERP CORE parameters) when there are events or
     %      epochs, frequency bands on continuous data, and for each your
@@ -79,10 +80,12 @@ classdef SimpleDialog < handle
             obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', pipecompare.utils.onScreen([200 100 720 696]), ...
                 'CloseRequestFcn', @(~, ~) obj.close());
             g = uigridlayout(obj.Fig, [9 2]); obj.Grid = g;
-            g.RowHeight = {'fit', 22, 0, '1x', 22, 'fit', 22, 44, 30};
+            % the data line has a fixed height and scrolls: a long montage
+            % check would otherwise squeeze the event list to nothing
+            g.RowHeight = {80, 22, 0, '1x', 22, 'fit', 22, 44, 30};
             g.ColumnWidth = {150, '1x'};
             uilabel(g, 'Text', '1. Data', 'FontWeight', 'bold');
-            obj.TypeWhy = uilabel(g, 'Text', obj.typeReason(), 'FontColor', [0.3 0.3 0.3], 'WordWrap', 'on');
+            obj.TypeWhy = uitextarea(g, 'Value', obj.typeReason(), 'Editable', 'off', 'FontColor', [0.3 0.3 0.3]);
             uilabel(g, 'Text', '2. Measure', 'FontWeight', 'bold');
             [items, data] = obj.measures();
             obj.MeasureDrop = uidropdown(g, 'Items', [{obj.Choose} items], 'ItemsData', [{obj.Choose} data], ...

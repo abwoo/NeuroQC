@@ -525,7 +525,7 @@ end
 function testDialogAsksOnlyWhatToMeasure(tc)
 EEG = tc.TestData.EEG;
 d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>
-verifyTrue(tc, contains(d.TypeWhy.Text, 'ERP measures or band power'));   % read from the data, not asked
+verifyTrue(tc, contains(strjoin(d.TypeWhy.Value, ' '), 'ERP measures or band power'));   % read from the data, not asked
 verifyEqual(tc, d.MeasureDrop.Value, d.Choose);
 verifyTrue(tc, all(ismember({'P3', 'custom', 'alpha', 'band'}, d.MeasureDrop.ItemsData)));
 verifyTrue(tc, ismember('ERP: P3 (Pz, 300-600 ms)', d.MeasureDrop.Items));
@@ -1054,7 +1054,9 @@ verifyFalse(tc, contains(like, 'Fz') || contains(like, 'FC1'), like);   % it res
 % the dialog says it in the data line
 nqc_setBase(W);
 d = pipecompare.gui.SimpleDialog(W); cleanD = onCleanup(@() delete(d)); %#ok<NASGU>
-verifyTrue(tc, contains(d.TypeWhy.Text, 'Montage check'));
+verifyTrue(tc, contains(strjoin(d.TypeWhy.Value, ' '), 'Montage check'));
+verifyEqual(tc, d.Grid.RowHeight{1}, 80);                         % a long data line scrolls, the event list keeps its room
+verifyEqual(tc, d.Grid.RowHeight{4}, '1x');
 nqc_setBase(EEG);
 [~, few] = evalc('pop_select(S, ''channel'', 1:6)');
 verifyNotEmpty(tc, pipecompare.live.Montage.check(few).skipped); % too few channels: not checked
