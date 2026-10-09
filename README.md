@@ -3,7 +3,7 @@
 **Data-driven comparison of EEG preprocessing pipelines in EEGLAB.**
 
 [![MATLAB tests](https://github.com/abwoo/PipeCompare/actions/workflows/matlab-tests.yml/badge.svg)](https://github.com/abwoo/PipeCompare/actions/workflows/matlab-tests.yml)
-![Version](https://img.shields.io/badge/version-0.9.3-2f6fed)
+![Version](https://img.shields.io/badge/version-0.9.4-2f6fed)
 ![MATLAB](https://img.shields.io/badge/MATLAB-R2021b%2B-orange)
 ![EEGLAB](https://img.shields.io/badge/EEGLAB-2024.2%2B-blueviolet)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -1019,7 +1019,7 @@ If you use PipeCompare in published work, please cite it:
   author  = {abwoo},
   title   = {PipeCompare: data-driven comparison of EEG preprocessing pipelines in EEGLAB},
   year    = {2026},
-  version = {0.9.3},
+  version = {0.9.4},
   url     = {https://github.com/abwoo/PipeCompare}
 }
 ```
