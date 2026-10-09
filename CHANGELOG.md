@@ -28,6 +28,9 @@ release has a git tag `vX.Y.Z`.
   anything runs, on a short stretch of the signal copy; pipelines whose filters alone break a
   signal-check limit are excluded without being run (reason *filters alone: …*; option
   `filterCheck`).
+- Simple mode: the data description at the top has a fixed height and scrolls. A long montage
+  check used to squeeze the event-type list to a sliver, so no event type could be chosen and
+  *Run* stayed grey.
 
 ## 0.9.3 (2026-10-07)
 
