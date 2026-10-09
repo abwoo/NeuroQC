@@ -3,7 +3,8 @@ classdef SimpleResults < handle
     %
     %   pipecompare.gui.SimpleResults(result)
     %
-    %   First line, in plain words: the recommended pipeline and why; below,
+    %   At the top, in plain words, in a box that scrolls: the recommended
+    %   pipeline and why; below,
     %   a table of the recommendation (marked *) followed by the best of the
     %   others. "Use this pipeline" stores the recommended (or the selected)
     %   candidate as a new EEGLAB dataset; Save script writes it as a
@@ -25,10 +26,11 @@ classdef SimpleResults < handle
     methods
         function obj = SimpleResults(result)
             obj.Result = result;
-            obj.Fig = uifigure('Name', 'Pipeline comparison', 'Position', pipecompare.utils.onScreen([220 120 900 540]));
-            g = uigridlayout(obj.Fig, [5 1]); g.RowHeight = {'fit', '1x', 22, 150, 30};
-            obj.Headline = uilabel(g, 'Text', obj.headline(), 'WordWrap', 'on', 'FontWeight', 'bold', ...
-                'VerticalAlignment', 'top');
+            obj.Fig = uifigure('Name', 'Pipeline comparison', 'Position', pipecompare.utils.onScreen([220 100 900 600]));
+            % the recommendation has a fixed height and scrolls: with all its
+            % notes it would otherwise squeeze the table of pipelines
+            g = uigridlayout(obj.Fig, [5 1]); g.RowHeight = {100, '1x', 22, 150, 30};
+            obj.Headline = uitextarea(g, 'Value', obj.headline(), 'Editable', 'off', 'FontWeight', 'bold');
             obj.Table = uitable(g, 'RowName', {}, 'SelectionChangedFcn', @(~, ~) obj.showSteps());
             obj.showRows();
             uilabel(g, 'Text', obj.shared(), 'FontColor', [0.3 0.3 0.3]);

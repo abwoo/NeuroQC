@@ -740,10 +740,10 @@ EEG = tc.TestData.EEG;
 nqc_setBase(EEG);
 [~, ~, r] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'recipe', 'filters', 'show', 'off');
 w = pipecompare.gui.SimpleResults(r); c = onCleanup(@() delete(w.Fig)); %#ok<NASGU>
-verifyTrue(tc, startsWith(w.Headline.Text, sprintf('Use pipeline %d: high-pass ', r.ranking.recommended)));
-verifyFalse(tc, contains(w.Headline.Text, 'cutoff='));          % the settings in words, not the internal key
-verifyTrue(tc, contains(w.Headline.Text, 'to be told apart'), w.Headline.Text);   % how large a difference shows
-verifyTrue(tc, contains(w.Headline.Text, 'Checked on trials not used to choose it'), w.Headline.Text);   % selection check
+verifyTrue(tc, startsWith(strjoin(w.Headline.Value, ' '), sprintf('Use pipeline %d: high-pass ', r.ranking.recommended)));
+verifyFalse(tc, contains(strjoin(w.Headline.Value, ' '), 'cutoff='));          % the settings in words, not the internal key
+verifyTrue(tc, contains(strjoin(w.Headline.Value, ' '), 'to be told apart'), strjoin(w.Headline.Value, ' '));   % how large a difference shows
+verifyTrue(tc, contains(strjoin(w.Headline.Value, ' '), 'Checked on trials not used to choose it'), strjoin(w.Headline.Value, ' '));   % selection check
 s = strjoin(w.Steps.Value(:)', ' ');                              % the recommended pipeline, step by step
 verifyTrue(tc, startsWith(s, sprintf('Pipeline %d, step by step: 1. High-pass filter', r.ranking.recommended)), s);
 verifyTrue(tc, contains(s, 'Epochs -200 to 800 ms around event type(s) 11, 31') && contains(s, 'Trials kept per condition: 11: '), s);
@@ -794,7 +794,7 @@ verifyTrue(tc, all(strcmp(r.ranking.table.status(notRun), 'failed')));
 verifyNotEmpty(tc, r.ranking.recommended);                      % the finished ones are ranked
 verifyEmpty(tc, r.options.progress);                            % the caller's callback is not kept
 w = pipecompare.gui.SimpleResults(r); cw = onCleanup(@() delete(w.Fig)); %#ok<NASGU>
-verifyTrue(tc, startsWith(w.Headline.Text, 'Stopped after 3 of 12 pipelines'));
+verifyTrue(tc, startsWith(strjoin(w.Headline.Value, ' '), 'Stopped after 3 of 12 pipelines'));
 end
 
 function testProgressIsToldEachStep(tc)
@@ -811,16 +811,17 @@ end
 
 function testProgressWindowShowsTheStepAndTheTime(tc)
 p = pipecompare.gui.Progress(10, true); c = onCleanup(@() delete(p)); %#ok<NASGU>
-verifyEqual(tc, char(p.Dlg.Indeterminate), 'on');               % moving, with no fill level before the first pipeline
+verifyEmpty(tc, findall(p.Fig, 'Type', 'uiprogressdlg'));      % one window, no progress box drawn inside it
+verifyTrue(tc, p.Indeterminate);                                % moving, with no fill level before the first pipeline
 verifyFalse(tc, p.step(0, struct('type', 'ica', 'params', struct(), 'label', 'ica')));
-msg = @() strjoin(cellstr(p.Dlg.Message), ' ');
+msg = @() strjoin(cellstr(p.Message.Text), ' ');
 verifyTrue(tc, contains(msg(), 'Now: fitting ICA'));
 t1 = regexp(msg(), 'Time so far: [^.]*', 'match', 'once');
 pause(2.5);                                                     % the time moves while a step runs
 verifyNotEqual(tc, regexp(msg(), 'Time so far: [^.]*', 'match', 'once'), t1);
 verifyFalse(tc, p.step(1));
-verifyEqual(tc, char(p.Dlg.Indeterminate), 'off');
-verifyEqual(tc, p.Dlg.Value, 0.1, 'AbsTol', 1e-12);
+verifyFalse(tc, p.Indeterminate);
+verifyEqual(tc, p.Value, 0.1, 'AbsTol', 1e-12);
 delete(p);
 verifyEmpty(tc, timerfind('Name', 'PipeCompare progress'));     % its clock is gone with it
 end
@@ -829,9 +830,15 @@ function testProgressWindowStopsWhenClosed(tc)
 p = pipecompare.gui.Progress(10, false); c = onCleanup(@() delete(p)); %#ok<NASGU>
 verifyFalse(tc, p.step(0));
 verifyFalse(tc, p.step(3));
-verifyEqual(tc, p.Dlg.Value, 0.3, 'AbsTol', 1e-12);
-delete(p.Fig);                                                  % closing the window stops the search
+verifyEqual(tc, p.Value, 0.3, 'AbsTol', 1e-12);
+p.StopButton.ButtonPushedFcn(p.StopButton, []);                 % Stop
 verifyTrue(tc, p.step(1));
+verifyTrue(tc, contains(strjoin(cellstr(p.Message.Text), ' '), 'Stopping'));
+q = pipecompare.gui.Progress(10, false); c2 = onCleanup(@() delete(q)); %#ok<NASGU>
+close(q.Fig);                                                   % closing the window stops the search
+verifyTrue(tc, q.step(1));
+delete(q.Fig);                                                  % and so does a window that is gone
+verifyTrue(tc, q.step(1));
 end
 
 function testExcludedPipelineIsUsedOnlyAfterConfirmation(tc)
